@@ -1,8 +1,11 @@
 # Audio Loop Recorder — CLAUDE.md
 
-iOS app for building multi-layer loop sketches. Set a tempo and bar count, pick a drum loop,
-record up to seven layers while the loop runs, then choose bar by bar which pass of the
+A mobile app for building multi-layer loop sketches. Set a tempo and bar count, pick a drum
+loop, record up to seven layers while the loop runs, then choose bar by bar which pass of the
 recording fills each slot of the arrangement.
+
+The spec is written for iOS. **The target platform is currently an open decision** — see
+`docs/platform-decision.md` and the section below.
 
 **It is a sketchpad for improvising, not a DAW.** Almost every design decision follows from that.
 
@@ -24,34 +27,40 @@ way to check a timing change**, with no Swift toolchain involved:
 node Tools/verify-timing.js && node Tools/verify-region.js
 ```
 
-## Development happens on Windows. There is no Mac.
+## The target platform is deliberately UNDECIDED
 
-This is the governing constraint, and it splits the project in two.
+Development is on Windows and **a Mac is not a realistic option**. That rules out Xcode, the
+iOS Simulator, and any local compilation of AVFoundation — permanently.
 
-| | On Windows | Needs a Mac |
-|---|---|---|
-| `LoopRecorderCore` | builds and tests, with the swift.org Windows toolchain | — |
-| `Tools/*.js` | runs today | — |
-| `LoopRecorderAudio` | cannot build — AVFoundation is Apple-only | to compile |
-| An iOS app at all | impossible — Xcode is Mac-only | to build, sign, run |
+The research behind this, and the ranked options, are in **`docs/platform-decision.md`**.
+Read it before proposing a platform, and do not re-derive it. The short version: Expo + EAS
+Build compiles iOS in the cloud from Windows, `expo-audio` cannot express this app but
+`react-native-audio-api` can, and Android costs nothing to build for. The decision is being
+held open on purpose.
 
-Core is therefore where work can actually happen, and it is deliberately where the
-load-bearing logic lives. **Push anything decidable without audio hardware down into it.**
-That is not tidiness; it is the difference between testable and unverifiable.
+**Holding it open costs something on every commit, and that cost is the rule:**
 
-**Nothing here has been compiled yet, on any platform.** The Swift is unverified. What *has*
-been verified is the logic it encodes: `PassIndex`'s pass numbering, availability and region
-lookup were mirrored in JavaScript and executed against the spec's worked example plus the
-`lr-kit.js` reference, and all checks passed. Sound algorithm, unchecked transcription.
+> Anything decidable without audio hardware goes in a platform-neutral layer. The
+> platform-bound surface stays small enough to rewrite in a day.
 
-**Before the audio layer can be written honestly it needs a way to be compiled.** A macOS CI
-runner will compile-check `LoopRecorderAudio` on every push, which catches the class of error
-that filled its first draft — non-optional force-unwraps, initialisers that do not exist,
-redeclaring a system property. It will not *run* the audio: latency, routing, crossfades and
-drift can only be judged on a device, by ear.
+Bar identity, frame arithmetic, pass availability, region lookup, the schedule plan,
+arrangement editing, compress and bounce are all pure. What genuinely binds to a platform is
+narrow: open a file, schedule a buffer at a time, read input, measure latency. **If that
+surface starts growing, the deferral is failing** — stop and decide rather than drifting.
 
-Do not write large amounts of AVFoundation before that loop exists. The first attempt
-produced ~400 lines of audio code that could not compile and was deleted whole.
+The Swift in `Sources/` was written to this shape, and its logic has already been expressed
+in two languages (Swift, and the JavaScript in `Tools/`) without the design changing. That
+portability is not incidental; it is what makes the deferral affordable.
+
+**Nothing here has been compiled, on any platform.** The Swift is unverified. What *has* been
+verified is the logic it encodes — `PassIndex`'s pass numbering, availability and region
+lookup, executed in JavaScript against the spec's worked example and the `lr-kit.js`
+reference. Sound algorithm, unchecked transcription.
+
+`Sources/LoopRecorderAudio/` is a documented stub and should stay that way until a platform is
+chosen and there is a way to compile it. The first attempt produced ~400 lines of AVFoundation
+that could not compile and was deleted whole. **Do not write audio code that nothing can
+build.**
 
 ## Layout
 
