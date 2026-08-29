@@ -8,33 +8,50 @@ recording fills each slot of the arrangement.
 
 ## The spec is the authority, not this file
 
-`audio-loop-recorder-spec.md` (~1200 lines) is authoritative, along with `lr-kit.css`,
-`lr-kit.js` and three HTML mockups. Currently at `C:\Users\colli\Downloads\extracted\` —
-**move them into this repo.** This file is a day-to-day reference; when the two disagree,
-the spec wins.
+`docs/audio-loop-recorder-spec.md` (~1200 lines) is authoritative, along with `docs/kit/`
+and `docs/mockups/`. This file is a day-to-day reference; when the two disagree, the spec
+wins.
 
 The mockups are behaviour references, not production code. Read them for exact constants and
 for interactions prose describes poorly. Do not port the DOM structure.
 
-`lr-kit.js` contains a working reference implementation of the timing rules — `LR.timing`
-holds `framesPerBar`, `passesForBar` and `passCount`. The spec calls `passesForBar` "the
-executable form" of §1.4. **It runs under Node, and it is the cheapest way to check a
-timing change**, on any machine, without a Swift toolchain. Use it.
+`docs/kit/lr-kit.js` holds a working reference implementation of the timing rules —
+`LR.timing` has `framesPerBar`, `passesForBar` and `passCount`, and the spec calls
+`passesForBar` "the executable form" of §1.4. **It runs under Node, and it is the cheapest
+way to check a timing change**, with no Swift toolchain involved:
 
-## Build status
+```bash
+node Tools/verify-timing.js && node Tools/verify-region.js
+```
 
-| | |
-|---|---|
-| `LoopRecorderCore` | Written. **Never compiled** — no Swift toolchain on the dev machine. |
-| `LoopRecorderCoreTests` | Written. Never run. |
-| `LoopRecorderAudio` | A documented stub. Not implemented. |
+## Development happens on Windows. There is no Mac.
 
-Nothing in this package has been built. Verify in Xcode before believing any of it.
+This is the governing constraint, and it splits the project in two.
 
-The core logic *has* been validated, though not as Swift: `PassIndex`'s pass numbering,
-availability and region lookup were mirrored in JavaScript and executed against the spec's
-own worked example (§1.4) plus the `lr-kit.js` reference, and all checks passed. The
-algorithm is sound; the Swift transcription of it is unverified.
+| | On Windows | Needs a Mac |
+|---|---|---|
+| `LoopRecorderCore` | builds and tests, with the swift.org Windows toolchain | — |
+| `Tools/*.js` | runs today | — |
+| `LoopRecorderAudio` | cannot build — AVFoundation is Apple-only | to compile |
+| An iOS app at all | impossible — Xcode is Mac-only | to build, sign, run |
+
+Core is therefore where work can actually happen, and it is deliberately where the
+load-bearing logic lives. **Push anything decidable without audio hardware down into it.**
+That is not tidiness; it is the difference between testable and unverifiable.
+
+**Nothing here has been compiled yet, on any platform.** The Swift is unverified. What *has*
+been verified is the logic it encodes: `PassIndex`'s pass numbering, availability and region
+lookup were mirrored in JavaScript and executed against the spec's worked example plus the
+`lr-kit.js` reference, and all checks passed. Sound algorithm, unchecked transcription.
+
+**Before the audio layer can be written honestly it needs a way to be compiled.** A macOS CI
+runner will compile-check `LoopRecorderAudio` on every push, which catches the class of error
+that filled its first draft — non-optional force-unwraps, initialisers that do not exist,
+redeclaring a system property. It will not *run* the audio: latency, routing, crossfades and
+drift can only be judged on a device, by ear.
+
+Do not write large amounts of AVFoundation before that loop exists. The first attempt
+produced ~400 lines of audio code that could not compile and was deleted whole.
 
 ## Layout
 
