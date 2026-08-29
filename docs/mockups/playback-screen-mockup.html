@@ -1,0 +1,1129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Playback Screen — Loop Recorder</title>
+<style>
+/* ---------------------------------------------------------------
+   Inlined from lr-kit.css — edit that file, not this copy.
+   --------------------------------------------------------------- */
+/* ============================================================================
+   Loop Recorder — shared kit
+   Design tokens and component styles used by all three screens.
+   Terminology follows the spec glossary: bar, pass, layer, slot, tile, lane.
+   ========================================================================= */
+
+:root {
+  /* ---- palette: one violet family, no pure neutrals ---- */
+  --lr-grad-start:   #5A5FCE;
+  --lr-grad-end:     #64408E;
+  --lr-page:         #E8E4F2;
+
+  --lr-tile:         #382561;   /* default surface */
+  --lr-tile-hover:   #402B6E;
+  --lr-tile-sel:     #1B1733;   /* selection recedes into a well */
+  --lr-tile-muted:   #43306E;
+  --lr-tile-muted-sel:#2C2549;
+  --lr-tile-armed:   #2E2050;
+  --lr-tile-empty:   #33265A;
+  --lr-tile-rec:     #4A2350;
+
+  --lr-ink:          #E6DCFF;
+  --lr-ink-dim:      #B4A5E4;
+  --lr-ink-faint:    #9384C4;
+  --lr-ink-pass:     #9384C4;   /* the smaller P# portion */
+  --lr-ink-on-light: #35275E;
+  --lr-hint:         #9C8CD0;
+  --lr-hint-sel:     #B9A9EC;
+  --lr-rec:          #FF6B6B;
+
+  /* spent-line targets, as rgb triples for JS interpolation */
+  --lr-spent:        173,152,214;   /* on the default violet surface */
+  --lr-spent-sel:    140,133,175;   /* on the dark selected surface */
+
+  /* ---- geometry ---- */
+  --lr-line-w:   3px;    /* set by LR.sizing at runtime */
+  --lr-line-gap: 3px;    /* always equal to line width */
+  --lr-radius:   8px;
+  --lr-seam:     2px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: var(--lr-page);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  padding: 20px;
+}
+
+/* ---------------------------------------------------------------- screen -- */
+.lr-screen {
+  background: linear-gradient(135deg, var(--lr-grad-start) 0%, var(--lr-grad-end) 100%);
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(0,0,0,.12);
+  max-width: 900px; margin: 0 auto; overflow: hidden; color: #fff;
+}
+.lr-header { padding: 18px 20px 14px; }
+.lr-title-row { display: flex; align-items: baseline; gap: 12px; }
+.lr-title { font-size: 22px; font-weight: 600; }
+.lr-meta  { font-size: 12px; color: rgba(255,255,255,.7); }
+.lr-section-label {
+  font-size: 10px; letter-spacing: .09em; text-transform: uppercase;
+  color: rgba(255,255,255,.5); padding: 0 20px; margin-bottom: 7px;
+}
+.lr-footer {
+  padding: 12px 20px; border-top: 1px solid rgba(255,255,255,.16);
+  display: flex; gap: 16px; align-items: center; justify-content: space-between;
+  font-size: 11px; color: rgba(255,255,255,.6);
+}
+
+/* --------------------------------------------------------------- buttons -- */
+.lr-btn {
+  font-size: 12px; padding: 7px 13px; border-radius: 6px; cursor: pointer;
+  background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.24);
+  color: #fff; font-weight: 500; -webkit-tap-highlight-color: transparent;
+}
+.lr-btn:hover { background: rgba(255,255,255,.2); }
+.lr-btn--primary { background: rgba(255,255,255,.94); color: var(--lr-ink-on-light);
+                   border-color: transparent; font-weight: 600; }
+.lr-btn--primary:hover { background: #fff; }
+.lr-btn--danger { color: #FFC2C2; border-color: rgba(255,107,107,.4); }
+.lr-btn--danger:hover { background: rgba(255,107,107,.22); }
+.lr-btn:disabled { opacity: .35; cursor: default; }
+.lr-btn:disabled:hover { background: rgba(255,255,255,.1); }
+
+.lr-play {
+  width: 46px; height: 46px; border-radius: 50%; flex: 0 0 46px;
+  background: rgba(255,255,255,.94); color: var(--lr-ink-on-light);
+  border: none; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: background .15s, transform .1s; -webkit-tap-highlight-color: transparent;
+}
+.lr-play:hover { background: #fff; }
+.lr-play:active { transform: scale(.94); }
+.lr-play svg { width: 15px; height: 15px; fill: currentColor; }
+.lr-play .lr-ico-pause { display: none; }
+.lr-play.is-playing .lr-ico-play  { display: none; }
+.lr-play.is-playing .lr-ico-pause { display: block; }
+
+/* ------------------------------------------------------------------ rows -- */
+/* One row primitive: layer rows, reference rows and project rows all use it. */
+.lr-row { background: var(--lr-tile); border-radius: 6px; overflow: hidden;
+          transition: background .15s; }
+.lr-row:hover { background: var(--lr-tile-hover); }
+.lr-row-head {
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+  cursor: pointer; -webkit-tap-highlight-color: transparent; user-select: none;
+}
+.lr-rows { display: grid; gap: var(--lr-seam); padding: 4px 20px 16px; }
+
+.lr-panel { max-height: 0; overflow: hidden;
+            transition: max-height .22s cubic-bezier(.22,.9,.3,1); }
+.lr-row.is-open .lr-panel { max-height: 280px; }
+.lr-panel-inner { padding: 12px; display: grid; gap: 10px; }
+.lr-panel-row { display: flex; align-items: center; gap: 10px; }
+.lr-panel-label {
+  font-size: 10px; letter-spacing: .07em; text-transform: uppercase;
+  color: rgba(255,255,255,.45); min-width: 54px;
+}
+.lr-chips { display: flex; gap: 4px; flex-wrap: wrap; }
+.lr-chip {
+  font-size: 11px; padding: 4px 9px; border-radius: 4px; cursor: pointer;
+  background: rgba(255,255,255,.09); border: 1px solid transparent;
+  color: var(--lr-ink-dim); transition: all .12s;
+}
+.lr-chip:hover { background: rgba(255,255,255,.16); }
+.lr-chip.is-active { background: rgba(255,255,255,.9); color: var(--lr-ink-on-light);
+                     font-weight: 600; }
+.lr-note { font-size: 11px; color: var(--lr-ink-faint); }
+
+input[type=range] { accent-color: #fff; }
+
+/* --------------------------------------------------------- progress bar -- */
+.lr-progress {
+  flex: 1; height: 4px; border-radius: 999px; overflow: hidden;
+  background: rgba(255,255,255,.18); cursor: pointer; position: relative;
+}
+.lr-progress__fill {
+  height: 100%; width: 0; border-radius: 999px;
+  background: rgba(255,255,255,.92);
+}
+.lr-progress__ticks { position: absolute; inset: 0; display: flex; pointer-events: none; }
+.lr-progress__ticks i { flex: 1; border-right: 1px solid rgba(0,0,0,.28); }
+.lr-progress__ticks i:last-child { border-right: none; }
+.lr-position {
+  font-size: 12px; color: rgba(255,255,255,.78);
+  font-variant-numeric: tabular-nums; min-width: 118px; text-align: right;
+}
+
+/* --------------------------------------------------------- volume icon --- */
+/* Level and mute in one control: three arcs filling together from the centre. */
+.lr-volume {
+  background: none; border: none; padding: 0; cursor: pointer;
+  width: 26px; height: 26px; display: block; flex: 0 0 26px;
+  -webkit-tap-highlight-color: transparent;
+}
+.lr-volume svg { display: block; width: 26px; height: 26px; overflow: visible; }
+.lr-volume .lr-vol-body { fill: var(--lr-ink); transition: fill .15s; }
+.lr-volume .lr-vol-arc {
+  fill: none; stroke: var(--lr-ink); stroke-width: 1.6; stroke-linecap: round;
+  transition: stroke .15s;
+}
+.lr-volume .lr-vol-slash {
+  stroke: var(--lr-ink-faint); stroke-width: 1.8; stroke-linecap: round;
+  stroke-dasharray: 1; stroke-dashoffset: 1;
+  transition: stroke-dashoffset .18s cubic-bezier(.22,.9,.3,1);
+}
+.lr-volume.is-muted .lr-vol-body  { fill: var(--lr-ink-faint); }
+.lr-volume.is-muted .lr-vol-arc   { stroke: transparent; }
+.lr-volume.is-muted .lr-vol-slash { stroke-dashoffset: 0; }
+.lr-volume--lg, .lr-volume--lg svg { width: 30px; height: 30px; flex-basis: 30px; }
+
+/* ----------------------------------------------------------- record dot -- */
+.lr-rec {
+  width: 20px; height: 20px; border-radius: 50%; margin-right: 2px;
+  background: rgba(255,255,255,.22); border: none; cursor: pointer; flex: 0 0 auto;
+  -webkit-tap-highlight-color: transparent;
+  transition: background .18s, border-radius .18s, transform .18s;
+}
+.lr-rec:hover { background: rgba(255,255,255,.34); }
+.lr-row.is-armed     .lr-rec { background: var(--lr-rec); animation: lr-pulse 1.4s ease-in-out infinite; }
+.lr-row.is-recording .lr-rec { background: var(--lr-rec); border-radius: 4px;
+                               transform: scale(.78); animation: none; }
+.lr-row.is-armed     { background: var(--lr-tile-armed);
+                       box-shadow: inset 0 0 0 1px rgba(255,107,107,.45); }
+.lr-row.is-recording { background: var(--lr-tile-rec);
+                       box-shadow: inset 0 0 0 1px rgba(255,107,107,.9); }
+@keyframes lr-pulse { 0%,100% { opacity: .5 } 50% { opacity: 1 } }
+
+/* a pass in progress owns the input: every other record control disappears,
+   keeping its space so nothing shifts when the pass ends */
+.lr-rows.is-capturing .lr-row:not(.is-recording) .lr-rec {
+  visibility: hidden; pointer-events: none; animation: none;
+}
+
+/* hint the record control while an empty layer's panel is open */
+.lr-row.is-empty.is-open .lr-rec {
+  background: rgba(255,107,107,.55); animation: lr-rec-hint 1.8s ease-out infinite;
+}
+.lr-row.is-empty.is-open.is-armed .lr-rec,
+.lr-row.is-empty.is-open.is-recording .lr-rec { animation: none; }
+@keyframes lr-rec-hint {
+  0%   { box-shadow: 0 0 0 0   rgba(255,107,107,.55); }
+  70%  { box-shadow: 0 0 0 9px rgba(255,107,107,0); }
+  100% { box-shadow: 0 0 0 0   rgba(255,107,107,0); }
+}
+
+/* ------------------------------------------------------------- waveform -- */
+/* One line renderer, three densities: tile (edit), lane (playback), thumb
+   (library). Lines are capsules; width always equals the gap. */
+.lr-wave { display: flex; align-items: center; gap: var(--lr-line-gap); }
+.lr-wave__line {
+  width: var(--lr-line-w); flex: 0 0 var(--lr-line-w);
+  border-radius: 999px; background: currentColor;
+  transform-origin: center; will-change: transform;
+}
+.lr-wave--lane  { justify-content: center; height: 40px; overflow: hidden; position: relative; }
+.lr-wave--thumb { gap: 1px; height: 5px; }
+.lr-wave--thumb .lr-wave__line { width: auto; flex: 1; }
+
+/* ------------------------------------------------------------ pass badge -- */
+.lr-pass-badge {
+  font-size: 10px; font-weight: 700; letter-spacing: .04em;
+  padding: 2px 6px; border-radius: 3px; flex: 0 0 auto;
+  background: rgba(255,107,107,.18); color: #FFC9C9;
+  border: 1px solid rgba(255,107,107,.4); display: none;
+}
+.lr-row.is-armed .lr-pass-badge,
+.lr-row.is-recording .lr-pass-badge {
+  display: block; font-size: 12px; padding: 3px 8px;
+  background: rgba(255,107,107,.28); color: #FFD9D9;
+}
+
+/* --------------------------------------------------------------- tags ----- */
+.lr-tag {
+  font-size: 9px; letter-spacing: .05em; text-transform: uppercase;
+  padding: 2px 5px; border-radius: 3px; font-weight: 700;
+  background: rgba(255,255,255,.14); color: var(--lr-ink-dim);
+}
+.lr-tag--hq      { background: rgba(124,224,142,.18); color: #A9E8BB; }
+.lr-tag--bounced { background: rgba(122,168,255,.2);  color: #BBD1FF; }
+
+</style>
+<style>
+  /* screen-specific only; everything shared lives in lr-kit.css */
+  .lr-transport { display: flex; align-items: center; gap: 14px; margin-top: 14px; }
+
+  /* fixed label column: the name and the pass badge swap inside one box, so a
+     lane starts at the same x whatever state the layer is in */
+  .layer-label {
+    font-size: 12px; font-weight: 600;
+    flex: 0 0 116px; width: 116px;
+    display: flex; align-items: baseline; gap: 5px;
+  }
+  .layer-label .idx { color: var(--lr-ink-faint); font-weight: 500; }
+  .layer-name {
+    outline: none; border-radius: 3px; padding: 1px 3px; margin: -1px -3px;
+    cursor: text; min-width: 24px; max-width: 92px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    transition: background .12s, box-shadow .12s;
+  }
+  .layer-name:hover { background: rgba(255,255,255,.09); }
+  .layer-name:focus { background: rgba(0,0,0,.25); box-shadow: 0 0 0 1px rgba(255,255,255,.35); }
+  .layer-name:empty::before { content: attr(data-placeholder); color: var(--lr-ink-faint); }
+  .lr-row.is-armed .layer-name,
+  .lr-row.is-recording .layer-name { display: none; }
+  .lr-row.is-armed .layer-label,
+  .lr-row.is-recording .layer-label { flex-basis: auto; width: auto; }
+
+  .lr-row.is-empty { background: var(--lr-tile-empty); }
+  .lr-row.is-muted .lr-wave { opacity: .5; transition: opacity .18s; }
+  .lr-row.has-audio .empty-note { display: none; }
+  .lr-row:not(.has-audio) [data-needs-audio] { display: none; }
+  .lr-row:not(.has-audio).is-open .lr-panel { max-height: 120px; }
+
+  .rec-rule { position: absolute; left: 0; bottom: 0; height: 2px;
+              background: var(--lr-rec); width: 0; }
+
+  .refs { display: grid; gap: var(--lr-seam); padding: 0 20px 6px; }
+  .ref-icon {
+    width: 22px; height: 22px; flex: 0 0 22px;
+    fill: none; stroke: var(--lr-ink); stroke-width: 2;
+    stroke-linecap: round; stroke-linejoin: round;
+  }
+  .ref-detail { font-size: 12px; color: var(--lr-ink); flex: 1; font-weight: 500; }
+  .chord-slots { display: flex; gap: 4px; flex: 1; }
+  .chord {
+    background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.14);
+    color: var(--lr-ink); border-radius: 4px; font-size: 11px; font-weight: 600;
+    padding: 3px 8px; cursor: pointer;
+  }
+  .chord.is-borrowed { border-style: dashed; color: var(--lr-ink-dim); }
+</style>
+</head>
+<body>
+<div class="lr-screen">
+
+  <div class="lr-header">
+    <div class="lr-title-row">
+      <div class="lr-title">Rooftop Sketch</div>
+      <div class="lr-meta">96 BPM · 16 bars · 4/4</div>
+    </div>
+    <div class="lr-transport" id="transport"></div>
+  </div>
+
+  <div class="lr-section-label">Reference tracks</div>
+  <div class="refs" id="refs"></div>
+
+  <div class="lr-section-label" style="margin-top:10px">Layers</div>
+  <div class="lr-rows" id="layers"></div>
+
+  <div class="lr-footer">
+    <span>tap the name to rename · row for its mixer · speaker to mute ·
+          dot to arm, again to record, hold to cancel</span>
+    <button class="lr-btn lr-btn--primary">Export</button>
+  </div>
+</div>
+
+<script>
+/* ---------------------------------------------------------------
+   Inlined from lr-kit.js — edit that file, not this copy.
+   --------------------------------------------------------------- */
+/* ============================================================================
+   Loop Recorder — shared kit (classic script, exposes window.LR)
+
+   Terminology follows the spec glossary:
+     bar     one bar of music; the grid unit, swipe axis and splice unit
+     pass    one traversal of the loop during a continuous recording
+     loop    the project's repeating structure (and the drum loop)
+     layer   one of the seven recorded tracks
+     slot    a bar's position in the arrangement, vs where its audio came from
+     tile    one bar's cell on the Edit Layer screen
+     lane    one layer's full-loop strip on the Playback screen
+   ========================================================================= */
+(function (global) {
+  'use strict';
+
+  /* ------------------------------------------------------------ gradient -- */
+  /* Anchors are interpolated to however many stops are needed. The stop count
+     is always DERIVED from the line count, never the other way round — song
+     length must never be limited by how many colours are defined. The greens
+     and blues are load-bearing: an orange-to-purple ramp hid the joins. */
+  var ANCHORS = [
+    [255,138, 91], [255,178, 89], [255,217,102], [214,230,110],
+    [124,224,142], [ 79,209,197], [ 86,194,255], [122,168,255],
+    [169,140,255], [229,140,224], [255,143,176]
+  ];
+
+  function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+  function clamp01(v) { return clamp(v, 0, 1); }
+
+  var ramp = {
+    anchors: ANCHORS,
+    /** rgb triple at position t (0-1) along the ramp */
+    rgb: function (t) {
+      var seg = (ANCHORS.length - 1) * clamp01(t);
+      var i = Math.min(Math.floor(seg), ANCHORS.length - 2);
+      var f = seg - i, a = ANCHORS[i], b = ANCHORS[i + 1];
+      return [
+        Math.round(a[0] + (b[0] - a[0]) * f),
+        Math.round(a[1] + (b[1] - a[1]) * f),
+        Math.round(a[2] + (b[2] - a[2]) * f)
+      ];
+    },
+    css: function (t) { var c = ramp.rgb(t); return 'rgb(' + c + ')'; },
+    /** the slice of the ramp belonging to layer `i` of `n` */
+    slice: function (i, n) { return [i / n, (i + 1) / n]; },
+    /** blend an rgb triple toward a spent target */
+    toSpent: function (rgb, t, spent) {
+      return 'rgb(' +
+        Math.round(rgb[0] + (spent[0] - rgb[0]) * t) + ',' +
+        Math.round(rgb[1] + (spent[1] - rgb[1]) * t) + ',' +
+        Math.round(rgb[2] + (spent[2] - rgb[2]) * t) + ')';
+    },
+    /** read an rgb triple out of a CSS custom property */
+    tokenRGB: function (name) {
+      return getComputedStyle(document.documentElement)
+        .getPropertyValue(name).split(',').map(function (v) { return +v.trim(); });
+    }
+  };
+
+  /* -------------------------------------------------------------- motion -- */
+  /* One model for every height change on every screen. Each source produces an
+     activation; activations map to scale factors; factors compose. */
+  var motion = {
+    PLAYED_SCALE: 0.8,   // a line settles to 80% once the playhead passes
+    SWIPE_REST:   0.6,   // a swipe contracts to 60% of current height
+    COLOR_FEATHER: 2.5,  // lines over which colour fades to spent
+    TAU: { swipe: 70, release: 120, reset: 180, mute: 110 },
+
+    easeIn: function (t) { return t * t * t; },   // holds, then snaps on the beat
+
+    /** frame-rate independent approach toward a target */
+    approach: function (value, target, tau, dt) {
+      return value + (target - value) * (1 - Math.exp(-dt / tau));
+    },
+
+    /** playback scale for a line `passed` units beyond the playhead */
+    playScale: function (passed) {
+      return 1 - (1 - motion.PLAYED_SCALE) * motion.easeIn(clamp01(passed));
+    },
+
+    /** swipe scale from an activation of 1 (rest) to 0 (fully contracted) */
+    swipeScale: function (activation) {
+      return motion.SWIPE_REST + (1 - motion.SWIPE_REST) * activation;
+    },
+
+    /* Snap a rendered height to an even whole pixel. Centre alignment puts a
+       line's midpoint on the container centreline, so an odd or fractional
+       height lands its edges on half-pixels — which antialiases the capsule
+       caps into hairlines above and below the line. */
+    snapEven: function (px, min) {
+      return Math.max(min || 2, Math.round(px / 2) * 2);
+    }
+  };
+
+  /* -------------------------------------------------------------- sizing -- */
+  var sizing = {
+    /* Whole-pixel line widths are mandatory: fractional widths put some lines
+       on device-pixel boundaries and not others, so identical lines render at
+       visibly different weights.
+
+       Two strategies:
+         fitToCount  fixed line count, width follows  (edit tiles: 16 per bar)
+         fitToWidth  target a line count, width and count both follow the
+                     container (playback lanes, which are an overview) */
+    fitToCount: function (containerPx, lineCount, minWidth) {
+      var w = Math.max(minWidth || 2, Math.floor(containerPx / (2 * lineCount)));
+      return { width: w, count: lineCount };
+    },
+    fitToWidth: function (containerPx, targetLines, minCount) {
+      var w = Math.max(1, Math.round(containerPx / (2 * targetLines)));
+      var n = Math.max(minCount || 8, Math.floor(containerPx / (2 * w)));
+      return { width: w, count: n };
+    },
+    apply: function (width) {
+      document.documentElement.style.setProperty('--lr-line-w', width + 'px');
+      document.documentElement.style.setProperty('--lr-line-gap', width + 'px');
+    }
+  };
+
+  /* ------------------------------------------------------ bars and passes -- */
+  var timing = {
+    BEATS_PER_BAR: 4,           // v1 is 4/4; named so other signatures stay reachable
+
+    framesPerBar: function (sampleRate, bpm, beatsPerBar) {
+      return Math.round(sampleRate * 60 * (beatsPerBar || timing.BEATS_PER_BAR) / bpm);
+    },
+    loopSeconds: function (barCount, bpm, beatsPerBar) {
+      return barCount * (beatsPerBar || timing.BEATS_PER_BAR) * 60 / bpm;
+    },
+
+    /** absolute bar number -> { pass, relativeBar }, both 1-based */
+    barRef: function (barNumber, barCount) {
+      return {
+        pass: Math.floor((barNumber - 1) / barCount) + 1,
+        relativeBar: ((barNumber - 1) % barCount) + 1
+      };
+    },
+    /** the inverse */
+    absoluteBar: function (ref, barCount) {
+      return (ref.pass - 1) * barCount + ref.relativeBar;
+    },
+
+    /* Pass availability is DERIVED from recorded audio, per session — never
+       from a stored counter, and never from a layer's total duration. Sessions
+       must not be concatenated: a partial pass would put every later boundary
+       at the wrong offset.
+
+       sessions: [{ frames }] in recording order.
+       Returns the pass numbers that contain relative bar `r`; the set can be
+       non-contiguous, because a session that stopped early has the pass for
+       bar 1 but not for bar 12. */
+    passesForBar: function (sessions, relativeBar, framesPerBar, barCount, tolerance) {
+      var loopFrames = framesPerBar * barCount, tol = tolerance || 0;
+      var out = [], base = 0;
+      sessions.forEach(function (s) {
+        var count = Math.ceil(s.frames / loopFrames);
+        for (var local = 1; local <= count; local++) {
+          var start = (local - 1) * loopFrames + (relativeBar - 1) * framesPerBar;
+          if (start + framesPerBar <= s.frames + tol) out.push(base + local);
+        }
+        base += count;
+      });
+      return out;
+    },
+    /** total passes a layer holds, partial ones included */
+    passCount: function (sessions, framesPerBar, barCount) {
+      var loopFrames = framesPerBar * barCount;
+      return sessions.reduce(function (n, s) {
+        return n + Math.ceil(s.frames / loopFrames);
+      }, 0);
+    }
+  };
+
+  /* ----------------------------------------------------------- utilities -- */
+  function el(tag, cls, html) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (html != null) n.innerHTML = html;
+    return n;
+  }
+  function fmtTime(sec) {
+    return Math.floor(sec / 60) + ':' + String(Math.floor(sec % 60)).padStart(2, '0');
+  }
+  function fmtSize(mb) {
+    return mb >= 1000 ? (mb / 1000).toFixed(1) + ' GB' : mb + ' MB';
+  }
+
+  /* ------------------------------------------------------- volume control -- */
+  /* Level and mute in ONE control. Three arcs, all filling together with the
+     level, each growing from its centre outward. No track behind them: the icon
+     shows the level itself rather than the level against a ceiling. There is
+     deliberately no numeric readout — the arcs are the readout. */
+  var ARC_RADII = [3.5, 6.75, 10];
+
+  function arcPath(r) {
+    var c = Math.cos(50 * Math.PI / 180), s = Math.sin(50 * Math.PI / 180);
+    var x = (9 + c * r).toFixed(2);
+    return 'M ' + x + ' ' + (12 - s * r).toFixed(2) +
+           ' A ' + r + ' ' + r + ' 0 0 1 ' + x + ' ' + (12 + s * r).toFixed(2);
+  }
+
+  function VolumeControl(opts) {
+    var getLevel = opts.level, isMuted = opts.muted, onToggle = opts.onToggle;
+    var btn = el('button', 'lr-volume' + (opts.large ? ' lr-volume--lg' : ''));
+    btn.setAttribute('aria-label', 'volume and mute');
+    btn.innerHTML =
+      '<svg viewBox="0 0 24 24">' +
+        '<path class="lr-vol-body" d="M2 9 h3 l4 -3.5 v13 l-4 -3.5 h-3 z"/>' +
+        ARC_RADII.map(function (r) {
+          return '<path class="lr-vol-arc" d="' + arcPath(r) + '" pathLength="1"/>';
+        }).join('') +
+        '<line class="lr-vol-slash" x1="3" y1="21" x2="19" y2="4" pathLength="1"/>' +
+      '</svg>';
+
+    var arcs = [].slice.call(btn.querySelectorAll('.lr-vol-arc'));
+    btn.update = function () {
+      var f = clamp01(getLevel() / 100);
+      arcs.forEach(function (a) {
+        /* pathLength is normalised to 1, so a dash of length f starting at
+           0.5 - f/2 sits symmetrically about the arc's midpoint */
+        a.setAttribute('stroke-dasharray', f.toFixed(4) + ' 1');
+        a.setAttribute('stroke-dashoffset', (-(0.5 - f / 2)).toFixed(4));
+      });
+      btn.classList.toggle('is-muted', !!isMuted());
+    };
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();          // never also expands the row
+      if (onToggle) onToggle();
+      btn.update();
+    });
+    btn.update();
+    return btn;
+  }
+
+  /* --------------------------------------------------------- progress bar -- */
+  function ProgressBar(opts) {
+    opts = opts || {};
+    var bar = el('div', 'lr-progress');
+    var fill = el('div', 'lr-progress__fill');
+    bar.appendChild(fill);
+    if (opts.ticks) {
+      var t = el('div', 'lr-progress__ticks');
+      for (var i = 0; i < opts.ticks; i++) t.appendChild(el('i'));
+      bar.appendChild(t);
+    }
+    bar.set = function (fraction) {
+      fill.style.width = (clamp01(fraction) * 100).toFixed(2) + '%';
+    };
+    if (opts.onSeek) {
+      bar.addEventListener('click', function (e) {
+        var r = bar.getBoundingClientRect();
+        opts.onSeek(clamp01((e.clientX - r.left) / r.width));
+      });
+    }
+    return bar;
+  }
+
+  /* ------------------------------------------------------------ play button */
+  function PlayButton(onToggle) {
+    var b = el('button', 'lr-play');
+    b.innerHTML =
+      '<svg class="lr-ico-play"  viewBox="0 0 24 24"><path d="M7 4l13 8-13 8z"/></svg>' +
+      '<svg class="lr-ico-pause" viewBox="0 0 24 24"><path d="M7 4h4v16H7zM13 4h4v16h-4z"/></svg>';
+    b.setPlaying = function (on) { b.classList.toggle('is-playing', !!on); };
+    b.addEventListener('click', function (e) { e.stopPropagation(); onToggle(); });
+    return b;
+  }
+
+  /* ---------------------------------------------------------- record dot --- */
+  /* Three states: unarmed -> armed -> recording. Tapping cycles forward;
+     holding while armed cancels, because arming is a commitment the user must
+     be able to back out of without capturing a pass they don't want. */
+  function RecordDot(opts) {
+    var dot = el('button', 'lr-rec');
+    dot.setAttribute('aria-label', 'record');
+    var holdTimer = null, cancelled = false;
+
+    dot.addEventListener('pointerdown', function (e) {
+      e.stopPropagation();
+      cancelled = false;
+      if (opts.blocked && opts.blocked()) return;
+      if (opts.state() !== 'armed') return;
+      holdTimer = setTimeout(function () {
+        cancelled = true;
+        opts.set('unarmed');
+      }, 500);
+    });
+    ['pointerup', 'pointerleave', 'pointercancel'].forEach(function (ev) {
+      dot.addEventListener(ev, function () { clearTimeout(holdTimer); holdTimer = null; });
+    });
+    dot.addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (cancelled) { cancelled = false; return; }
+      if (opts.blocked && opts.blocked()) return;
+      var s = opts.state();
+      opts.set(s === 'unarmed' ? 'armed' : s === 'armed' ? 'recording' : 'unarmed');
+    });
+    return dot;
+  }
+
+  /* -------------------------------------------------------------- waveform -- */
+  /* One renderer for all three screens. Lines carry their own base height and
+     base colour; a render pass writes exactly one transform and one colour per
+     line, composing whatever activations the caller supplies. */
+  function Waveform(opts) {
+    var node = el('div', 'lr-wave' + (opts.variant ? ' lr-wave--' + opts.variant : ''));
+    var lines = [];
+
+    /** build (or rebuild) the lines. `spec(i, t)` returns { height, rgb } */
+    node.build = function (count, spec) {
+      node.innerHTML = '';
+      lines = [];
+      for (var i = 0; i < count; i++) {
+        var t = count > 1 ? i / (count - 1) : 0;
+        var s = spec(i, t);
+        var line = el('div', 'lr-wave__line');
+        line.style.height = s.height + 'px';
+        line.style.color = 'rgb(' + s.rgb + ')';
+        line._h = s.height;
+        line._rgb = s.rgb;
+        node.appendChild(line);
+        lines.push(line);
+      }
+      return lines;
+    };
+    node.lines = function () { return lines; };
+
+    /* Draw one line.
+         passed   distance beyond the playhead, or <0 for not yet reached
+         scale    extra multiplicative scale (swipe contraction, etc.)
+         spent    rgb target for played material
+         floorPx  minimum rendered height — one line width, below which a
+                  capsule cannot draw its caps */
+    node.paint = function (line, passed, scale, spent, floorPx) {
+      var play = motion.playScale(clamp01(passed));
+      var raw = line._h * play * (scale == null ? 1 : scale);
+      var min = floorPx || 2;
+      var h = Math.max(min, motion.snapEven(raw, min));
+      line.style.transform = 'scaleY(' + (h / line._h).toFixed(4) + ')';
+
+      var ct = clamp01(passed / motion.COLOR_FEATHER);
+      line.style.color = ct === 0 ? 'rgb(' + line._rgb + ')'
+                                  : ramp.toSpent(line._rgb, ct, spent);
+    };
+    return node;
+  }
+
+  /* ------------------------------------------------------------- transport -- */
+  /* Progress indexes on the EDITED timeline. The played set must be computed in
+     ONE place — every bug in this area came from a render pass and a release
+     path disagreeing about what had played. */
+  function Transport(opts) {
+    var t = {
+      mode: 'idle',        // idle | bar | loop
+      progress: 0,
+      origin: 0,           // slot index playback started from
+      wrapped: false,      // playhead has passed the end and is heading back
+      slots: opts.slots,
+      seconds: opts.seconds,
+      onCycle: opts.onCycle || function () {},
+      onBarEnd: opts.onBarEnd || function () {}
+    };
+
+    t.playBar = function (slot) {
+      t.mode = 'bar'; t.origin = slot; t.wrapped = false;
+      t.progress = slot / t.slots;
+    };
+    t.playLoopFrom = function (slot) {
+      t.mode = 'loop'; t.origin = slot; t.wrapped = false;
+      t.progress = slot / t.slots;
+    };
+    t.escalate = function () { t.mode = 'loop'; };
+    t.stop = function () { t.mode = 'idle'; t.wrapped = false; t.progress = 0; };
+
+    /** has the playhead reached this slot in the current cycle? */
+    t.isPlayed = function (slot) {
+      if (t.mode === 'idle') return false;
+      var head = t.progress * t.slots;
+      if (t.wrapped && slot >= t.origin) return true;   // played before the wrap
+      var gate = t.wrapped ? 0 : t.origin;
+      return slot >= gate && head > slot;
+    };
+
+    /** how far past the playhead a line is, or -1 if not yet reached */
+    t.passedAt = function (lineIndex, linesPerSlot) {
+      if (t.mode === 'idle') return -1;
+      var head = t.progress * t.slots * linesPerSlot;
+      var originLine = t.origin * linesPerSlot;
+      if (t.wrapped && lineIndex >= originLine) return motion.COLOR_FEATHER;
+      if (lineIndex >= (t.wrapped ? 0 : originLine)) return head - lineIndex;
+      return -1;
+    };
+
+    t.tick = function (dt) {
+      if (t.mode === 'idle') return;
+      t.progress += dt / 1000 / t.seconds;
+
+      if (t.mode === 'bar') {
+        var start = t.origin / t.slots, end = (t.origin + 1) / t.slots;
+        if (t.progress >= end) { t.progress = start; t.onBarEnd(t.origin); }
+        return;
+      }
+      /* A cycle is origin -> end -> start -> back to origin. Releasing at the
+         END OF THE ARRANGEMENT would fire mid-cycle whenever playback began
+         somewhere other than slot 0, which reads as a flash. */
+      if (t.progress >= 1) { t.progress -= 1; t.wrapped = true; }
+      if (t.wrapped && t.progress >= t.origin / t.slots) {
+        t.wrapped = false;
+        t.onCycle();
+      }
+    };
+    return t;
+  }
+
+  /* ------------------------------------------------------------ frame loop -- */
+  function loop(fn) {
+    var last = performance.now();
+    (function step(now) {
+      var dt = Math.min(now - last, 50);   // clamp after a backgrounded tab
+      last = now;
+      fn(dt);
+      requestAnimationFrame(step);
+    })(last);
+  }
+
+  global.LR = {
+    clamp: clamp, clamp01: clamp01,
+    ramp: ramp, motion: motion, sizing: sizing, timing: timing,
+    el: el, fmtTime: fmtTime, fmtSize: fmtSize,
+    VolumeControl: VolumeControl, ProgressBar: ProgressBar, PlayButton: PlayButton,
+    RecordDot: RecordDot, Waveform: Waveform, Transport: Transport, loop: loop
+  };
+})(window);
+
+</script>
+<script>
+(function () {
+  var BPM = 96, BAR_COUNT = 16, LAYER_COUNT = 7;
+  var LOOP_SECS = LR.timing.loopSeconds(BAR_COUNT, BPM);
+  var TARGET_LINES = 40;          // lanes are an overview: count follows the container
+  var MAX_NAME = 12;
+
+  var EQ  = ['Flat','Warm Vocals','Bass Thump','Crisp Drums','Airy Strings','Gritty Guitar','Lead Synth'];
+  var PAN = ['Center','Slight L','Slight R','Wide L','Wide R','Surround'];
+
+  var LAYERS = [
+    { name:'Vocal',    passes:3, level:82, eq:'Warm Vocals',   pan:'Center',   muted:false, seed:3  },
+    { name:'Harmony',  passes:2, level:64, eq:'Airy Strings',  pan:'Slight L', muted:false, seed:11 },
+    { name:'Bass',     passes:4, level:90, eq:'Bass Thump',    pan:'Center',   muted:false, seed:19 },
+    { name:'Gtr chops',passes:2, level:58, eq:'Gritty Guitar', pan:'Wide R',   muted:true,  seed:27 },
+    { name:'Shaker',   passes:1, level:45, eq:'Crisp Drums',   pan:'Slight R', muted:false, seed:35 },
+    { name:'',         passes:0, level:75, eq:'Flat',          pan:'Center',   muted:false, seed:43 },
+    { name:'',         passes:0, level:75, eq:'Flat',          pan:'Center',   muted:false, seed:51 }
+  ];
+
+  var SPENT = LR.ramp.tokenRGB('--lr-spent');
+  var lineCount = TARGET_LINES, lineWidth = 3;
+
+  /* deterministic stand-in for real peak data, keyed to normalised position so
+     the silhouette survives a change in line count on resize */
+  function amp(seed, t) {
+    var g = seed + t * 90;
+    var env = 0.5 + 0.28 * Math.sin(g * 0.09) + 0.14 * Math.sin(g * 0.031 + seed);
+    var det = 0.2 * Math.sin(g * 1.7 + seed) + 0.12 * Math.sin(g * 3.1);
+    return LR.clamp(env + det, 0.08, 1);
+  }
+
+  /* ---------------------------------------------------------- transport -- */
+  var playing = false, progress = 0;
+  var playBtn = LR.PlayButton(function () {
+    playing = !playing;
+    playBtn.setPlaying(playing);
+    if (!playing) { progress = 0; rows.forEach(function (r) { r.resetA = 1; }); }
+  });
+  var progressBar = LR.ProgressBar({ ticks: BAR_COUNT, onSeek: function (f) { progress = f; } });
+  var position = LR.el('div', 'lr-position');
+
+  var masterLevel = 85, masterMuted = false;
+  var masterVol = LR.VolumeControl({
+    large: true,
+    level: function () { return masterLevel; },
+    muted: function () { return masterMuted; },
+    onToggle: function () { masterMuted = !masterMuted; }
+  });
+  var masterSlider = LR.el('input');
+  masterSlider.type = 'range'; masterSlider.min = 0; masterSlider.max = 100;
+  masterSlider.value = masterLevel; masterSlider.style.width = '90px';
+  masterSlider.addEventListener('input', function () {
+    masterLevel = +masterSlider.value; masterVol.update();
+  });
+
+  var transport = document.getElementById('transport');
+  [playBtn, progressBar, position, masterVol, masterSlider].forEach(function (n) {
+    transport.appendChild(n);
+  });
+
+  /* ------------------------------------------------------------- layers -- */
+  var layersEl = document.getElementById('layers');
+  var rows = [];
+
+  LAYERS.forEach(function (L, li) {
+    L.rec = 'unarmed';
+    var row = LR.el('div', 'lr-row' + (L.passes ? ' has-audio' : ' is-empty') +
+                            (L.muted ? ' is-muted' : ''));
+    var head = LR.el('div', 'lr-row-head');
+
+    head.appendChild(LR.RecordDot({
+      state:   function () { return L.rec; },
+      blocked: function () { var c = capturingIndex(); return c >= 0 && c !== li; },
+      set:     function (s) { setRec(li, s); }
+    }));
+
+    var label = LR.el('div', 'layer-label',
+      '<span class="idx">' + (li + 1) + '</span>' +
+      '<span class="layer-name" contenteditable="true" spellcheck="false" ' +
+            'data-placeholder="Layer ' + (li + 1) + '" role="textbox">' + L.name + '</span>' +
+      '<span class="lr-pass-badge">Pass ' + (L.passes + 1) + '</span>');
+    head.appendChild(label);
+
+    var wave = LR.Waveform({ variant: 'lane' });
+    wave.style.flex = '1';
+    var note = LR.el('span', 'lr-note', L.passes ? L.passes + ' passes recorded' : 'empty');
+    var rule = LR.el('div', 'rec-rule');
+    if (!L.passes) wave.appendChild(note);
+    wave.appendChild(rule);
+    head.appendChild(wave);
+
+    var vol = LR.VolumeControl({
+      level: function () { return L.level; },
+      muted: function () { return L.muted; },
+      onToggle: function () { L.muted = !L.muted; row.classList.toggle('is-muted', L.muted); }
+    });
+    head.appendChild(vol);
+    row.appendChild(head);
+
+    var panel = LR.el('div', 'lr-panel',
+      '<div class="lr-panel-inner">' +
+        '<div class="lr-panel-row">' +
+          '<span class="lr-panel-label">Volume</span>' +
+          '<input class="level" type="range" min="0" max="100" value="' + L.level + '" style="flex:1">' +
+          '<button class="lr-btn" data-needs-audio>Edit bars</button>' +
+        '</div>' +
+        '<div class="lr-panel-row" data-needs-audio><span class="lr-panel-label">EQ</span>' +
+          '<div class="lr-chips">' + EQ.map(function (p) {
+            return '<span class="lr-chip' + (p === L.eq ? ' is-active' : '') + '">' + p + '</span>';
+          }).join('') + '</div></div>' +
+        '<div class="lr-panel-row" data-needs-audio><span class="lr-panel-label">Pan</span>' +
+          '<div class="lr-chips">' + PAN.map(function (p) {
+            return '<span class="lr-chip' + (p === L.pan ? ' is-active' : '') + '">' + p + '</span>';
+          }).join('') + '</div></div>' +
+        '<div class="lr-panel-row empty-note"><span class="lr-panel-label"></span>' +
+          '<span class="lr-note">Record a pass to start editing</span></div>' +
+      '</div>');
+    row.appendChild(panel);
+
+    head.addEventListener('click', function (e) {
+      if (e.target.closest('.lr-rec') || e.target.closest('.lr-volume') ||
+          e.target.closest('.layer-name')) return;
+      row.classList.toggle('is-open');
+    });
+    panel.querySelector('.level').addEventListener('input', function (e) {
+      L.level = +e.target.value; vol.update();
+    });
+    bindChips(panel);
+    bindName(label.querySelector('.layer-name'), L, li);
+
+    layersEl.appendChild(row);
+    rows.push({ conf: L, index: li, el: row, wave: wave, note: note, rule: rule,
+                badge: label.querySelector('.lr-pass-badge'), live: [], resetA: 0 });
+  });
+
+  function bindChips(scope) {
+    scope.querySelectorAll('.lr-chips').forEach(function (group) {
+      group.addEventListener('click', function (e) {
+        if (!e.target.classList.contains('lr-chip')) return;
+        group.querySelectorAll('.lr-chip').forEach(function (c) { c.classList.remove('is-active'); });
+        e.target.classList.add('is-active');
+      });
+    });
+  }
+
+  /* -------------------------------------------------------------- naming -- */
+  function bindName(node, L, li) {
+    node.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
+    node.addEventListener('focus', function () { node.dataset.prev = node.textContent; });
+    /* cap while typing, not only on commit: a field that grows mid-edit shoves
+       the lane sideways on every keystroke */
+    node.addEventListener('input', function () {
+      if (node.textContent.length <= MAX_NAME) return;
+      node.textContent = node.textContent.slice(0, MAX_NAME);
+      var r = document.createRange(), sel = getSelection();
+      r.selectNodeContents(node); r.collapse(false);
+      sel.removeAllRanges(); sel.addRange(r);
+    });
+    node.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); node.blur(); }
+      if (e.key === 'Escape') { node.textContent = node.dataset.prev || ''; node.blur(); }
+    });
+    node.addEventListener('blur', function () {
+      var clean = node.textContent.replace(/\s+/g, ' ').trim().slice(0, MAX_NAME);
+      node.textContent = clean;
+      L.name = clean || ('Layer ' + (li + 1));
+    });
+    node.addEventListener('paste', function (e) {
+      e.preventDefault();
+      var text = (e.clipboardData || window.clipboardData).getData('text');
+      var room = MAX_NAME - node.textContent.length;
+      document.execCommand('insertText', false,
+        text.replace(/\s+/g, ' ').slice(0, Math.max(0, room)));
+    });
+  }
+
+  /* ----------------------------------------------------------- recording -- */
+  function capturingIndex() {
+    return rows.findIndex(function (r) { return r.conf.rec === 'recording'; });
+  }
+  function setRec(index, state) {
+    rows.forEach(function (r, i) {
+      var next = i === index ? state : 'unarmed';    // arming is exclusive
+      var was  = r.conf.rec;
+      r.conf.rec = next;
+      r.el.classList.toggle('is-armed', next === 'armed');
+      r.el.classList.toggle('is-recording', next === 'recording');
+      r.badge.textContent = 'Pass ' + (r.conf.passes + 1);
+
+      if (next === 'recording' && was !== 'recording') {
+        progress = 0;                       // passes always begin on the downbeat
+        playing = true; playBtn.setPlaying(true);
+        clearLive(r);
+      }
+      if (next !== 'recording' && was === 'recording') {
+        r.conf.passes += 1;
+        r.el.classList.add('has-audio');
+        r.el.classList.remove('is-empty');
+        r.badge.textContent = 'Pass ' + (r.conf.passes + 1);
+        clearLive(r);
+        buildLanes();
+      }
+      r.note.style.display = next === 'unarmed' && !r.conf.passes ? '' : 'none';
+      r.rule.style.width = '0';
+    });
+    layersEl.classList.toggle('is-capturing', capturingIndex() >= 0);
+  }
+  function clearLive(r) { r.live.forEach(function (n) { n.remove(); }); r.live = []; }
+
+  /* Live capture. In the app these heights come from an AVAudioEngine input tap
+     (vDSP_maxmgv per buffer, lock-free ring buffer, drained on a CADisplayLink);
+     the draw path is the same — append one line per elapsed slot. */
+  function pushLive(r, upto) {
+    var slice = LR.ramp.slice(r.index, LAYER_COUNT);
+    while (r.live.length < upto && r.live.length < lineCount) {
+      var i = r.live.length, t = lineCount > 1 ? i / (lineCount - 1) : 0;
+      var rgb = LR.ramp.rgb(slice[0] + (slice[1] - slice[0]) * t);
+      var line = LR.el('div', 'lr-wave__line');
+      var lvl = amp(r.conf.seed + r.conf.passes * 13, t) * (0.55 + 0.45 * Math.random());
+      line.style.height = LR.motion.snapEven(lvl * 34) + 'px';
+      line.style.color = 'rgb(' + rgb + ')';
+      r.wave.insertBefore(line, r.rule);
+      r.live.push(line);
+    }
+  }
+
+  /* --------------------------------------------------------------- lanes -- */
+  function buildLanes() {
+    rows.forEach(function (r) {
+      if (!r.conf.passes) return;
+      var slice = LR.ramp.slice(r.index, LAYER_COUNT);
+      r.wave.build(lineCount, function (i, t) {
+        return {
+          height: LR.motion.snapEven(amp(r.conf.seed, t) * 34),
+          rgb: LR.ramp.rgb(slice[0] + (slice[1] - slice[0]) * t)
+        };
+      });
+      r.wave.appendChild(r.rule);
+    });
+  }
+
+  function syncSizing() {
+    var lane = document.querySelector('.lr-wave--lane');
+    if (!lane || !lane.clientWidth) return;
+    var fit = LR.sizing.fitToWidth(lane.clientWidth, TARGET_LINES);
+    if (fit.count === lineCount && fit.width === lineWidth) return;
+    lineCount = fit.count; lineWidth = fit.width;
+    LR.sizing.apply(fit.width);
+    buildLanes();
+  }
+
+  /* --------------------------------------------------------------- frame -- */
+  LR.loop(function (dt) {
+    if (playing) {
+      progress += dt / 1000 / LOOP_SECS;
+      if (progress >= 1) {
+        progress -= 1;
+        rows.forEach(function (r) {
+          r.resetA = 1;
+          if (r.conf.rec === 'recording') {   // pass complete, keep rolling
+            r.conf.passes += 1;
+            r.badge.textContent = 'Pass ' + (r.conf.passes + 1);
+            r.el.classList.add('has-audio');
+            r.el.classList.remove('is-empty');
+            clearLive(r);
+          }
+        });
+      }
+    }
+    var head = progress * lineCount;
+
+    rows.forEach(function (r) {
+      r.resetA = r.resetA > 0.001
+        ? LR.motion.approach(r.resetA, 0, LR.motion.TAU.reset, dt) : 0;
+
+      if (r.conf.rec === 'recording') {
+        pushLive(r, Math.floor(head) + 1);
+        r.rule.style.width = (progress * 100).toFixed(1) + '%';
+      }
+
+      var lines = r.wave.lines();
+      for (var i = 0; i < lines.length; i++) {
+        var passed = Math.max((playing || r.resetA > 0) ? head - i : -1, r.resetA);
+        r.wave.paint(lines[i], passed, 1, SPENT, lineWidth);
+      }
+    });
+
+    progressBar.set(progress);
+    var bar = Math.min(BAR_COUNT, Math.floor(progress * BAR_COUNT) + 1);
+    position.textContent = 'bar ' + bar + ' · ' +
+      LR.fmtTime(progress * LOOP_SECS) + ' / ' + LR.fmtTime(LOOP_SECS);
+  });
+
+  /* --------------------------------------------------- reference tracks --- */
+  var REFS = [
+    { icon: '<circle cx="12" cy="12" r="9"/><path d="M5.6 5.6 l4.4 4.4"/>' +
+            '<path d="M18.4 5.6 l-4.4 4.4"/><path d="M5.6 18.4 l4.4 -4.4"/>' +
+            '<path d="M18.4 18.4 l-4.4 -4.4"/>',                    /* Lucide `drum` */
+      body: '<div class="ref-detail">Dusty Break 02</div>', level: 70, panel: '' },
+
+    { icon: '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 14 h20"/>' +
+            '<path d="M7 4 v10 M12 4 v10 M17 4 v10"/>',             /* Lucide `keyboard-music` */
+      body: '<div class="chord-slots">' +
+            ['Dm','G','Am'].map(function (c) { return '<span class="chord">' + c + '</span>'; }).join('') +
+            '<span class="chord is-borrowed">B♭</span></div>', level: 55,
+      panel: '<div class="lr-panel-row"><span class="lr-panel-label">Scale</span>' +
+             '<div class="lr-chips">' +
+             ['Major','Minor','Dorian','Mixolydian','Phrygian','Lydian'].map(function (s, i) {
+               return '<span class="lr-chip' + (i === 2 ? ' is-active' : '') + '">' + s + '</span>';
+             }).join('') + '</div></div>' +
+             '<div class="lr-panel-row"><span class="lr-panel-label">Tone</span>' +
+             '<div class="lr-chips">' +
+             ['Rhodes','Pad','Nylon','Organ'].map(function (s, i) {
+               return '<span class="lr-chip' + (i === 0 ? ' is-active' : '') + '">' + s + '</span>';
+             }).join('') + '</div></div>' }
+  ];
+
+  var refsEl = document.getElementById('refs');
+  REFS.forEach(function (R) {
+    var state = { level: R.level, muted: false };
+    var row = LR.el('div', 'lr-row');
+    var head = LR.el('div', 'lr-row-head',
+      '<svg class="ref-icon" viewBox="0 0 24 24">' + R.icon + '</svg>' + R.body);
+    var vol = LR.VolumeControl({
+      level: function () { return state.level; },
+      muted: function () { return state.muted; },
+      onToggle: function () { state.muted = !state.muted; row.style.opacity = state.muted ? .62 : 1; }
+    });
+    head.appendChild(vol);
+    row.appendChild(head);
+
+    var panel = LR.el('div', 'lr-panel',
+      '<div class="lr-panel-inner">' +
+        '<div class="lr-panel-row"><span class="lr-panel-label">Volume</span>' +
+        '<input class="level" type="range" min="0" max="100" value="' + state.level + '" style="flex:1"></div>' +
+        R.panel + '</div>');
+    row.appendChild(panel);
+
+    head.addEventListener('click', function (e) {
+      if (e.target.closest('.lr-volume') || e.target.closest('.chord')) return;
+      row.classList.toggle('is-open');
+    });
+    panel.querySelector('.level').addEventListener('input', function (e) {
+      state.level = +e.target.value; vol.update();
+    });
+    bindChips(panel);
+    refsEl.appendChild(row);
+  });
+
+  /* Escape disarms; it cannot stop a pass in progress. */
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    var armed = rows.findIndex(function (r) { return r.conf.rec === 'armed'; });
+    if (armed >= 0) setRec(armed, 'unarmed');
+  });
+
+  syncSizing();
+  new ResizeObserver(syncSizing).observe(document.querySelector('.lr-wave--lane'));
+})();
+</script>
+</body>
+</html>

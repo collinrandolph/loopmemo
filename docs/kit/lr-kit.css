@@ -1,0 +1,240 @@
+/* ============================================================================
+   Loop Recorder — shared kit
+   Design tokens and component styles used by all three screens.
+   Terminology follows the spec glossary: bar, pass, layer, slot, tile, lane.
+   ========================================================================= */
+
+:root {
+  /* ---- palette: one violet family, no pure neutrals ---- */
+  --lr-grad-start:   #5A5FCE;
+  --lr-grad-end:     #64408E;
+  --lr-page:         #E8E4F2;
+
+  --lr-tile:         #382561;   /* default surface */
+  --lr-tile-hover:   #402B6E;
+  --lr-tile-sel:     #1B1733;   /* selection recedes into a well */
+  --lr-tile-muted:   #43306E;
+  --lr-tile-muted-sel:#2C2549;
+  --lr-tile-armed:   #2E2050;
+  --lr-tile-empty:   #33265A;
+  --lr-tile-rec:     #4A2350;
+
+  --lr-ink:          #E6DCFF;
+  --lr-ink-dim:      #B4A5E4;
+  --lr-ink-faint:    #9384C4;
+  --lr-ink-pass:     #9384C4;   /* the smaller P# portion */
+  --lr-ink-on-light: #35275E;
+  --lr-hint:         #9C8CD0;
+  --lr-hint-sel:     #B9A9EC;
+  --lr-rec:          #FF6B6B;
+
+  /* spent-line targets, as rgb triples for JS interpolation */
+  --lr-spent:        173,152,214;   /* on the default violet surface */
+  --lr-spent-sel:    140,133,175;   /* on the dark selected surface */
+
+  /* ---- geometry ---- */
+  --lr-line-w:   3px;    /* set by LR.sizing at runtime */
+  --lr-line-gap: 3px;    /* always equal to line width */
+  --lr-radius:   8px;
+  --lr-seam:     2px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: var(--lr-page);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  padding: 20px;
+}
+
+/* ---------------------------------------------------------------- screen -- */
+.lr-screen {
+  background: linear-gradient(135deg, var(--lr-grad-start) 0%, var(--lr-grad-end) 100%);
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(0,0,0,.12);
+  max-width: 900px; margin: 0 auto; overflow: hidden; color: #fff;
+}
+.lr-header { padding: 18px 20px 14px; }
+.lr-title-row { display: flex; align-items: baseline; gap: 12px; }
+.lr-title { font-size: 22px; font-weight: 600; }
+.lr-meta  { font-size: 12px; color: rgba(255,255,255,.7); }
+.lr-section-label {
+  font-size: 10px; letter-spacing: .09em; text-transform: uppercase;
+  color: rgba(255,255,255,.5); padding: 0 20px; margin-bottom: 7px;
+}
+.lr-footer {
+  padding: 12px 20px; border-top: 1px solid rgba(255,255,255,.16);
+  display: flex; gap: 16px; align-items: center; justify-content: space-between;
+  font-size: 11px; color: rgba(255,255,255,.6);
+}
+
+/* --------------------------------------------------------------- buttons -- */
+.lr-btn {
+  font-size: 12px; padding: 7px 13px; border-radius: 6px; cursor: pointer;
+  background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.24);
+  color: #fff; font-weight: 500; -webkit-tap-highlight-color: transparent;
+}
+.lr-btn:hover { background: rgba(255,255,255,.2); }
+.lr-btn--primary { background: rgba(255,255,255,.94); color: var(--lr-ink-on-light);
+                   border-color: transparent; font-weight: 600; }
+.lr-btn--primary:hover { background: #fff; }
+.lr-btn--danger { color: #FFC2C2; border-color: rgba(255,107,107,.4); }
+.lr-btn--danger:hover { background: rgba(255,107,107,.22); }
+.lr-btn:disabled { opacity: .35; cursor: default; }
+.lr-btn:disabled:hover { background: rgba(255,255,255,.1); }
+
+.lr-play {
+  width: 46px; height: 46px; border-radius: 50%; flex: 0 0 46px;
+  background: rgba(255,255,255,.94); color: var(--lr-ink-on-light);
+  border: none; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: background .15s, transform .1s; -webkit-tap-highlight-color: transparent;
+}
+.lr-play:hover { background: #fff; }
+.lr-play:active { transform: scale(.94); }
+.lr-play svg { width: 15px; height: 15px; fill: currentColor; }
+.lr-play .lr-ico-pause { display: none; }
+.lr-play.is-playing .lr-ico-play  { display: none; }
+.lr-play.is-playing .lr-ico-pause { display: block; }
+
+/* ------------------------------------------------------------------ rows -- */
+/* One row primitive: layer rows, reference rows and project rows all use it. */
+.lr-row { background: var(--lr-tile); border-radius: 6px; overflow: hidden;
+          transition: background .15s; }
+.lr-row:hover { background: var(--lr-tile-hover); }
+.lr-row-head {
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+  cursor: pointer; -webkit-tap-highlight-color: transparent; user-select: none;
+}
+.lr-rows { display: grid; gap: var(--lr-seam); padding: 4px 20px 16px; }
+
+.lr-panel { max-height: 0; overflow: hidden;
+            transition: max-height .22s cubic-bezier(.22,.9,.3,1); }
+.lr-row.is-open .lr-panel { max-height: 280px; }
+.lr-panel-inner { padding: 12px; display: grid; gap: 10px; }
+.lr-panel-row { display: flex; align-items: center; gap: 10px; }
+.lr-panel-label {
+  font-size: 10px; letter-spacing: .07em; text-transform: uppercase;
+  color: rgba(255,255,255,.45); min-width: 54px;
+}
+.lr-chips { display: flex; gap: 4px; flex-wrap: wrap; }
+.lr-chip {
+  font-size: 11px; padding: 4px 9px; border-radius: 4px; cursor: pointer;
+  background: rgba(255,255,255,.09); border: 1px solid transparent;
+  color: var(--lr-ink-dim); transition: all .12s;
+}
+.lr-chip:hover { background: rgba(255,255,255,.16); }
+.lr-chip.is-active { background: rgba(255,255,255,.9); color: var(--lr-ink-on-light);
+                     font-weight: 600; }
+.lr-note { font-size: 11px; color: var(--lr-ink-faint); }
+
+input[type=range] { accent-color: #fff; }
+
+/* --------------------------------------------------------- progress bar -- */
+.lr-progress {
+  flex: 1; height: 4px; border-radius: 999px; overflow: hidden;
+  background: rgba(255,255,255,.18); cursor: pointer; position: relative;
+}
+.lr-progress__fill {
+  height: 100%; width: 0; border-radius: 999px;
+  background: rgba(255,255,255,.92);
+}
+.lr-progress__ticks { position: absolute; inset: 0; display: flex; pointer-events: none; }
+.lr-progress__ticks i { flex: 1; border-right: 1px solid rgba(0,0,0,.28); }
+.lr-progress__ticks i:last-child { border-right: none; }
+.lr-position {
+  font-size: 12px; color: rgba(255,255,255,.78);
+  font-variant-numeric: tabular-nums; min-width: 118px; text-align: right;
+}
+
+/* --------------------------------------------------------- volume icon --- */
+/* Level and mute in one control: three arcs filling together from the centre. */
+.lr-volume {
+  background: none; border: none; padding: 0; cursor: pointer;
+  width: 26px; height: 26px; display: block; flex: 0 0 26px;
+  -webkit-tap-highlight-color: transparent;
+}
+.lr-volume svg { display: block; width: 26px; height: 26px; overflow: visible; }
+.lr-volume .lr-vol-body { fill: var(--lr-ink); transition: fill .15s; }
+.lr-volume .lr-vol-arc {
+  fill: none; stroke: var(--lr-ink); stroke-width: 1.6; stroke-linecap: round;
+  transition: stroke .15s;
+}
+.lr-volume .lr-vol-slash {
+  stroke: var(--lr-ink-faint); stroke-width: 1.8; stroke-linecap: round;
+  stroke-dasharray: 1; stroke-dashoffset: 1;
+  transition: stroke-dashoffset .18s cubic-bezier(.22,.9,.3,1);
+}
+.lr-volume.is-muted .lr-vol-body  { fill: var(--lr-ink-faint); }
+.lr-volume.is-muted .lr-vol-arc   { stroke: transparent; }
+.lr-volume.is-muted .lr-vol-slash { stroke-dashoffset: 0; }
+.lr-volume--lg, .lr-volume--lg svg { width: 30px; height: 30px; flex-basis: 30px; }
+
+/* ----------------------------------------------------------- record dot -- */
+.lr-rec {
+  width: 20px; height: 20px; border-radius: 50%; margin-right: 2px;
+  background: rgba(255,255,255,.22); border: none; cursor: pointer; flex: 0 0 auto;
+  -webkit-tap-highlight-color: transparent;
+  transition: background .18s, border-radius .18s, transform .18s;
+}
+.lr-rec:hover { background: rgba(255,255,255,.34); }
+.lr-row.is-armed     .lr-rec { background: var(--lr-rec); animation: lr-pulse 1.4s ease-in-out infinite; }
+.lr-row.is-recording .lr-rec { background: var(--lr-rec); border-radius: 4px;
+                               transform: scale(.78); animation: none; }
+.lr-row.is-armed     { background: var(--lr-tile-armed);
+                       box-shadow: inset 0 0 0 1px rgba(255,107,107,.45); }
+.lr-row.is-recording { background: var(--lr-tile-rec);
+                       box-shadow: inset 0 0 0 1px rgba(255,107,107,.9); }
+@keyframes lr-pulse { 0%,100% { opacity: .5 } 50% { opacity: 1 } }
+
+/* a pass in progress owns the input: every other record control disappears,
+   keeping its space so nothing shifts when the pass ends */
+.lr-rows.is-capturing .lr-row:not(.is-recording) .lr-rec {
+  visibility: hidden; pointer-events: none; animation: none;
+}
+
+/* hint the record control while an empty layer's panel is open */
+.lr-row.is-empty.is-open .lr-rec {
+  background: rgba(255,107,107,.55); animation: lr-rec-hint 1.8s ease-out infinite;
+}
+.lr-row.is-empty.is-open.is-armed .lr-rec,
+.lr-row.is-empty.is-open.is-recording .lr-rec { animation: none; }
+@keyframes lr-rec-hint {
+  0%   { box-shadow: 0 0 0 0   rgba(255,107,107,.55); }
+  70%  { box-shadow: 0 0 0 9px rgba(255,107,107,0); }
+  100% { box-shadow: 0 0 0 0   rgba(255,107,107,0); }
+}
+
+/* ------------------------------------------------------------- waveform -- */
+/* One line renderer, three densities: tile (edit), lane (playback), thumb
+   (library). Lines are capsules; width always equals the gap. */
+.lr-wave { display: flex; align-items: center; gap: var(--lr-line-gap); }
+.lr-wave__line {
+  width: var(--lr-line-w); flex: 0 0 var(--lr-line-w);
+  border-radius: 999px; background: currentColor;
+  transform-origin: center; will-change: transform;
+}
+.lr-wave--lane  { justify-content: center; height: 40px; overflow: hidden; position: relative; }
+.lr-wave--thumb { gap: 1px; height: 5px; }
+.lr-wave--thumb .lr-wave__line { width: auto; flex: 1; }
+
+/* ------------------------------------------------------------ pass badge -- */
+.lr-pass-badge {
+  font-size: 10px; font-weight: 700; letter-spacing: .04em;
+  padding: 2px 6px; border-radius: 3px; flex: 0 0 auto;
+  background: rgba(255,107,107,.18); color: #FFC9C9;
+  border: 1px solid rgba(255,107,107,.4); display: none;
+}
+.lr-row.is-armed .lr-pass-badge,
+.lr-row.is-recording .lr-pass-badge {
+  display: block; font-size: 12px; padding: 3px 8px;
+  background: rgba(255,107,107,.28); color: #FFD9D9;
+}
+
+/* --------------------------------------------------------------- tags ----- */
+.lr-tag {
+  font-size: 9px; letter-spacing: .05em; text-transform: uppercase;
+  padding: 2px 5px; border-radius: 3px; font-weight: 700;
+  background: rgba(255,255,255,.14); color: var(--lr-ink-dim);
+}
+.lr-tag--hq      { background: rgba(124,224,142,.18); color: #A9E8BB; }
+.lr-tag--bounced { background: rgba(122,168,255,.2);  color: #BBD1FF; }
