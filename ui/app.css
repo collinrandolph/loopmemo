@@ -15,7 +15,6 @@ body { margin: 0; background: var(--lr-page); }
 .app-nav button.is-active { background: rgba(255,255,255,.94); color: var(--lr-ink-on-light); border-color: transparent; }
 
 .grid { padding: 20px; }
-.grid-title { font-size: 14px; font-weight: 600; color: rgba(255,255,255,.92); margin-bottom: 14px; }
 
 /* a row of bar tiles; the row is transparent so the seams read as separation */
 .bar-row { display: grid; grid-template-columns: repeat(4, 1fr);
@@ -226,7 +225,13 @@ body { margin: 0; background: var(--lr-page); }
 
 .random-row .lr-btn { flex: 1; }
 
-.header-controls { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+/* Inline with the layer name, opposite it, where the project's settings sit on the Playback
+   header. `align-self` because `.lr-title-row` aligns on the baseline and a 30px round button
+   has nothing useful to put on one. */
+.header-controls {
+  display: flex; align-items: center; gap: 12px;
+  margin-left: auto; align-self: center;
+}
 .header-controls input[type=range] { width: 120px; }
 
 .legend {

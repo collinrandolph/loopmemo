@@ -85,15 +85,18 @@ export function editLayerScreen(opts: {
   // ------------------------------------------------------------------ chrome --
   const root = el('div', 'lr-screen');
   const header = el('div', 'lr-header');
+  // Same shape as the Playback header: name and the level control on one line, the running
+  // count on its own beneath. Tempo and bar count are project settings and belong to the
+  // project's header, not to a screen that edits one layer inside it.
   const titleRow = el('div', 'lr-title-row');
+  const statsRow = el('div', 'lr-meta lr-stats');
   const controls = el('div', 'header-controls');
-  header.append(titleRow, controls);
+  header.append(titleRow, statsRow);
 
   const grid = el('div', 'grid');
-  const gridTitle = el('div', 'grid-title');
   const rowsEl = el('div');
   const legend = el('div', 'legend');
-  grid.append(gridTitle, rowsEl, legend);
+  grid.append(rowsEl, legend);
 
   const footer = el('div', 'lr-footer');
   const doneBtn = el('button', 'lr-btn lr-btn--primary', 'Done');
@@ -464,12 +467,11 @@ export function editLayerScreen(opts: {
 
   function refresh() {
     const passes = totalPasses(index());
-    titleRow.innerHTML =
-      `<div class="lr-title">${layer.name || `Layer ${layer.index + 1}`}</div>` +
-      `<div class="lr-meta">${project.bpm} BPM · ${barCount} bars · ${passes} pass${passes === 1 ? '' : 'es'}</div>`;
-    gridTitle.textContent =
-      `Select the pass and bar for each slot — ${barCount}-bar song, ${LINES_PER_BAR} lines per bar, ` +
-      `${recordedBars() * LINES_PER_BAR} gradient stops across the recording`;
+    // Rebuilt rather than patched, so `controls` has to be re-appended each time — it lives in
+    // this row now and `innerHTML` would drop it.
+    titleRow.innerHTML = `<div class="lr-title">${layer.name || `Layer ${layer.index + 1}`}</div>`;
+    titleRow.appendChild(controls);
+    statsRow.textContent = `${passes} Pass${passes === 1 ? '' : 'es'}`;
 
     legend.innerHTML =
       '<strong>Colour encodes where in the recording each bar came from.</strong> ' +
