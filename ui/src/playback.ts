@@ -56,6 +56,51 @@ const DRUM_ICON =
   '<path d="M7 13.4v7.9"/><path d="M12 14v8"/><path d="M17 13.4v7.9"/>' +
   '<path d="M2 9v8a10 5 0 0 0 20 0V9"/>';
 
+/**
+ * The chord vocabulary (§4.4, **with one deliberate reversal**).
+ *
+ * §4.4 says "do not add a chord-quality picker to the primary interface": a scale plus four
+ * roots makes the harmony correct by construction, and choosing quality per chord doubles the
+ * decisions. Scale is gone here and quality is picked directly, at the user's instruction —
+ * flagged rather than absorbed, because the spec is the authority and this contradicts it.
+ *
+ * Two things follow from dropping scale, and both are load-bearing. There is no longer any such
+ * thing as a **borrowed** chord — "outside the scale" needs a scale to be outside of — so the
+ * dashed slot state goes with it. And a slot can no longer be wrong, so nothing has to default
+ * an out-of-scale root to a major triad.
+ */
+type Chord = {
+  letter: string;
+  accidental: 'natural' | 'flat' | 'sharp';
+  quality: 'major' | 'minor' | 'dom7' | 'min7' | 'maj7';
+};
+
+const NOTE_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G'].map((l) => ({ id: l, label: l }));
+
+// `label` is what the picker shows, `suffix` what the chord button spells.
+const ACCIDENTALS = [
+  { id: 'natural', label: '♮', suffix: '' },
+  { id: 'flat', label: '♭', suffix: '♭' },
+  { id: 'sharp', label: '♯', suffix: '♯' },
+];
+
+const QUALITIES = [
+  { id: 'major', label: 'Maj', suffix: '' },
+  { id: 'minor', label: 'Min', suffix: 'm' },
+  { id: 'dom7', label: '7', suffix: '7' },
+  { id: 'min7', label: 'm7', suffix: 'm7' },
+  { id: 'maj7', label: 'Maj7', suffix: 'maj7' },
+];
+
+const TONES = ['Rhodes', 'Pad', 'Nylon', 'Organ'];
+
+/** Standard spelling, so the slot reads as the chord and not as three settings. */
+function chordLabel(chord: Chord): string {
+  const accidental = ACCIDENTALS.find((a) => a.id === chord.accidental)?.suffix ?? '';
+  const quality = QUALITIES.find((q) => q.id === chord.quality)?.suffix ?? '';
+  return `${chord.letter}${accidental}${quality}`;
+}
+
 const PIANO_ICON =
   '<rect width="20" height="16" x="2" y="4" rx="2"/>' +
   '<path d="M6 8h4"/><path d="M14 8h.01"/><path d="M18 8h.01"/><path d="M2 12h20"/>' +
@@ -195,50 +240,22 @@ export function playbackScreen(opts: {
 
   // ---------------------------------------------------------- reference rows --
   // Editable working copy of the domain's shape — the fields are readonly there, as every
-  // domain type is, so the screen owns a mutable mirror rather than reaching into one.
-  type RefRow = { -readonly [K in keyof ReferenceSource]: ReferenceSource[K] } & {
-    icon: string;
-    body: string;
-    panel: string;
-  };
-
-  const refs: RefRow[] = [
-    {
-      id: 'drums',
-      enabled: true,
-      muted: false,
-      level: 0.7,
-      icon: DRUM_ICON,
-      body: '<div class="ref-detail">Dusty Break 02</div>',
-      panel: '',
-    },
-    {
-      id: 'chords',
-      enabled: true,
-      muted: false,
-      level: 0.55,
-      icon: PIANO_ICON,
-      body:
-        '<div class="chord-slots">' +
-        ['Dm', 'G', 'Am'].map((c) => `<span class="chord">${c}</span>`).join('') +
-        '<span class="chord is-borrowed">B♭</span></div>',
-      panel:
-        '<div class="lr-panel-row"><span class="lr-panel-label">Scale</span><div class="lr-chips">' +
-        ['Major', 'Minor', 'Dorian', 'Mixolydian', 'Phrygian', 'Lydian']
-          .map((s, i) => `<span class="lr-chip${i === 2 ? ' is-active' : ''}">${s}</span>`)
-          .join('') +
-        '</div></div><div class="lr-panel-row"><span class="lr-panel-label">Tone</span><div class="lr-chips">' +
-        ['Rhodes', 'Pad', 'Nylon', 'Organ']
-          .map((s, i) => `<span class="lr-chip${i === 0 ? ' is-active' : ''}">${s}</span>`)
-          .join('') +
-        '</div></div>',
-    },
-  ];
+  // domain type is, so the screen owns a mutable mirror rather than reaching into one. The
+  // chord progression is not in the domain at all yet (§2.6 is unmodelled), so it lives here
+  // as plain screen state until it is.
+  type RefRow = { -readonly [K in keyof ReferenceSource]: ReferenceSource[K] };
 
   const refsEl = el('div', 'refs');
-  for (const ref of refs) {
+
+  /**
+   * The shared half of a reference row: icon, body, speaker, and a panel that opens on a tap
+   * anywhere else in the head. The drum row is only this; the chord row adds to it.
+   */
+  function referenceRow(ref: RefRow, icon: string, body: HTMLElement) {
     const row = el('div', 'lr-row');
-    const head = el('div', 'lr-row-head', `<svg class="ref-icon" viewBox="0 0 24 24">${ref.icon}</svg>${ref.body}`);
+    const head = el('div', 'lr-row-head', `<svg class="ref-icon" viewBox="0 0 24 24">${icon}</svg>`);
+    head.appendChild(body);
+
     const vol = LR.VolumeControl({
       level: () => ref.level * 100,
       muted: () => ref.muted,
@@ -253,25 +270,154 @@ export function playbackScreen(opts: {
     head.appendChild(vol);
     row.appendChild(head);
 
-    const panel = el(
-      'div',
-      'lr-panel',
-      '<div class="lr-panel-inner"><div class="lr-panel-row"><span class="lr-panel-label">Volume</span>' +
-        `<input class="level" type="range" min="0" max="100" value="${Math.round(ref.level * 100)}" style="flex:1"></div>` +
-        `${ref.panel}</div>`,
-    );
+    const panel = el('div', 'lr-panel');
+    const inner = el('div', 'lr-panel-inner');
+    panel.appendChild(inner);
     row.appendChild(panel);
 
-    head.addEventListener('click', (e) => {
-      if ((e.target as HTMLElement).closest('.lr-volume, .chord')) return;
-      row.classList.toggle('is-open');
-    });
-    panel.querySelector('.level')!.addEventListener('input', (e) => {
+    const settings = el(
+      'div',
+      'lr-panel-row',
+      '<span class="lr-panel-label">Volume</span>' +
+        `<input class="level" type="range" min="0" max="100" value="${Math.round(ref.level * 100)}" style="flex:1">`,
+    );
+    settings.querySelector('.level')!.addEventListener('input', (e) => {
       ref.level = Number((e.target as HTMLInputElement).value) / 100;
       vol.update();
     });
-    bindChips(panel);
+
     refsEl.appendChild(row);
+    return { row, head, inner, settings };
+  }
+
+  // ---- drums
+  const drums: RefRow = { id: 'drums', enabled: true, muted: false, level: 0.7 };
+  {
+    const parts = referenceRow(drums, DRUM_ICON, el('div', 'ref-detail', 'Dusty Break 02'));
+    parts.inner.appendChild(parts.settings);
+    parts.head.addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).closest('.lr-volume')) return;
+      parts.row.classList.toggle('is-open');
+    });
+  }
+
+  // ---- chords
+  const chordsRef: RefRow = { id: 'chords', enabled: true, muted: false, level: 0.55 };
+  const progression: Chord[] = [
+    { letter: 'D', accidental: 'natural', quality: 'minor' },
+    { letter: 'G', accidental: 'natural', quality: 'major' },
+    { letter: 'A', accidental: 'natural', quality: 'minor' },
+    { letter: 'B', accidental: 'flat', quality: 'major' },
+  ];
+  let tone = 'Rhodes';
+
+  {
+    const slots = el('div', 'chord-slots');
+    const buttons = progression.map((_, i) => {
+      const b = el('span', 'chord');
+      b.dataset.slot = String(i);
+      slots.appendChild(b);
+      return b;
+    });
+    const parts = referenceRow(chordsRef, PIANO_ICON, slots);
+
+    /**
+     * The panel has two shapes and one of them is per-chord, so which chord is being edited is
+     * part of the open state rather than a mode the panel remembers. `null` is the track view.
+     */
+    let editing: number | null = null;
+
+    const chordSection = el('div', 'chord-editor');
+    const divider = el('div', 'lr-panel-divider');
+    const toneRow = el('div', 'lr-panel-row', '<span class="lr-panel-label">Tone</span>');
+    const toneChips = el('div', 'lr-chips');
+    for (const name of TONES) {
+      const chip = el('span', `lr-chip${name === tone ? ' is-active' : ''}`, name);
+      chip.addEventListener('click', () => {
+        tone = name;
+      });
+      toneChips.appendChild(chip);
+    }
+    toneRow.appendChild(toneChips);
+    parts.inner.append(chordSection, divider, parts.settings, toneRow);
+    bindChips(toneRow);
+
+    function paintChords() {
+      for (const [i, b] of buttons.entries()) {
+        b.textContent = chordLabel(progression[i]!);
+        b.classList.toggle('is-editing', editing === i);
+      }
+    }
+
+    /** Three fields, each scoped to the one chord being edited. */
+    function paintEditor() {
+      chordSection.innerHTML = '';
+      if (editing === null) return;
+      const chord = progression[editing]!;
+      chordSection.append(
+        chordField('Note', NOTE_LETTERS, chord.letter, (v) => {
+          chord.letter = v;
+        }),
+        chordField(
+          'Sign',
+          ACCIDENTALS,
+          chord.accidental,
+          (v) => {
+            chord.accidental = v as Chord['accidental'];
+          },
+          'lr-chips--sign',
+        ),
+        chordField('Type', QUALITIES, chord.quality, (v) => {
+          chord.quality = v as Chord['quality'];
+        }),
+      );
+    }
+
+    function chordField(
+      label: string,
+      options: readonly { id: string; label: string }[],
+      current: string,
+      onPick: (id: string) => void,
+      extraClass = '',
+    ): HTMLElement {
+      const rowEl = el('div', 'lr-panel-row', `<span class="lr-panel-label">${label}</span>`);
+      const chips = el('div', `lr-chips lr-chips--fill ${extraClass}`);
+      for (const option of options) {
+        const chip = el('span', `lr-chip${option.id === current ? ' is-active' : ''}`, option.label);
+        chip.addEventListener('click', () => {
+          onPick(option.id);
+          paintChords();
+        });
+        chips.appendChild(chip);
+      }
+      rowEl.appendChild(chips);
+      bindChips(rowEl);
+      return rowEl;
+    }
+
+    function show(next: number | null) {
+      const open = parts.row.classList.contains('is-open');
+      // Tapping the thing already being shown closes the panel; tapping a different chord
+      // swaps the editor without closing, so moving between chords is one tap rather than two.
+      const same = open && editing === next;
+      editing = same ? null : next;
+      parts.row.classList.toggle('is-open', !same);
+      parts.row.classList.toggle('is-editing-chord', !same && editing !== null);
+      paintEditor();
+      paintChords();
+    }
+
+    parts.head.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      if (target.closest('.lr-volume')) return;
+      const chip = target.closest<HTMLElement>('.chord');
+      // Anywhere but a chord opens the track settings only. The chord fields are reached by
+      // asking for a chord, so the common case — set the level, change the tone — never has
+      // three pickers in front of it that belong to whichever chord was touched last.
+      show(chip ? Number(chip.dataset.slot) : null);
+    });
+
+    paintChords();
   }
 
   // --------------------------------------------------------------- layer rows --

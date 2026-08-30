@@ -129,7 +129,9 @@ body { margin: 0; background: var(--lr-page); }
 .lr-row.has-audio .empty-note { display: none; }
 .lr-row:not(.has-audio) [data-needs-audio] { display: none; }
 .lr-row.is-open .lr-panel { max-height: 400px; }
-.lr-row:not(.has-audio).is-open .lr-panel { max-height: 120px; }
+/* Scoped to `.lr-rows`: reference rows never carry `has-audio` either, and this was quietly
+   capping the chord panel at the height its old two-row version happened to fit in. */
+.lr-rows .lr-row:not(.has-audio).is-open .lr-panel { max-height: 120px; }
 
 /* A preset picker is a label, a current value and a strip of six icons. Six icons do not
    fit beside the other two, so the naming goes on its own line and the strip takes the
@@ -169,9 +171,30 @@ body { margin: 0; background: var(--lr-page); }
 .chord {
   background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.14);
   color: var(--lr-ink); border-radius: 4px; font-size: 11px; font-weight: 600;
-  padding: 3px 8px; cursor: pointer;
+  padding: 3px 8px; cursor: pointer; transition: background .12s, border-color .12s;
 }
-.chord.is-borrowed { border-style: dashed; color: var(--lr-ink-dim); }
+.chord:hover { background: rgba(255,255,255,.18); }
+/* The panel below belongs to this chord and to no other, so the slot has to say which one it
+   is answering — the three fields are otherwise unlabelled as to their subject. */
+.chord.is-editing {
+  background: rgba(255,255,255,.9); border-color: transparent;
+  color: var(--lr-ink-on-light);
+}
+
+/* The chord fields are per-chord; volume and tone are the track's and stay put. The rule is
+   the seam between them, and it collapses with the fields when no chord is being edited. */
+.lr-panel-divider { border-top: 1px solid rgba(255,255,255,.16); }
+.chord-editor { display: grid; gap: 10px; }
+.lr-row:not(.is-editing-chord) .chord-editor,
+.lr-row:not(.is-editing-chord) .lr-panel-divider { display: none; }
+
+/* Seven note letters and five qualities want the row, not their own text widths. */
+.lr-chips--fill { flex: 1; flex-wrap: nowrap; }
+.lr-chips--fill .lr-chip {
+  flex: 1 1 0; min-width: 0; text-align: center; padding: 5px 2px;
+}
+/* ♮ ♭ ♯ are drawn small for their point size — at 11px the natural is a hairline. */
+.lr-chips--sign .lr-chip { font-size: 15px; line-height: 1.1; padding: 2px; }
 
 .header-controls { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
 .header-controls input[type=range] { width: 120px; }
