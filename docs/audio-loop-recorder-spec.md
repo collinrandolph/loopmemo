@@ -629,20 +629,35 @@ Applied per layer, in real time, persisted with the project.
 **EQ presets** — six, named for what they do rather than for a source, since any layer can hold
 anything. Chosen by icon like the pan presets, each drawn as its curve.
 
-| Preset | Shape | Also called |
-|--------|-------|-------------|
-| Flat | No EQ | — |
-| Low Cut | High-pass; removes rumble and body | High Pass, Thin |
-| High Cut | Low-pass; removes air and edge | Low Pass, Dark |
-| Presence | Upper-mid boost; pushes forward | Vocal, Forward |
-| Scoop | Mid cut; makes room for other layers | Mid Cut, Scooped |
-| Distant | Band-pass; sends it to the back | Telephone, Radio, Lo-Fi |
+| Preset | Bands | Does |
+|--------|-------|------|
+| Flat | — | No EQ |
+| Low Cut | high-pass 100 Hz, Q 0.707 | Removes rumble and body |
+| High Cut | low-pass 8 kHz, Q 0.707 | Removes air and edge |
+| Presence | peak 4 kHz, +3.5 dB, Q 1 | Pushes forward |
+| Scoop | peak 500 Hz, −4 dB, Q 1 | Makes room for other layers |
+| Distant | high-pass 300 Hz + low-pass 3.4 kHz, Q 0.707 | Sends it to the back |
 
-⚠️ **The band values are not decided.** Frequency, gain, Q and filter type per preset still need
-their own pass, and nothing in `src/domain` implements EQ until they do. The icons are drawn for
-contrast between presets, not from real filter curves. Note the retired set was source-based —
-Warm Vocals, Bass Thump, Crisp Drums, Airy Strings, Gritty Guitar, Lead Synth — and
-`docs/mockups/playback-screen-mockup.html` still lists those names.
+**Only three filter kinds and no shelves**, which maps 1:1 onto `AVAudioUnitEQFilterType` and Web
+Audio's `BiquadFilterNode` — the platform-bound part of EQ is setting four numbers on a stock filter.
+
+**Q is 0.707 (Butterworth) on the filters, not 1.** Mixing sources often suggest Q = 1 on a
+high-pass, which puts a small resonant peak at the corner: a colour worth choosing on a known source,
+not a default for whatever the user happened to play. A steeper 24 dB/octave slope would be two
+cascaded biquads, not a change of Q.
+
+**Frequencies are craft convention and every source quotes a range** — these sit mid-range and are a
+starting point for listening. The exception is Distant: 300 Hz to 3.4 kHz is **ITU-T G.101**, the
+literal bandwidth of a narrowband voice channel.
+
+**Presence is the only preset that boosts.** The other four can only make a layer quieter, so it is
+the single place a preset change can push a seven-layer sum toward clipping.
+
+`responseDb` in `src/domain/eq.ts` computes the actual curve, and `tests/eq.test.ts` asserts each
+preset does what its name and icon promise — corner frequencies at −3 dB, bells at their stated
+gain, and the right shape with no ripple. The numbers above are therefore checkable rather than
+quoted. The retired set was source-based — Warm Vocals, Bass Thump, Crisp Drums, Airy Strings,
+Gritty Guitar, Lead Synth — and `docs/mockups/playback-screen-mockup.html` still lists those names.
 
 **Pan presets**: Center (0°), Slight L (−15°), Slight R (+15°), Wide L (−45°), Wide R (+45°), and
 **Surround** — a Haas effect where the duplicate is delayed, panned opposite and sits below the dry.

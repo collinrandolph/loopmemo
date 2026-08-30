@@ -74,7 +74,8 @@ src/domain/            the whole domain layer — no platform APIs, no dependenc
   schedule-plan.ts     what plays when; mid-bar splice entry points
   arrangement.ts       the edit operations; compression plan
   transport.ts         playback position, the played set, the release edge
-  effects.ts           pan law, presets, the Haas delay — no EQ, deliberately
+  effects.ts           pan law, presets, the Haas delay
+  eq.ts                EQ presets, and the biquad response that checks them
   project.ts           Project, Layer, quality, size projection
 tests/                 node:test, one file per module
 Tools/                 toolchain-free cross-checks against docs/kit/lr-kit.js
@@ -333,6 +334,24 @@ whichever platform wins:
 
 `segments()` and `splice()` in `schedule-plan.ts` already decide *what* plays and *when*. The
 audio layer's job is to execute that, and little else.
+
+## EQ presets are checked, not quoted
+
+**`responseDb` exists so the presets are falsifiable on this machine.** The frequencies come
+from mixing sources that all quote wide ranges; a table of numbers nobody can evaluate is an
+assertion. Computing the biquad response turns "Scoop cuts the low mids" into something a test
+passes or fails, and `tests/eq.test.ts` checks each preset against **what its icon promises** —
+one hump, one dip, monotone rise, monotone fall — not just against its own parameters.
+
+That check earned its keep three times over. Every wrong number in the first pass was **my
+estimate, not the filter**: the analogue approximation `|H|² = 1/(1+(f/fc)⁴)` is right in the
+passband and wrong near Nyquist, where a digital biquad's response is frequency-warped and
+falls away faster. High Cut is 28.8 dB down at 18 kHz, not the 14 the analogue prototype
+predicts. **Do not hand-estimate a digital filter's stopband — run `responseDb`.**
+
+**Q is 0.707, not 1.** Sources suggest Q = 1 on a high-pass, which puts a resonant peak at the
+corner — a colour for a known source, not a default for arbitrary material. 24 dB/octave would
+be two cascaded biquads, not a Q change.
 
 ## Pan and the Haas delay
 
