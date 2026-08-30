@@ -601,10 +601,27 @@ Discards every recorded pass, keeping each layer's final edited loop.
 Creates a **new project** seeded with a combined, compressed copy of the original.
 
 - All layers are mixed into a **single audio file** with EQ, pan and level baked in. Enabled reference tracks are included; the mixdown contains exactly what was audible.
-- That file becomes **layer 1** of the new project, as **Pass 1**, and layer 1 can record further passes like any other layer.
+- That file becomes **layer 1** of the new project, as **Pass 1**, and layer 1 can record further passes like any other layer. Layer 1 starts **neutral** — level 1, Flat, Center, unmuted — because the processing is already in the audio.
 - **The original project is untouched.**
-- BPM, bar count and chord settings are preset from the source.
+- BPM, bar count, beats per bar and chord settings are preset from the source.
+- **Audio quality carries too, and that is forced rather than chosen.** The mixdown is a sum of the source's layers and therefore sits at its sample rate; seeding at any other rate would need a resample at every splice, which is exactly what snapshotting quality at creation exists to prevent.
+- **`isCompressed` is false.** The flag means a project's recorded passes were discarded; a new project never had any, so the Library label would be a lie.
 - Layers 2–7 are empty and available.
+
+Per layer, what survives is exactly what compress keeps, so `compressionPlan` does that work and
+bounce is **compress applied to every layer at once, plus a mix**. The mixdown is exactly one loop,
+which is what makes it Pass 1 — so it is filled through the ordinary recording lifecycle (§1.6) and
+bounce needs no arrangement logic of its own.
+
+**Refused in two cases**: a slot pointing at audio that does not exist, since baking a hole into the
+seed is not a repair even though the original survives; and a mixdown with nothing audible in it,
+which would seed a project with a loop of silence. Every layer muted but a reference track enabled
+is still a valid bounce.
+
+**A Surround layer's delay tail must wrap.** Live, the delayed copy of the last bar runs past the
+loop point and the delay line keeps going; a bounce renders a fixed length, so that tail has nowhere
+to go and truncating it leaves a seam at the loop point the original never had. `BouncePlan.tailFrames`
+reports how many frames must wrap round to the start, and is zero when no audible layer uses Surround.
 
 **Quality conflict**: if the source project's quality differs from the current global setting, ask;
 otherwise ask nothing.

@@ -77,6 +77,7 @@ src/domain/            the whole domain layer — no platform APIs, no dependenc
   effects.ts           pan law, presets, the Haas delay
   eq.ts                EQ presets, and the biquad response that checks them
   project.ts           Project, Layer, quality, size projection
+  bounce.ts            the mixdown plan and the project it seeds
 tests/                 node:test, one file per module
 Tools/                 toolchain-free cross-checks against docs/kit/lr-kit.js
 docs/                  the spec, the design kit, the mockups, the platform research
@@ -334,6 +335,29 @@ whichever platform wins:
 
 `segments()` and `splice()` in `schedule-plan.ts` already decide *what* plays and *when*. The
 audio layer's job is to execute that, and little else.
+
+## Bounce is compress on every layer, plus a mix
+
+**`compressionPlan` does the per-layer work**, so bounce adds only the mix and the seed. The
+mixdown is exactly one loop, which makes it Pass 1 — so layer 1 is filled through
+`recordSession` and bounce needs no arrangement logic of its own.
+
+**Quality carries from the source, and it is forced.** §2.7's bounce list omits it, but the
+mixdown is a sum of the source's layers and sits at its sample rate; seeding at another rate
+needs a resample at every splice, which is what snapshotting quality exists to prevent.
+
+**Layer 1 starts neutral and `isCompressed` is false.** The processing is already in the audio,
+and the flag means recorded passes were discarded — a new project never had any.
+
+**`tailFrames` turns a prose obligation into a number.** A Surround layer's delayed copy of the
+last bar runs past the loop point; a bounce renders a fixed length, so it must wrap to the start
+or the seed has a seam the original never had.
+
+**Reference tracks are still not modelled.** §2.6's drum loop and chord bed have no
+`originalBPM`, no playback ratio and no chord settings anywhere in `src/domain`.
+`bounce.ts` defines the *subset* it needs and marks it provisional — absorb it when §2.6 is
+built rather than leaving two definitions. `isAudibleInMixdown` is shared with export on
+purpose: two readings of "was this audible" would let the bounce and the export disagree.
 
 ## EQ presets are checked, not quoted
 

@@ -4,6 +4,8 @@ import {
   NONE_MUTED,
   initialArrangement,
 } from './arrangement.ts';
+import type { PanPresetId } from './effects.ts';
+import type { EqPresetId } from './eq.ts';
 import { type PassIndex, type RecordingSession, passIndex, totalPasses } from './pass-index.ts';
 import { type Timing, loopFrames, loopSeconds, passExists, timing } from './timing.ts';
 
@@ -45,6 +47,9 @@ export type Layer = {
   readonly level: number;
   /** Layer mute, set on the Playback screen (§3.7). Independent of `mutedSlots`. */
   readonly muted: boolean;
+  /** Effects, applied per layer and persisted with the project (§2.8). */
+  readonly eq: EqPresetId;
+  readonly pan: PanPresetId;
   /** One per time the user records onto this layer. **Never concatenated** (§1.4). */
   readonly sessions: readonly RecordingSession[];
   readonly barSources: Arrangement;
@@ -82,13 +87,23 @@ export type Project = {
   readonly layers: readonly Layer[];
 };
 
-export function emptyLayer(index: number, id = `layer-${index}`): Layer {
+/**
+ * `eq` and `pan` default to the neutral preset of each. §5.3 makes "which preset a new layer
+ * starts on" a live setting, so a caller that has one passes it rather than patching after.
+ */
+export function emptyLayer(
+  index: number,
+  id = `layer-${index}`,
+  defaults: { eq?: EqPresetId; pan?: PanPresetId } = {},
+): Layer {
   return {
     id,
     index,
     name: '',
     level: 1,
     muted: false,
+    eq: defaults.eq ?? 'flat',
+    pan: defaults.pan ?? 'center',
     sessions: [],
     barSources: [],
     mutedSlots: NONE_MUTED,
