@@ -94,6 +94,121 @@ const QUALITIES = [
 
 const TONES = ['Rhodes', 'Pad', 'Nylon', 'Organ'];
 
+/** A slot with nothing chosen yet. */
+function defaultChord(): Chord {
+  return { letter: 'C', accidental: 'natural', quality: 'major' };
+}
+
+/**
+ * Randomising draws the root from the twelve pitches as they are actually spelled, not from
+ * letter × accidental, so it cannot hand back B♯ or F♭ — enharmonically valid, and not how
+ * anyone writes a chord. Quality is weighted toward triads for the same reason: uniform over
+ * five would make a progression of four sevenths the common case.
+ */
+const RANDOM_ROOTS: Pick<Chord, 'letter' | 'accidental'>[] = [
+  { letter: 'C', accidental: 'natural' },
+  { letter: 'C', accidental: 'sharp' },
+  { letter: 'D', accidental: 'natural' },
+  { letter: 'E', accidental: 'flat' },
+  { letter: 'E', accidental: 'natural' },
+  { letter: 'F', accidental: 'natural' },
+  { letter: 'F', accidental: 'sharp' },
+  { letter: 'G', accidental: 'natural' },
+  { letter: 'A', accidental: 'flat' },
+  { letter: 'A', accidental: 'natural' },
+  { letter: 'B', accidental: 'flat' },
+  { letter: 'B', accidental: 'natural' },
+];
+
+const RANDOM_QUALITIES: Chord['quality'][] =
+  ['major', 'major', 'major', 'minor', 'minor', 'minor', 'dom7', 'min7', 'maj7'];
+
+function randomChord(): Chord {
+  const root = RANDOM_ROOTS[Math.floor(Math.random() * RANDOM_ROOTS.length)]!;
+  return { ...root, quality: RANDOM_QUALITIES[Math.floor(Math.random() * RANDOM_QUALITIES.length)]! };
+}
+
+const SWIPE_THRESHOLD = 22; // as `edit-layer.ts`; the same gesture should want the same travel
+
+/**
+ * One vertically-swipeable field. Three of them inline are the chord editor.
+ *
+ * **Down steps forward**, matching the pass axis on the Edit Layer screen (§3.7). That is the
+ * opposite of a physical wheel, where dragging down brings the previous item up — but the same
+ * gesture meaning the same thing in both places is worth more here than the physical metaphor,
+ * and it is the only vertical-swipe convention the app has.
+ *
+ * A tap steps too, upper half back and lower half forward, on the same axis as the drag: with a
+ * mouse the drag is available but awkward, and a control with no tap affordance reads as inert.
+ *
+ * The gesture is gated on its own `down` flag and bails when `e.buttons === 0`. Pointer capture
+ * is a routing hint, not press state — it survives a `pointerup` the page never receives, and
+ * gating on it is the bug this project has already shipped once (see CLAUDE.md).
+ */
+function chordWheel(
+  caption: string,
+  options: readonly { id: string; label: string }[],
+  current: () => string,
+  onPick: (id: string) => void,
+  extraClass = '',
+): HTMLElement {
+  const node = el('div', `chord-wheel ${extraClass}`);
+  const value = el('div', 'chord-wheel__value');
+  node.append(value, el('div', 'chord-wheel__cap', `↕ ${caption}`));
+
+  function paint(dir = 0) {
+    value.textContent = options.find((o) => o.id === current())?.label ?? '';
+    value.classList.remove('is-stepping-up', 'is-stepping-down');
+    if (!dir) return;
+    void value.offsetWidth; // restart the animation rather than let a repeat within one drag skip it
+    value.classList.add(dir > 0 ? 'is-stepping-down' : 'is-stepping-up');
+  }
+
+  function step(dir: number) {
+    const at = options.findIndex((o) => o.id === current());
+    onPick(options[(at + dir + options.length) % options.length]!.id);
+    paint(dir);
+  }
+
+  let down = false;
+  let y0 = 0;
+  let fired = false;
+
+  node.addEventListener('pointerdown', (e) => {
+    down = true;
+    y0 = e.clientY;
+    fired = false;
+    node.setPointerCapture(e.pointerId);
+  });
+  const end = () => {
+    down = false;
+  };
+  node.addEventListener('lostpointercapture', end);
+  node.addEventListener('pointercancel', end);
+  node.addEventListener('pointerup', (e) => {
+    if (down && !fired) {
+      const box = node.getBoundingClientRect();
+      step(e.clientY < box.top + box.height / 2 ? -1 : 1);
+    }
+    end();
+  });
+  node.addEventListener('pointermove', (e) => {
+    if (!down) return;
+    if (e.buttons === 0) {
+      end();
+      return;
+    }
+    const dy = e.clientY - y0;
+    if (Math.abs(dy) <= SWIPE_THRESHOLD) return;
+    step(dy > 0 ? 1 : -1);
+    y0 = e.clientY; // allow repeats within one drag
+    fired = true;
+  });
+
+  paint();
+  return node;
+}
+
 /** Standard spelling, so the slot reads as the chord and not as three settings. */
 function chordLabel(chord: Chord): string {
   const accidental = ACCIDENTALS.find((a) => a.id === chord.accidental)?.suffix ?? '';
@@ -303,12 +418,7 @@ export function playbackScreen(opts: {
 
   // ---- chords
   const chordsRef: RefRow = { id: 'chords', enabled: true, muted: false, level: 0.55 };
-  const progression: Chord[] = [
-    { letter: 'D', accidental: 'natural', quality: 'minor' },
-    { letter: 'G', accidental: 'natural', quality: 'major' },
-    { letter: 'A', accidental: 'natural', quality: 'minor' },
-    { letter: 'B', accidental: 'flat', quality: 'major' },
-  ];
+  const progression: Chord[] = [defaultChord(), defaultChord(), defaultChord(), defaultChord()];
   let tone = 'Rhodes';
 
   {
@@ -329,6 +439,7 @@ export function playbackScreen(opts: {
 
     const chordSection = el('div', 'chord-editor');
     const divider = el('div', 'lr-panel-divider');
+
     const toneRow = el('div', 'lr-panel-row', '<span class="lr-panel-label">Tone</span>');
     const toneChips = el('div', 'lr-chips');
     for (const name of TONES) {
@@ -339,8 +450,20 @@ export function playbackScreen(opts: {
       toneChips.appendChild(chip);
     }
     toneRow.appendChild(toneChips);
-    parts.inner.append(chordSection, divider, parts.settings, toneRow);
     bindChips(toneRow);
+
+    // A track setting rather than a per-chord one: it replaces the whole progression, and it is
+    // reachable without first picking a chord — which is the point, since the blank slate is
+    // four identical C majors (§6.1).
+    const randomRow = el('div', 'lr-panel-row random-row');
+    const randomBtn = el('button', 'lr-btn', 'Randomize chords');
+    randomBtn.addEventListener('click', () => {
+      for (let i = 0; i < progression.length; i++) progression[i] = randomChord();
+      render(); // the open editor is showing one of the slots that just changed
+    });
+    randomRow.appendChild(randomBtn);
+
+    parts.inner.append(chordSection, divider, parts.settings, toneRow, randomRow);
 
     function paintChords() {
       for (const [i, b] of buttons.entries()) {
@@ -349,72 +472,65 @@ export function playbackScreen(opts: {
       }
     }
 
-    /** Three fields, each scoped to the one chord being edited. */
+    /** Three fields inline, each scoped to the one chord being edited. */
     function paintEditor() {
       chordSection.innerHTML = '';
       if (editing === null) return;
       const chord = progression[editing]!;
+      const changed = () => paintChords();
       chordSection.append(
-        chordField('Note', NOTE_LETTERS, chord.letter, (v) => {
+        chordWheel('Note', NOTE_LETTERS, () => chord.letter, (v) => {
           chord.letter = v;
+          changed();
         }),
-        chordField(
-          'Sign',
-          ACCIDENTALS,
-          chord.accidental,
-          (v) => {
-            chord.accidental = v as Chord['accidental'];
-          },
-          'lr-chips--sign',
-        ),
-        chordField('Type', QUALITIES, chord.quality, (v) => {
+        chordWheel('Sign', ACCIDENTALS, () => chord.accidental, (v) => {
+          chord.accidental = v as Chord['accidental'];
+          changed();
+        }, 'chord-wheel--sign'),
+        chordWheel('Type', QUALITIES, () => chord.quality, (v) => {
           chord.quality = v as Chord['quality'];
+          changed();
         }),
       );
     }
 
-    function chordField(
-      label: string,
-      options: readonly { id: string; label: string }[],
-      current: string,
-      onPick: (id: string) => void,
-      extraClass = '',
-    ): HTMLElement {
-      const rowEl = el('div', 'lr-panel-row', `<span class="lr-panel-label">${label}</span>`);
-      const chips = el('div', `lr-chips lr-chips--fill ${extraClass}`);
-      for (const option of options) {
-        const chip = el('span', `lr-chip${option.id === current ? ' is-active' : ''}`, option.label);
-        chip.addEventListener('click', () => {
-          onPick(option.id);
-          paintChords();
-        });
-        chips.appendChild(chip);
-      }
-      rowEl.appendChild(chips);
-      bindChips(rowEl);
-      return rowEl;
+    function render() {
+      parts.row.classList.toggle('is-editing-chord', editing !== null);
+      paintEditor();
+      paintChords();
+    }
+
+    function close() {
+      editing = null;
+      parts.row.classList.remove('is-open');
+      render();
     }
 
     function show(next: number | null) {
-      const open = parts.row.classList.contains('is-open');
-      // Tapping the thing already being shown closes the panel; tapping a different chord
-      // swaps the editor without closing, so moving between chords is one tap rather than two.
-      const same = open && editing === next;
-      editing = same ? null : next;
-      parts.row.classList.toggle('is-open', !same);
-      parts.row.classList.toggle('is-editing-chord', !same && editing !== null);
-      paintEditor();
-      paintChords();
+      // Tapping the chord already open closes the panel; tapping a different one swaps the
+      // editor without closing, so moving along the progression is one tap rather than two.
+      if (parts.row.classList.contains('is-open') && editing === next) {
+        close();
+        return;
+      }
+      editing = next;
+      parts.row.classList.add('is-open');
+      render();
     }
 
     parts.head.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
       if (target.closest('.lr-volume')) return;
       const chip = target.closest<HTMLElement>('.chord');
-      // Anywhere but a chord opens the track settings only. The chord fields are reached by
-      // asking for a chord, so the common case — set the level, change the tone — never has
-      // three pickers in front of it that belong to whichever chord was touched last.
-      show(chip ? Number(chip.dataset.slot) : null);
+      if (chip) {
+        show(Number(chip.dataset.slot));
+        return;
+      }
+      // Outside the chord buttons the row is a plain toggle for the whole panel. An open panel
+      // closes rather than falling back to the track view: that fallback made one tap on the
+      // row do two different things depending on what the panel happened to be showing.
+      if (parts.row.classList.contains('is-open')) close();
+      else show(null);
     });
 
     paintChords();

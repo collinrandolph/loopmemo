@@ -188,13 +188,36 @@ body { margin: 0; background: var(--lr-page); }
 .lr-row:not(.is-editing-chord) .chord-editor,
 .lr-row:not(.is-editing-chord) .lr-panel-divider { display: none; }
 
-/* Seven note letters and five qualities want the row, not their own text widths. */
-.lr-chips--fill { flex: 1; flex-wrap: nowrap; }
-.lr-chips--fill .lr-chip {
-  flex: 1 1 0; min-width: 0; text-align: center; padding: 5px 2px;
+/* Three fields inline. Vertical swipe steps each, the same axis and the same direction as the
+   pass axis on the Edit Layer screen, so the app has one meaning for a vertical drag. */
+.chord-editor { display: flex; gap: 8px; }
+.chord-wheel {
+  flex: 1 1 0; min-width: 0; overflow: hidden;
+  background: rgba(255,255,255,.09); border: 1px solid rgba(255,255,255,.14);
+  border-radius: 6px; padding: 7px 4px 5px;
+  display: grid; gap: 1px; justify-items: center;
+  cursor: ns-resize; transition: background .12s;
+  touch-action: none; user-select: none; -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
-/* ♮ ♭ ♯ are drawn small for their point size — at 11px the natural is a hairline. */
-.lr-chips--sign .lr-chip { font-size: 15px; line-height: 1.1; padding: 2px; }
+.chord-wheel:hover { background: rgba(255,255,255,.16); }
+.chord-wheel__value {
+  font-size: 17px; font-weight: 600; color: var(--lr-ink); line-height: 1.2;
+}
+.chord-wheel--sign .chord-wheel__value { font-size: 21px; line-height: .98; }
+.chord-wheel__cap {
+  font-size: 9px; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--lr-hint); white-space: nowrap;
+}
+
+/* The new value arrives from the direction the drag came from, so a repeat inside one drag
+   reads as travel rather than as a value flickering in place. */
+@keyframes lr-wheel-down { from { transform: translateY(-8px); opacity: 0 } to { transform: none; opacity: 1 } }
+@keyframes lr-wheel-up   { from { transform: translateY(8px);  opacity: 0 } to { transform: none; opacity: 1 } }
+.chord-wheel__value.is-stepping-down { animation: lr-wheel-down .13s ease-out; }
+.chord-wheel__value.is-stepping-up   { animation: lr-wheel-up .13s ease-out; }
+
+.random-row .lr-btn { flex: 1; }
 
 .header-controls { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
 .header-controls input[type=range] { width: 120px; }
