@@ -174,6 +174,52 @@ export function panPreset(id: PanPresetId): PanPreset {
   return found;
 }
 
+/** Arcs per side in the pan icon — `((o))`, the circle being the centre (§2.8). */
+export const PAN_ICON_ARCS = 3;
+
+export type PanIcon = {
+  /** Arcs lit on each side, 0..`PAN_ICON_ARCS`. The rest are drawn as dim ghosts. */
+  readonly left: number;
+  readonly right: number;
+  /** Drawn stepped outward from the base radii, to read as arriving later. */
+  readonly delayedSide?: 'left' | 'right';
+};
+
+/**
+ * Arc `k` lights once the channel reaches **`k / PAN_ICON_ARCS` of full level**.
+ *
+ * Thresholds rather than rounding, so an arc never lights for a level below its own mark.
+ * Rounding also put Slight's 0.5 exactly on a `.5` boundary, where a one-degree change to the
+ * preset would have flipped the icon; under thresholds the only value landing exactly on one
+ * is 1.0 at Wide, which is the intended maximum.
+ */
+function arcsLit(gain: number): number {
+  return Math.min(PAN_ICON_ARCS, Math.floor(gain * PAN_ICON_ARCS + 1e-9));
+}
+
+/**
+ * The icon state for a preset, derived from the same `panGains` as the audio.
+ *
+ * **Reads pan position, not the mixed level** — which is why it takes the preset's angles
+ * rather than a `PanPlan`. Surround's delayed copy is panned hard right but trimmed to
+ * −1.5 dB; quantising the trimmed gain would light two arcs and make a level decision look
+ * like a pan decision. The icon indicates where the signal sits, the arcs are three steps
+ * wide, and the trim is not something three steps can express anyway.
+ *
+ * That distinction is also what keeps this a derivation rather than a lookup table with extra
+ * steps: every preset falls out of one rule with no exceptions, so the icon cannot drift from
+ * where the audio actually goes.
+ */
+export function panIcon(preset: PanPreset): PanIcon {
+  const dry = panGains(preset.angle);
+  const wet = preset.haas ? panGains(preset.haas.angle) : SILENT;
+  return {
+    left: arcsLit(Math.max(dry.left, wet.left)),
+    right: arcsLit(Math.max(dry.right, wet.right)),
+    ...(preset.haas ? { delayedSide: preset.haas.angle >= 0 ? 'right' : 'left' } : {}),
+  };
+}
+
 /**
  * Resolve a preset against the project's tempo.
  *

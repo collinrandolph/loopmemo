@@ -676,6 +676,31 @@ running across the boundary the way any delay does. **Bounce and export render a
 so there the tail must wrap into the start of the loop, or the rendered version has a discontinuity
 the live one never had.
 
+### Pan preset icons
+
+Presets are chosen **by icon only** — no names in the picker. The name of the *selected* preset
+appears beside the word **Pan** in the layer panel, so the row still reads in words without the
+strip carrying six labels.
+
+The icon is `((o))`: a filled circle for the centre, with three arcs stepping outward on each side.
+The full shape is always drawn — unlit arcs stay as dim ghosts — so the icons share one silhouette
+and only their lit portions differ.
+
+**Arc *k* lights once that channel reaches `k / 3` of full level**, giving Center 2/2, Slight 2/1,
+Wide 3/0 and Surround 3/3. Thresholds rather than rounding, so an arc never lights for a level below
+its own mark; rounding also put Slight's 0.5 gain exactly on a `.5` boundary, where a one-degree
+change to the preset would have flipped the icon.
+
+**The arcs read pan position, not mixed level.** Surround's copy is panned hard right but trimmed to
+−1.5 dB; quantising the trimmed gain would light two arcs and make a level decision look like a pan
+decision. Reading position instead keeps all six presets falling out of one rule with no exceptions,
+which is what makes the icon a derivation of `panGains` rather than a table that can drift from it.
+
+**Surround's delayed side is drawn stepped outward** from the base radii, reading as arriving later.
+Do *not* also draw ghost arcs at the base radii underneath it: interleaved with the stepped set they
+sit about 2 px apart against a 2.2 px stroke and collide into a smear. The opposite side is already
+drawn at the base radii, so the icon carries its own reference.
+
 Native `AVAudioUnitEQ` plus mixer panning is sufficient for v1; Superpowered or JUCE only if the
 effects rack in §6.2 is built.
 

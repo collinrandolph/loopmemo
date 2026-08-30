@@ -4,12 +4,15 @@ import { describe, it } from 'node:test';
 import {
   BEATS,
   HAAS_MAX_SECONDS,
+  PAN_HARD_DEGREES,
+  PAN_ICON_ARCS,
   PAN_PRESETS,
   SILENT,
   gainFromDb,
   haasDelayFrames,
   noteDelayFrames,
   panGains,
+  panIcon,
   panPlan,
   panPreset,
 } from '../src/domain/effects.ts';
@@ -96,6 +99,72 @@ describe('the Haas delay', () => {
     const high = timing(120, 16, 48_000);
     const standard = timing(120, 16, 44_100);
     close(haasDelayFrames(high) / 48_000, haasDelayFrames(standard) / 44_100, 1e-4);
+  });
+});
+
+describe('panIcon', () => {
+  const counts = (id: Parameters<typeof panPreset>[0]) => {
+    const icon = panIcon(panPreset(id));
+    return `${icon.left}/${icon.right}`;
+  };
+
+  it('gives each preset a distinct shape', () => {
+    assert.equal(counts('center'), '2/2');
+    assert.equal(counts('slightL'), '2/1');
+    assert.equal(counts('slightR'), '1/2');
+    assert.equal(counts('wideL'), '3/0');
+    assert.equal(counts('wideR'), '0/3');
+    assert.equal(counts('surround'), '3/3');
+    assert.equal(new Set(PAN_PRESETS.map((p) => counts(p.id))).size, PAN_PRESETS.length);
+  });
+
+  it('lights arc k once the channel reaches k/3 of full level', () => {
+    // Thresholds, not rounding: an arc never lights for a level below its own mark. Probed
+    // through real angles, since the left gain of angle θ is cos(θ + 45°).
+    const atLeftGain = (gain: number) =>
+      panIcon({
+        id: 'center',
+        name: 'probe',
+        angle: (Math.acos(gain) * 180) / Math.PI - PAN_HARD_DEGREES,
+      }).left;
+
+    for (const [gain, expected] of [
+      [0, 0],
+      [0.33, 0],
+      [0.34, 1],
+      [0.5, 1],
+      [0.66, 1],
+      [0.68, 2],
+      [0.707, 2],
+      [0.99, 2],
+      [1, 3],
+    ] as const) {
+      assert.equal(atLeftGain(gain), expected, `gain ${gain}`);
+    }
+  });
+
+  it('reads pan position rather than the mixed level', () => {
+    // Surround's copy is panned hard right but trimmed to -1.5 dB. Quantising the trimmed
+    // gain would light two arcs and make a level decision look like a pan decision — and
+    // would force an exception into what is otherwise one rule for all six presets.
+    const plan = panPlan(panPreset('surround'), T);
+    assert.ok(plan.delay.wet.right < 0.9, 'the audio really is below unity');
+    assert.equal(panIcon(panPreset('surround')).right, 3, 'the icon still reads hard right');
+  });
+
+  it('marks which side is delayed, and only for Surround', () => {
+    assert.equal(panIcon(panPreset('surround')).delayedSide, 'right');
+    for (const p of PAN_PRESETS.filter((x) => x.id !== 'surround')) {
+      assert.equal(panIcon(p).delayedSide, undefined, p.id);
+    }
+  });
+
+  it('never exceeds the arcs it has', () => {
+    for (const p of PAN_PRESETS) {
+      const icon = panIcon(p);
+      assert.ok(icon.left >= 0 && icon.left <= PAN_ICON_ARCS);
+      assert.ok(icon.right >= 0 && icon.right <= PAN_ICON_ARCS);
+    }
   });
 });
 

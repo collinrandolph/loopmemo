@@ -361,6 +361,18 @@ gesture.
 carry signal. `SURROUND_WET_DB = -1.5` is flagged for confirmation by ear; a test records the
 consequence so changing the number is deliberate rather than incidental.
 
+**The pan icon is derived, and stayed derivable only because the input was corrected.**
+`panIcon` reads **pan position**, not the mixed level — Surround's copy is hard right but
+trimmed to −1.5 dB, and quantising the trimmed gain lights two arcs instead of three. Feeding
+it the trim would have forced a hardcoded exception for one preset, which is worse than a
+plain lookup table: it looks trustworthy and isn't. Reading position gives all six presets
+from one rule. Arc *k* lights at `k/3` of full level — thresholds, not rounding, so an arc
+never lights below its own mark and no preset sits on a boundary except Wide at exactly 1.0.
+
+**Do not draw ghost arcs under Surround's stepped set.** They interleave about 2 px apart
+against a 2.2 px stroke and smear. The opposite side already sits at the base radii and is the
+reference.
+
 **The delayed tail of the last bar runs past the loop end.** Live that is correct and needs
 nothing. **Bounce and export render fixed-length files**, so there it must wrap to the start or
 the rendered loop has a seam the live one never had. Not yet implemented — bounce is not built.
