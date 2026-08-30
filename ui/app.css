@@ -4,6 +4,53 @@
 
 body { margin: 0; background: var(--lr-page); }
 
+/* ------------------------------------------------------------------- mobile -- */
+/* The kit frames the app as a card floating on a page: `body` padding 20, a rounded
+   `.lr-screen` centred at max 900, and 20 either side inside every section. That is
+   right for previewing on a desktop and wrong on the device the app is for — it
+   spends 80px of a 375px screen, 21% of the width, before any content.
+   Below the breakpoint the app goes full bleed and the section padding drops to 12.
+
+   These are overrides, not edits: `docs/kit/` stays the reference. */
+@media (max-width: 640px) {
+  body { padding: 0; }
+  .app-nav { padding: 8px 12px 0; gap: 4px; }
+  .app-nav button { padding: 5px 9px; }
+
+  .lr-screen { border-radius: 0; box-shadow: none; }
+
+  .lr-header { padding: 14px 12px 10px; }
+  .lr-section-label { padding: 0 12px; }
+  .lr-rows { padding: 4px 12px 14px; }
+  .refs { padding: 0 12px 6px; }
+  .lr-footer { padding: 10px 12px; }
+  .grid { padding: 12px; }
+  .lr-panel-inner { padding: 10px; }
+
+  /* The title and the meta stop competing for one line. */
+  .lr-title-row { flex-wrap: wrap; gap: 3px 10px; }
+
+  /* The progress bar was being crushed to a few pixels between the position readout
+     and the master level. Give it its own row rather than shrinking everything. */
+  .lr-transport { flex-wrap: wrap; gap: 10px; }
+  .lr-transport .lr-progress { order: 1; flex: 1 0 100%; }
+  .lr-position { min-width: 0; flex: 1 1 auto; text-align: left; }
+  .lr-transport input[type=range] { flex: 1 1 60px; width: auto; min-width: 0; }
+
+  .lr-footer { flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+  .lr-footer > span { flex: 1 1 100%; }
+
+  /* Six preset chips beside a 54px label and a 54px value do not fit, and the kit lets
+     `.lr-chips` wrap — so one icon dropped to a second row and the strip stopped reading
+     as one control. Compress instead of wrapping: the icons are a fixed 22px, so the
+     chips have a floor and the row degrades predictably rather than folding. */
+  .lr-panel-row { gap: 8px; }
+  .lr-panel-label { min-width: 40px; }
+  .lr-chips { flex-wrap: nowrap; gap: 3px; }
+  .lr-chips .lr-chip { padding: 4px 2px; min-width: 0; }
+  .lr-panel-row > span:last-child { min-width: 44px; }
+}
+
 .app-nav {
   display: flex; gap: 6px; padding: 10px 20px 0;
 }
