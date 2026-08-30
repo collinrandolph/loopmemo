@@ -103,6 +103,14 @@ mockup rather than reinventing it. The kit supplies presentation (`ramp`, `motio
 `Waveform`, `VolumeControl`); its own `timing` and `Transport` are deliberately **not** used,
 because those are what `src/domain` replaces.
 
+**Gate pointer gestures on your own `down` flag, never on `hasPointerCapture`.** `pointermove`
+fires on plain hover, and capture is only a routing hint: it survives a `pointerup` the page
+never receives — released outside the window, focus lost, the browser taking the gesture over.
+Hover then re-enters a tile holding orphaned capture, the guard passes, and the move is measured
+against an ancient `x0`/`y0`, so slots step with nothing pressed. **The mockup guards this way,
+so copying it reintroduces the bug.** Also bail when `e.buttons === 0`, which catches the missed
+release itself.
+
 **`ui/src/sim.ts` is the only fake part, and that is the test.** It provides a frame counter
 and synthetic waveform peaks — exactly what a real engine provides. If a screen ever needs
 something from it that a real audio engine could not give, the platform-bound surface has

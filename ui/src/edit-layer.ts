@@ -206,6 +206,25 @@ export function editLayerScreen(opts: {
     let fired = false;
     let held = false;
     let holdTimer: number | null = null;
+    /**
+     * Whether a press is actually in progress.
+     *
+     * **Not `hasPointerCapture`.** `pointermove` fires on plain hover, and capture is only a
+     * routing hint — it survives a `pointerup` the page never receives, which happens whenever
+     * the button is released outside the window or the browser takes the gesture over. Hover
+     * then re-enters a tile still holding orphaned capture, the guard passes, and the move is
+     * measured against a `x0`/`y0` from minutes ago: an enormous delta that steps the slot
+     * without anyone pressing anything. Own the state instead of asking the platform for it.
+     */
+    let down = false;
+
+    function endGesture() {
+      down = false;
+      tiles[slot]!.swiping = false;
+      if (holdTimer !== null) clearTimeout(holdTimer);
+      holdTimer = null;
+      axis = null;
+    }
 
     node.addEventListener('pointerdown', (e) => {
       x0 = e.clientX;
@@ -213,6 +232,7 @@ export function editLayerScreen(opts: {
       axis = null;
       fired = false;
       held = false;
+      down = true;
       node.setPointerCapture(e.pointerId);
       holdTimer = window.setTimeout(() => {
         held = true;
@@ -222,8 +242,17 @@ export function editLayerScreen(opts: {
       }, HOLD_MS);
     });
 
+    // Capture can be lost without a pointerup — treat that as the gesture ending.
+    node.addEventListener('lostpointercapture', endGesture);
+
     node.addEventListener('pointermove', (e) => {
-      if (!node.hasPointerCapture(e.pointerId)) return;
+      if (!down) return;
+      // A move with no button held is a release we never saw. Mouse and touch both report
+      // `buttons === 0` once up, so this catches the case that leaves capture stranded.
+      if (e.buttons === 0) {
+        endGesture();
+        return;
+      }
       const dx = e.clientX - x0;
       const dy = e.clientY - y0;
 
@@ -254,20 +283,14 @@ export function editLayerScreen(opts: {
     });
 
     node.addEventListener('pointerup', (e) => {
-      node.releasePointerCapture(e.pointerId);
-      tiles[slot]!.swiping = false;
-      if (holdTimer !== null) clearTimeout(holdTimer);
-      holdTimer = null;
-      if (!fired && !held) tap(slot);
-      axis = null;
+      if (node.hasPointerCapture(e.pointerId)) node.releasePointerCapture(e.pointerId);
+      // Only a press that this tile actually saw begin can become a tap.
+      const wasDown = down;
+      endGesture();
+      if (wasDown && !fired && !held) tap(slot);
     });
 
-    node.addEventListener('pointercancel', () => {
-      tiles[slot]!.swiping = false;
-      if (holdTimer !== null) clearTimeout(holdTimer);
-      holdTimer = null;
-      axis = null;
-    });
+    node.addEventListener('pointercancel', endGesture);
   }
 
   // --------------------------------------------------------------- transport --
