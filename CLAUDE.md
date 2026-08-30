@@ -128,11 +128,19 @@ number across the whole layer asked for frame 5,292,000 of a 3,528,000-frame fil
 seconds past the end, reading silent garbage rather than crashing. The conversion happens in
 exactly one place — `regionFor` in `pass-index.ts` — and it is tested.
 
-**The tolerance is a duration, not a frame count.** §1.4 forgives "a few milliseconds" on a
-session's final bar so stop latency does not lose a completed pass. A hardcoded 2000 frames
-looks reasonable and is 45 ms — enough to admit a bar that is most of a beat short, which the
-scheduler then reads past EOF. `TOLERANCE_SECONDS` is 4 ms, and `regionFor` clamps
-`frameCount` to what is actually on disk, so a forgiven bar plays a hair short instead.
+**The tolerance is a duration, not a frame count, and it guards the NEAR edge of a bar.**
+A hardcoded 2000 frames looks reasonable and is 45 ms — and it means different slack at
+44.1 kHz than at 48 kHz, when the thing being absorbed is a physical delay in milliseconds.
+`TOLERANCE_SECONDS` is 4 ms. Since a bar now exists once the recording reaches into it
+(§1.4), a bar landing short needs no forgiveness; what needs absorbing is the *overrun* —
+stopping is never instant, so a pass played to exactly the loop point captures a few ms past
+it, and that crumb would otherwise become a phantom bar and a phantom pass.
+
+**`passCount` and `barExists` are one derivation, not two.** They used to be computed
+independently and disagreed on every recording that overran the loop point: two complete
+passes plus 20 ms reported three passes to the size projection while offering two to the
+swipe axis, so the Library over-stated the project by 50%. `passCount` is now "traversals
+that hold their own bar 1". `tests/recording.test.ts` sweeps lengths asserting they agree.
 
 **One derivation per quantity.** An earlier `Layer` counted passes one way for its total
 (against a hardcoded `16 * 4410`, which is not `framesPerBar` for any tempo) and another way
@@ -153,6 +161,40 @@ after recording onto a compressed project.
 
 **The available set can be non-contiguous.** A tile legitimately reads `P4` with no `P3`
 behind it. The gap is real and the number preserves provenance.
+
+## Recording lifecycle, and a deliberate reversal of §5.1 #5
+
+`recordSession` in `project.ts` is the only way a layer gains audio. Nothing else writes
+`barSources` — before this existed, nothing did at all, and every function in the domain
+operated on an arrangement that could not come into being.
+
+**A bar exists once the recording reaches into it, not once it is whole.** This reverses
+§5.1 #5 ("kept but not exposed"), whose stated reason was that padding "creates silent bars
+that look selectable". Nothing is padded — `regionFor` clamps to the file, so a half-recorded
+bar plays half and stops — and a bar the recording never reached is still excluded. So the
+failure that rule guarded against cannot occur, and a partial pass yields usable bars instead
+of discarding the user's last seconds of playing. **The kit still implements the old rule**;
+`Tools/verify-timing.js` asserts it does, so the divergence cannot vanish unnoticed.
+
+**The arrangement is built on the first session and never rebuilt.** A later pass is an
+option the vertical axis gains, not a decision about where it goes — auto-selecting the
+newest pass would discard hunting the user had already done.
+
+**Slots a partial first pass never reached point at `P1/1` and start muted.** Both halves
+matter. Pointing at real audio keeps the slot swipeable — left dangling, the tile draws blank
+and the vertical axis has no available set to wrap through, so the user cannot select their
+way out. Starting muted stops the placeholder lying about being a performance. Together they
+hand the decision back through gestures that already exist, and the swipe lock composes
+rather than conflicts: unmuting is the step where the user decides the slot should sound.
+**Nothing ever reaches back to unmute them** — by then they are ordinary muted slots and our
+guesses would be indistinguishable from the user's choices.
+
+**A session with no usable audio is not recorded.** On an empty layer it would initialise an
+arrangement of nothing but muted placeholders.
+
+**The layer being recorded onto is silent for the take**, and it is derived (`isLayerAudible`),
+never written into `layer.muted`. Writing through would make our state indistinguishable from
+the user's, so stopping could not restore theirs — the same trap as everywhere else here.
 
 ## Per-bar mute
 

@@ -137,9 +137,10 @@ export function regionFor(index: PassIndex, ref: BarRef): SourceRegion | undefin
   const startFrame =
     (located.localPass - 1) * loopFrames(t) + frameOffsetInLoop(t, ref.relativeBar);
 
-  // Clamp to what is actually on disk. `barExists` forgives a few milliseconds so a pass
-  // played to completion is not lost to stop latency — but the forgiven frames do not
-  // exist, and asking the scheduler for them reads past the end of the file.
+  // Clamp to what is actually on disk. This is load-bearing, not defensive: `barExists`
+  // admits a bar the recording only reached partway into, and this is what makes such a bar
+  // behave like an ordinary one — it plays the audio that exists and stops. Nothing is
+  // padded, so no silence is ever written to represent the remainder (§5.1 #5's real point).
   const available = frames - startFrame;
   if (available <= 0) return undefined;
 

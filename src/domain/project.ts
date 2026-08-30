@@ -1,4 +1,9 @@
-import { type Arrangement, type MutedSlots, NONE_MUTED } from './arrangement.ts';
+import {
+  type Arrangement,
+  type MutedSlots,
+  NONE_MUTED,
+  initialArrangement,
+} from './arrangement.ts';
 import { type PassIndex, type RecordingSession, passIndex, totalPasses } from './pass-index.ts';
 import { type Timing, loopSeconds, timing } from './timing.ts';
 
@@ -141,6 +146,59 @@ export function layerHasRecording(layer: Layer): boolean {
 /** The pass about to be captured: `Pass 1` for an empty layer, `passes + 1` otherwise (§3.9). */
 export function nextPassNumber(layer: Layer, t: Timing): number {
   return totalPasses(layerPassIndex(layer, t)) + 1;
+}
+
+/**
+ * Commit a finished recording to a layer.
+ *
+ * **The arrangement is initialised on the first session only.** Before this a layer's
+ * `barSources` is empty, which is not a degenerate arrangement but the absence of one — there
+ * is nothing to arrange until audio exists, and §4.2 hides Edit bars until then for the same
+ * reason. `initialArrangement` decides what it becomes, including which slots a partial first
+ * pass leaves muted.
+ *
+ * **Every later session leaves the arrangement and the mutes exactly as they are.** By then
+ * they are the user's, and a new pass is an *option* the swipe axis gains, not a decision
+ * about where it goes. Auto-selecting the newest pass would silently discard hunting the user
+ * had already done, which is the whole activity the app exists for.
+ *
+ * A session with no usable audio is not recorded at all. It would add a file, contribute no
+ * passes, and — on an empty layer — trigger the initialisation with nothing behind it,
+ * producing an arrangement of entirely muted placeholder slots.
+ */
+export function recordSession(layer: Layer, session: RecordingSession, t: Timing): Layer {
+  if (totalPasses(passIndex([session], t)) === 0) return layer;
+
+  const sessions = [...layer.sessions, session];
+  if (layer.sessions.length > 0) return { ...layer, sessions };
+
+  const initial = initialArrangement(passIndex(sessions, t));
+  return {
+    ...layer,
+    sessions,
+    barSources: initial.barSources,
+    mutedSlots: initial.mutedSlots,
+  };
+}
+
+/**
+ * Whether a layer sounds right now, given what is being recorded (§3.9).
+ *
+ * §3.9 says "**all other** layers play at their current level, mute, EQ and pan" — the layer
+ * being recorded onto is not among them. It falls silent for the take, because the user is
+ * presumably playing a replacement for what is already there and would otherwise be
+ * performing against the very audio they are trying to replace.
+ *
+ * **Derived, never written into `layer.muted`.** Writing it through would leave the user's
+ * own mute state indistinguishable from ours, so stopping the recording could not restore it
+ * — the same trap as `mutedSlots` and layer mute, which is why those also compose at read
+ * time rather than being merged (`isSilentAt`).
+ *
+ * An empty layer makes this a no-op, so it needs no condition: there is nothing to silence.
+ */
+export function isLayerAudible(layer: Layer, recordingIntoLayerIndex?: number): boolean {
+  if (layer.muted) return false;
+  return layer.index !== recordingIntoLayerIndex;
 }
 
 export function projectHasRecordings(project: Project): boolean {

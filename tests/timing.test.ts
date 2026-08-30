@@ -38,10 +38,11 @@ describe('Timing', () => {
     assert.ok(Math.abs(loopSeconds(timing(84, 32, 44_100)) - 91.43) < 0.01);
   });
 
-  it('counts partial passes', () => {
+  it('counts partial passes, but not the crumb stop latency leaves', () => {
     assert.equal(passCount(T, 0), 0);
     assert.equal(passCount(T, LOOP), 1);
-    assert.equal(passCount(T, LOOP + 1), 2);
+    assert.equal(passCount(T, LOOP + 1), 1, 'one frame past the loop point is stop latency');
+    assert.equal(passCount(T, LOOP + FPB), 2, 'a bar past it is a pass the user played into');
     assert.equal(passCount(T, 2 * LOOP + 8 * FPB), 3);
   });
 

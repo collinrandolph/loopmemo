@@ -193,16 +193,27 @@ partial one is pass 3, and the new session starts at pass 4.
 framesPerBar = round(sampleRate × 60 × beatsPerBar / bpm)     // beatsPerBar = 4 in v1
 loopFrames   = framesPerBar × barCount
 
-passCount(session)   = ceil(session.frames / loopFrames)      // partial passes included
 session[i].firstPass = 1 + Σ passCount(session[0..i-1])       // numbering follows session order
 
-// does pass p contain relative bar r?
+// does pass p contain any of relative bar r?
 //   locate the owning session, convert p to a session-local index, then:
-barExists(p, r) = ((localPass - 1) × loopFrames + (r - 1) × framesPerBar) + framesPerBar
-                  <= session.frames + tolerance
+barExists(p, r) = ((localPass - 1) × loopFrames + (r - 1) × framesPerBar) + tolerance
+                  < session.frames
+
+// a pass is a traversal that holds its own bar 1 — one derivation, not two
+passCount(session)   = count of p ≥ 1 where barExists(p, 1)
+                     = ceil((session.frames - tolerance) / loopFrames)
 ```
 
-`LR.timing.passesForBar()` in the kit is the executable form of this.
+**A bar exists once the recording reaches into it**, not once it is whole. Stopping halfway through
+bar 10 keeps bar 10 as an ordinary, selectable bar that runs out of audio partway; the region is
+clamped to what is on disk, so nothing is padded and no silence is written. The alternative discards
+the user's last seconds of playing for not landing on a boundary. See §5.1 #5, which this reverses,
+and §1.6 for what it means for a first pass.
+
+`LR.timing.passesForBar()` in the kit still implements the earlier rule, which required a whole bar.
+The two agree wherever a session ends on a bar boundary — every case in the table below — and
+`Tools/verify-timing.js` pins the difference so it cannot vanish unnoticed.
 
 ### Availability is per bar position, and can be non-contiguous
 
@@ -229,9 +240,12 @@ Bars 9–16 have no pass 3, because that session stopped before reaching them. T
 rather than accumulating bar durations — otherwise rounding error walks the boundaries out of
 alignment over a long recording.
 
-**Allow a small tolerance** (a few milliseconds) on the final bar of a session. Stopping has latency,
-so a pass the user played to completion can land a hair short of the arithmetic and would otherwise
-vanish.
+**Allow a small tolerance** (a few milliseconds) for stop latency — at the **near** edge of a bar,
+not the far one. A bar that lands a hair short is admitted for free now that reaching into a bar is
+enough, so nothing needs forgiving there. What needs absorbing is the opposite case: stopping is
+never instant, so a pass played to exactly the loop point captures a few milliseconds past it, and
+that crumb would otherwise become a whole phantom bar — and through `passCount`, a whole phantom
+pass inflating the size projection.
 
 ## 1.5 Data model
 
@@ -271,6 +285,45 @@ structures describing the same thing is exactly how they drift apart.
 
 **Pass numbers are never stored.** They are derived from session order and duration (§1.4), which
 keeps them stable as sessions are added.
+
+## 1.6 Recording lifecycle
+
+An empty layer has **no arrangement at all** — `barSources` is empty, which is the absence of an
+arrangement rather than a degenerate one. There is nothing to arrange until audio exists, which is
+also why §4.2 hides Edit bars until then.
+
+**The arrangement is built on the first session, and never rebuilt.** Every later session leaves
+`barSources` and `mutedSlots` exactly as they are. A new pass is an *option the vertical axis gains*,
+not a decision about where it goes; auto-selecting the newest pass would silently discard hunting
+the user had already done, which is the activity the app exists for.
+
+**A first pass that stopped part way leaves slots with nothing behind them.** Those slots point at
+`P1/1` and **start muted**. Both halves are load-bearing:
+
+- **Pointing at real audio** keeps the slot swipeable. Left pointing at a bar that does not exist,
+  the tile draws blank and the vertical axis has no available set to wrap through — the user cannot
+  select their way out of the hole. Bar 1 is guaranteed to exist the moment any of the pass does.
+- **Starting muted** stops the placeholder from lying. An unmuted slot quietly playing bar 1 in slot
+  13 would be the app inventing an arrangement the user never performed.
+
+Together they hand the decision back: unmute, then swipe, using only gestures that already exist.
+The swipe lock (§3.7) composes rather than conflicts — unmuting is simply the first step, and it is
+the step where the user decides the slot should sound. The app never resolves the gap on their
+behalf, **including later**: recording a complete second pass does not reach back and unmute these.
+By then they are ordinary muted slots, and our guesses would be indistinguishable from their choices.
+
+When the first pass is complete this is exactly recorded order with nothing muted.
+
+**A session holding no usable audio is not recorded.** It would add a file, contribute no passes,
+and on an empty layer would trigger initialisation with nothing behind it — an arrangement of
+nothing but muted placeholders.
+
+**The layer being recorded onto is silent for the take.** §3.9 already says "all *other* layers
+play"; this states why. The user is presumably playing a replacement for what is there, and would
+otherwise be performing against the very audio they are trying to replace. It is **derived, never
+written into `layer.muted`** — writing it through would make our state indistinguishable from the
+user's, so stopping the recording could not restore theirs. Same composition rule as layer mute and
+per-bar mute (§3.7).
 
 ---
 
@@ -1125,7 +1178,7 @@ future session would otherwise "clean them up" and quietly undo the iteration.
 | 2 | **A layer can be cleared; an individual pass cannot be deleted** | `barSources` references pass numbers; deleting one pass renumbers the rest and breaks every reference past it. Clearing a layer is self-contained. Compress is the only other way to discard audio, and it renumbers everything at once. |
 | 3 | **Count-in exists and is not recorded**; length is a global setting | The session's first frame is the downbeat of Pass 1, or every boundary is offset by a bar. It never touches the audio, so it needs no per-project snapshot. |
 | 4 | **BPM and bar count lock after the first recording** | Every derived value depends on them. |
-| 5 | **A partial bar at the end of a session is kept but not exposed** | `barExists` already excludes it. Don't pad — padding creates silent bars that look selectable. |
+| 5 | **A partial bar at the end of a session is kept AND exposed** — reversed; see §1.4 | Still **don't pad**: the rule's real point was that padding creates silent bars that look selectable. `regionFor` clamps to the file, so the bar plays short instead. A bar the recording never reached is still excluded, and a slot with nothing behind it starts muted (§1.6) rather than blank. |
 | 6 | **Exactly 7 layers** | Not "7+". The row stack has no defined behaviour otherwise. |
 | 7 | **Sessions are written to disk continuously**, not at stop | The raw performance is the only asset that can't be recreated. Recovery needs no special handling: under §1.4 a partial session is already a valid one. |
 | 8 | **No metronome — the drum loop replaces it** | Every project has a drum loop for timing reference. A separate click would need its own row, level and export rule for nothing. |

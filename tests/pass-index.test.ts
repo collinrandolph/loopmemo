@@ -96,10 +96,20 @@ describe('PassIndex', () => {
       assert.equal(regionFor(index, barRef(2, 16))?.frameCount, FPB - 100);
     });
 
-    it('does not admit a pass that stopped well short', () => {
-      // 40 ms short. A 2000-frame tolerance would wrongly admit this.
+    it('admits a bar that stopped well short, because its audio is real', () => {
+      // 40 ms short of completing bar 16. §1.4's original formula dropped this bar; it now
+      // stands as an ordinary bar that runs 40 ms short, with nothing padded to fill it.
       const index = passIndex([session(2 * LOOP - 1764)], T);
-      assert.equal(availablePasses(index, 16).includes(2), false);
+      assert.equal(availablePasses(index, 16).includes(2), true);
+      assert.equal(regionFor(index, barRef(2, 16))?.frameCount, FPB - 1764);
+    });
+
+    it('still discards the crumb an overrun leaves behind', () => {
+      // The guard the old tolerance provided, in its new place. Stopping a few frames past
+      // the loop point must not become a bar — and through passCount, a whole pass.
+      const index = passIndex([session(2 * LOOP + 100)], T);
+      assert.equal(availablePasses(index, 1).includes(3), false);
+      assert.equal(totalPasses(index), 2);
     });
   });
 

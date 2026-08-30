@@ -39,20 +39,29 @@ check('passesForBar(9)',  T.passesForBar(sessions, 9,  fpb, BARS), [1, 2, 4, 5])
 check('passesForBar(16)', T.passesForBar(sessions, 16, fpb, BARS), [1, 2, 4, 5]);
 check('passCount total',  T.passCount(sessions, fpb, BARS), 5);
 
-// ---- the tolerance question ----
-// Swift defaults tolerance to 2000 frames. The reference defaults to 0.
-// Spec §1.4 says "a few milliseconds".
-console.log('\n-- tolerance: what does 2000 frames actually mean? --');
-console.log(`  2000 frames @ 44100 Hz = ${(2000 / 44100 * 1000).toFixed(1)} ms`);
-console.log(`  2000 frames @ 48000 Hz = ${(2000 / 48000 * 1000).toFixed(1)} ms`);
-console.log(`  "a few ms" (4 ms)      = ${Math.round(0.004 * 44100)} frames @ 44.1k`);
+// ---- deliberate divergence: partial bars ----
+// The kit implements §1.4's original barExists, which requires a WHOLE bar. We admit a bar
+// the recording reached into at all, so a partial pass yields usable bars instead of
+// discarding the user's last seconds of playing; regionFor clamps to the file, so nothing is
+// padded. The two agree wherever a session ends on a bar boundary — which is every case in
+// the spec's worked example above, so the checks there stay meaningful.
+//
+// These assert the KIT still behaves the old way. If one starts failing, the kit changed and
+// the divergence needs re-deciding rather than silently disappearing.
+console.log('\n-- divergence: the kit still requires a whole bar --');
 
-// A pass that stopped 40 ms short of completing bar 16.
-const short = 1764 ; // 40 ms at 44.1k
-const stoppedShort = [{ frames: 2 * loopFrames - short }];
-check('40ms-short pass, tolerance 0 (bar 16 absent)',
+const halfBar = [{ frames: 9 * fpb + fpb / 2 }]; // stopped halfway through bar 10
+check('kit drops the half-recorded bar 10',
+      T.passesForBar(halfBar, 10, fpb, BARS), []);
+check('kit and we agree bar 9 is present',
+      T.passesForBar(halfBar, 9, fpb, BARS), [1]);
+check('kit and we agree bar 11 is absent',
+      T.passesForBar(halfBar, 11, fpb, BARS), []);
+
+// The old tolerance guarded the far edge of the bar. Ours guards the near edge, so this
+// 40 ms-short bar is now kept (clamped) rather than lost.
+const stoppedShort = [{ frames: 2 * loopFrames - 1764 }];
+check('kit loses the 40ms-short bar 16 that we keep',
       T.passesForBar(stoppedShort, 16, fpb, BARS, 0), [1]);
-check('40ms-short pass, Swift tolerance 2000 (bar 16 wrongly present)',
-      T.passesForBar(stoppedShort, 16, fpb, BARS, 2000), [1, 2]);
 
 console.log(`\n${fail === 0 ? 'all checks passed' : fail + ' FAILED'}`);

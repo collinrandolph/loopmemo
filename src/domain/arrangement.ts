@@ -1,5 +1,11 @@
 import { type BarRef, barRef, barRefEquals, steppingBar } from './bar-ref.ts';
-import { type PassIndex, type SourceRegion, regionFor, steppingPass } from './pass-index.ts';
+import {
+  type PassIndex,
+  type SourceRegion,
+  hasAudio,
+  regionFor,
+  steppingPass,
+} from './pass-index.ts';
 import { framesPerBar } from './timing.ts';
 
 /**
@@ -39,6 +45,59 @@ export const NONE_MUTED: MutedSlots = [];
 /** Recorded order: slot n plays pass 1's bar n. */
 export function recordedOrder(barCount: number): Arrangement {
   return Array.from({ length: barCount }, (_, i) => barRef(1, i + 1));
+}
+
+/** What a layer's arrangement and mutes are the moment it first holds audio. */
+export type InitialArrangement = {
+  readonly barSources: Arrangement;
+  readonly mutedSlots: MutedSlots;
+};
+
+/**
+ * The arrangement a layer starts with, once its first pass exists.
+ *
+ * Recorded order, except where pass 1 never reached: a first pass that stopped after 9 bars
+ * of a 16-bar loop leaves slots 9..15 with nothing behind them. Those slots **point at
+ * `P1/1` and start muted**.
+ *
+ * Both halves of that matter, and neither works alone:
+ *
+ * - **Pointing somewhere real** keeps the slot swipeable. Left pointing at `P1/13`, which
+ *   does not exist, the tile would draw blank and the vertical axis would have no available
+ *   set to wrap through — the user could not select their way out of the hole. `P1/1` is
+ *   audio that is guaranteed to exist the instant any of the pass does.
+ * - **Starting muted** is what stops that placeholder from lying. An unmuted slot silently
+ *   playing bar 1 in slot 13 would be the app inventing an arrangement the user never
+ *   performed. Muted, the slot reads honestly as "nothing here yet".
+ *
+ * Together they hand the decision back: unmute, then swipe, using nothing but the gestures
+ * that already exist. The app never resolves the gap on the user's behalf — including later.
+ * Recording a second, complete pass does **not** reach back and unmute these; by then they
+ * are ordinary muted slots and the user's own choices are indistinguishable from ours.
+ *
+ * The swipe lock (§3.7) composes rather than conflicts: unmuting is simply the first step,
+ * and it is the step that means the user has decided the slot should sound.
+ *
+ * When pass 1 is complete this is exactly `recordedOrder(barCount)` with nothing muted.
+ *
+ * Bar count comes from the index's own timing rather than a parameter: the two must agree,
+ * and taking it separately is just an opportunity for them not to.
+ */
+export function initialArrangement(index: PassIndex): InitialArrangement {
+  const barCount = index.timing.barCount;
+  const barSources: BarRef[] = [];
+  const mutedSlots: number[] = [];
+
+  for (let slot = 0; slot < barCount; slot++) {
+    const natural = barRef(1, slot + 1);
+    if (hasAudio(index, natural)) {
+      barSources.push(natural);
+    } else {
+      barSources.push(barRef(1, 1));
+      mutedSlots.push(slot);
+    }
+  }
+  return { barSources, mutedSlots };
 }
 
 export function isSlotMuted(muted: MutedSlots, slot: number): boolean {
