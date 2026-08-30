@@ -1,9 +1,9 @@
 // Run the spec's reference implementation (docs/kit/lr-kit.js, §1.4) and compare
 // its output to what LoopRecorderCore's Timing / PassIndex assert.
-const fs = require('fs');
-const path = require('path');
+import fs from 'node:fs';
+import path from 'node:path';
 
-const KIT = path.join(__dirname, '..', 'docs', 'kit', 'lr-kit.js');
+const KIT = path.join(import.meta.dirname, '..', 'docs', 'kit', 'lr-kit.js');
 
 global.window = {};
 new Function(fs.readFileSync(KIT, 'utf8'))();

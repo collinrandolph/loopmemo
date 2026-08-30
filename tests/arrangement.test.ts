@@ -1,0 +1,111 @@
+import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
+
+import {
+  compressionPlan,
+  isRecordedOrderAt,
+  recordedOrder,
+  setSlot,
+  stepBarAt,
+  stepPassAt,
+  unresolvedSlots,
+} from '../src/domain/arrangement.ts';
+import { barRef } from '../src/domain/bar-ref.ts';
+import { regionFor } from '../src/domain/pass-index.ts';
+import { singlePassIndex, specIndex } from './fixtures.ts';
+
+describe('Arrangement', () => {
+  it('starts in recorded order', () => {
+    const arrangement = recordedOrder(4);
+    assert.deepEqual(arrangement, [barRef(1, 1), barRef(1, 2), barRef(1, 3), barRef(1, 4)]);
+    assert.ok(arrangement.every((_, slot) => isRecordedOrderAt(arrangement, slot)));
+  });
+
+  it('never mutates the array it was given', () => {
+    const original = recordedOrder(16);
+    const edited = setSlot(original, 3, barRef(2, 9));
+    assert.deepEqual(original[3], barRef(1, 4), 'the original was mutated');
+    assert.deepEqual(edited[3], barRef(2, 9));
+  });
+
+  it('rejects a slot outside the arrangement', () => {
+    assert.throws(() => setSlot(recordedOrder(4), 4, barRef(1, 1)), RangeError);
+    assert.throws(() => stepBarAt(recordedOrder(4), -1, 1, 4), RangeError);
+  });
+
+  describe('vertical stepping', () => {
+    it('changes only the pass, and only at that slot', () => {
+      const before = recordedOrder(16);
+      const after = stepPassAt(before, 8, 1, specIndex()); // slot 8 holds P1/9
+
+      assert.deepEqual(after[8], barRef(2, 9), 'bar 9 kept, pass stepped');
+      assert.deepEqual(after.slice(0, 8), before.slice(0, 8));
+      assert.deepEqual(after.slice(9), before.slice(9));
+    });
+
+    it('skips a gap in the available set', () => {
+      // Bar 9 has passes 1, 2, -, 4, 5. Stepping from P2 lands on P4.
+      const arrangement = setSlot(recordedOrder(16), 8, barRef(2, 9));
+      assert.deepEqual(stepPassAt(arrangement, 8, 1, specIndex())[8], barRef(4, 9));
+    });
+
+    it('returns the same arrangement when there is nowhere to go', () => {
+      // One available pass is the state that disables the axis entirely (§4.3), and it
+      // is derived from audio rather than from a flag.
+      const arrangement = recordedOrder(16);
+      assert.equal(stepPassAt(arrangement, 0, 1, singlePassIndex()), arrangement);
+    });
+  });
+
+  describe('horizontal stepping', () => {
+    it('changes only the bar, wrapping inside the pass', () => {
+      const arrangement = setSlot(recordedOrder(16), 0, barRef(2, 16));
+      const after = stepBarAt(arrangement, 0, 1, 16);
+      assert.deepEqual(after[0], barRef(2, 1), 'wrapped without touching the pass');
+    });
+
+    it('does not consult availability', () => {
+      // The horizontal axis rearranges against whatever pass is selected; it is the
+      // vertical axis that knows about gaps.
+      const arrangement = setSlot(recordedOrder(16), 0, barRef(3, 1));
+      assert.deepEqual(stepBarAt(arrangement, 0, 11, 16)[0], barRef(3, 12));
+    });
+  });
+
+  describe('unresolvedSlots', () => {
+    it('is empty for an arrangement the swipes produced', () => {
+      assert.deepEqual(unresolvedSlots(recordedOrder(16), specIndex()), []);
+    });
+
+    it('names the slots pointing at audio that does not exist', () => {
+      const arrangement = setSlot(recordedOrder(16), 5, barRef(3, 12)); // in the gap
+      assert.deepEqual(unresolvedSlots(arrangement, specIndex()), [5]);
+    });
+  });
+
+  describe('compressionPlan', () => {
+    it('keeps the arranged audio and renumbers to recorded order', () => {
+      // §2.7: the retained loop is standardised to Pass 1 and bars are renumbered to the
+      // arranged order, because the original numbering referenced audio that is gone.
+      const arrangement = setSlot(recordedOrder(16), 0, barRef(2, 9));
+      const plan = compressionPlan(arrangement, specIndex());
+      assert.ok(plan);
+
+      assert.deepEqual(plan.arrangement, recordedOrder(16));
+      assert.equal(plan.regions.length, 16);
+      // Slot 0 still carries the audio that was selected into it.
+      assert.deepEqual(plan.regions[0], regionFor(specIndex(), barRef(2, 9)));
+    });
+
+    it('refuses when a slot points at missing audio', () => {
+      // Baking a silent bar into the one copy that survives is unrecoverable.
+      const arrangement = setSlot(recordedOrder(16), 5, barRef(3, 12));
+      assert.equal(compressionPlan(arrangement, specIndex()), undefined);
+    });
+
+    it('is idempotent on an already-compressed arrangement', () => {
+      const plan = compressionPlan(recordedOrder(16), singlePassIndex());
+      assert.deepEqual(plan?.arrangement, recordedOrder(16));
+    });
+  });
+});

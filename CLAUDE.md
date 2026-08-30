@@ -48,41 +48,50 @@ arrangement editing, compress and bounce are all pure. What genuinely binds to a
 narrow: open a file, schedule a buffer at a time, read input, measure latency. **If that
 surface starts growing, the deferral is failing** — stop and decide rather than drifting.
 
-The Swift in `Sources/` was written to this shape, and its logic has already been expressed
-in two languages (Swift, and the JavaScript in `Tools/`) without the design changing. That
-portability is not incidental; it is what makes the deferral affordable.
+### Why the domain layer is TypeScript
 
-**Nothing here has been compiled, on any platform.** The Swift is unverified. What *has* been
-verified is the logic it encodes — `PassIndex`'s pass numbering, availability and region
-lookup, executed in JavaScript against the spec's worked example and the `lr-kit.js`
-reference. Sound algorithm, unchecked transcription.
+Not a platform bet — the opposite. TypeScript runs identically in Node, React Native and a
+browser, so it fits three of the four routes in `docs/platform-decision.md`; Swift fits only
+the one that needs the Mac that does not exist. And it **runs and tests on this machine
+today**, which Swift never could.
 
-`Sources/LoopRecorderAudio/` is a documented stub and should stay that way until a platform is
-chosen and there is a way to compile it. The first attempt produced ~400 lines of AVFoundation
-that could not compile and was deleted whole. **Do not write audio code that nothing can
-build.**
+An earlier Swift version of this same layer is at commit `349d15b` if a native path ever
+opens. It was deleted rather than kept alongside: two implementations of one domain is
+precisely the drift the spec warns about (§1.5), and one of them could not be compiled or
+tested by anything.
+
+**There is no audio code in this repo, deliberately.** A first attempt produced ~400 lines of
+AVFoundation that could not compile and was deleted whole. Do not write audio code until a
+platform is chosen and there is something that can build it.
 
 ## Layout
 
 ```
-Sources/LoopRecorderCore/     pure Foundation — builds and tests anywhere
-  BarRef.swift                bar identity, axis stepping
-  Timing.swift                frame arithmetic, tolerance
-  RecordingSession.swift      session model, SourceRegion
-  PassIndex.swift             pass numbering, availability, region lookup
-  SchedulePlan.swift          what plays when; splice entry points
-  Layer.swift  Project.swift  AudioQuality.swift
-Sources/LoopRecorderAudio/    AVFoundation — Apple only, needs a device to verify
-Tests/LoopRecorderCoreTests/
+src/domain/            the whole domain layer — no platform APIs, no dependencies
+  bar-ref.ts           bar identity; horizontal axis stepping
+  timing.ts            frame arithmetic; the end-of-session tolerance
+  pass-index.ts        pass numbering, availability, region lookup, vertical stepping
+  schedule-plan.ts     what plays when; mid-bar splice entry points
+  arrangement.ts       the edit operations; compression plan
+  project.ts           Project, Layer, quality, size projection
+tests/                 node:test, one file per module
+Tools/                 toolchain-free cross-checks against docs/kit/lr-kit.js
+docs/                  the spec, the design kit, the mockups, the platform research
 ```
-
-**The split is the point.** Anything decidable without audio hardware goes in Core, where a
-test can reach it. `LoopRecorderAudio` executes decisions Core has already made, so the part
-that can only be verified by ear stays small.
 
 ```bash
-swift test --filter LoopRecorderCoreTests
+npm run check      # typecheck + tests + the lr-kit.js cross-check
+npm test           # just the tests
 ```
+
+**No build step and no runtime dependencies.** Node 22.6+ runs the TypeScript directly by
+stripping types, so `tsconfig.json` sets `erasableSyntaxOnly` — enums, namespaces and
+parameter properties are rejected at typecheck rather than at runtime. `typescript` is the
+only devDependency, for `tsc --noEmit`.
+
+**Run `npm run check`, not the individual scripts.** It has already caught one regression the
+others hid: adding `"type": "module"` silently broke the CommonJS harness in `Tools/` while
+`npm test` stayed green.
 
 ## The three ideas everything rests on (spec §0.3)
 
@@ -116,12 +125,12 @@ per recording, and **sessions are never concatenated** (§1.4) — frame 0 of a 
 the downbeat of *that session's* first pass. Deriving a frame offset from the absolute bar
 number across the whole layer asked for frame 5,292,000 of a 3,528,000-frame file: forty
 seconds past the end, reading silent garbage rather than crashing. The conversion happens in
-exactly one place, `PassIndex.region(for:)`, and is tested.
+exactly one place — `regionFor` in `pass-index.ts` — and it is tested.
 
 **The tolerance is a duration, not a frame count.** §1.4 forgives "a few milliseconds" on a
 session's final bar so stop latency does not lose a completed pass. A hardcoded 2000 frames
 looks reasonable and is 45 ms — enough to admit a bar that is most of a beat short, which the
-scheduler then reads past EOF. `Timing.toleranceSeconds` is 4 ms, and `region(for:)` clamps
+scheduler then reads past EOF. `TOLERANCE_SECONDS` is 4 ms, and `regionFor` clamps
 `frameCount` to what is actually on disk, so a forgiven bar plays a hair short instead.
 
 **One derivation per quantity.** An earlier `Layer` counted passes one way for its total
@@ -132,8 +141,9 @@ for availability. `PassIndex` walks session order once; everything else asks it.
 only holds if it is the total. Pass count drives size, not layer count, which is why the
 Library shows it.
 
-**Use Double for `loopSeconds`.** `barCount * beatsPerBar * 60 / bpm` in integers truncates
-9.6 s to 9 — a 6% error in every size projection at that tempo.
+**Keep `loopSeconds` floating point.** `barCount * beatsPerBar * 60 / bpm` under integer
+division truncates 9.6 s to 9 — a 6% error in every size projection at that tempo. JavaScript
+will not do this to you by accident, but a port to a typed language will.
 
 **Availability is derived from audio, never stored (§1.4).** A counter cannot express a
 partial pass, where early bars have one more pass than late ones. It also means a compressed,
@@ -145,14 +155,22 @@ behind it. The gap is real and the number preserves provenance.
 
 ## Where the audio work is still ahead
 
-`Sources/LoopRecorderAudio/PlaybackEngine.swift` carries the detail. The short version:
-one shared sample-frame anchor for all layers; two alternating player nodes per layer; an
-unconditional 5–10 ms equal-power crossfade on every join; beat-sized segments so the
-committed horizon stays short; nothing on the render thread; and **latency compensation,
-which is mandatory (§2.3) and was the thing most quietly missing** — it was computed and
-then discarded.
+Not written, and deliberately not started — see the platform section. What it will owe,
+whichever platform wins:
 
-Also note `installTap(onBus:)` twice on the same bus throws. Metering and capture share one.
+- **One shared sample-frame anchor** for all layers. Relative timing drifts them apart (§0.4).
+- **Two alternating players per layer**, so segment N+1 can overlap the tail of N.
+- **An unconditional 5–10 ms equal-power crossfade on every join**, including a splice into
+  the same source. Bar boundaries in a live recording almost never land on silence (§2.4).
+- **Beat-sized segments**, so the committed horizon stays short and a splice is never far
+  behind the gesture.
+- **Nothing on the render thread** — no allocation, no locks, no file I/O.
+- **Latency compensation**, mandatory per §2.3 and the thing most quietly missing from the
+  first attempt: it was computed and then discarded. On a platform without a latency API the
+  answer is loopback calibration — see `docs/platform-decision.md` §5.
+
+`segments()` and `splice()` in `schedule-plan.ts` already decide *what* plays and *when*. The
+audio layer's job is to execute that, and little else.
 
 ## Build order (§0.5)
 
