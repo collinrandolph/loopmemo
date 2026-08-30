@@ -188,10 +188,11 @@ body { margin: 0; background: var(--lr-page); }
 .lr-row:not(.is-editing-chord) .chord-editor,
 .lr-row:not(.is-editing-chord) .lr-panel-divider { display: none; }
 
-/* Three fields inline. Vertical swipe steps each, the same axis and the same direction as the
-   pass axis on the Edit Layer screen, so the app has one meaning for a vertical drag. */
+/* A vertically-swipeable field: three inline are the chord editor, one alone is the drum loop.
+   Same axis and same direction as the pass axis on the Edit Layer screen, so the app has one
+   meaning for a vertical drag. */
 .chord-editor { display: flex; gap: 8px; }
-.chord-wheel {
+.lr-wheel {
   flex: 1 1 0; min-width: 0; overflow: hidden;
   background: rgba(255,255,255,.09); border: 1px solid rgba(255,255,255,.14);
   border-radius: 6px; padding: 7px 4px 5px;
@@ -200,22 +201,28 @@ body { margin: 0; background: var(--lr-page); }
   touch-action: none; user-select: none; -webkit-user-select: none;
   -webkit-tap-highlight-color: transparent;
 }
-.chord-wheel:hover { background: rgba(255,255,255,.16); }
-.chord-wheel__value {
+.lr-wheel:hover { background: rgba(255,255,255,.16); }
+.lr-wheel__value {
   font-size: 17px; font-weight: 600; color: var(--lr-ink); line-height: 1.2;
+  /* A loop name is a phrase where a note letter is one glyph, so it has to be able to run out
+     of room without pushing the wheel wider than its column. */
+  max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.chord-wheel--sign .chord-wheel__value { font-size: 21px; line-height: .98; }
-.chord-wheel__cap {
+.lr-wheel--sign .lr-wheel__value { font-size: 21px; line-height: .98; }
+.lr-wheel__cap {
   font-size: 9px; letter-spacing: .06em; text-transform: uppercase;
   color: var(--lr-hint); white-space: nowrap;
 }
 
 /* The new value follows the finger in, so a repeat inside one drag reads as travel rather than
    as a value flickering in place. Forward is an upward drag, so forward arrives from below. */
-@keyframes lr-wheel-from-below { from { transform: translateY(8px);  opacity: 0 } to { transform: none; opacity: 1 } }
-@keyframes lr-wheel-from-above { from { transform: translateY(-8px); opacity: 0 } to { transform: none; opacity: 1 } }
-.chord-wheel__value.is-from-below { animation: lr-wheel-from-below .13s ease-out; }
-.chord-wheel__value.is-from-above { animation: lr-wheel-from-above .13s ease-out; }
+/* Starts part-faded rather than at zero. Every step restarts this, so a fast drag was holding
+   the value near-invisible for the whole gesture — the animation hiding the thing it exists to
+   make legible. */
+@keyframes lr-wheel-from-below { from { transform: translateY(8px);  opacity: .45 } to { transform: none; opacity: 1 } }
+@keyframes lr-wheel-from-above { from { transform: translateY(-8px); opacity: .45 } to { transform: none; opacity: 1 } }
+.lr-wheel__value.is-from-below { animation: lr-wheel-from-below .13s ease-out; }
+.lr-wheel__value.is-from-above { animation: lr-wheel-from-above .13s ease-out; }
 
 .random-row .lr-btn { flex: 1; }
 

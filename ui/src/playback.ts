@@ -94,6 +94,19 @@ const QUALITIES = [
 
 const TONES = ['Rhodes', 'Pad', 'Nylon', 'Organ'];
 
+/**
+ * Placeholder library — §6.2 lists "drum loop library and selection UI" as not yet designed, so
+ * these are names to swipe through, not a decided set.
+ */
+const DRUM_LOOPS = [
+  'Dusty Break 02',
+  'Tight Room 01',
+  'Boom Bap 04',
+  'Half-Time Shuffle',
+  'Brush Kit 03',
+  'Four on the Floor',
+].map((name) => ({ id: name, label: name }));
+
 /** A slot with nothing chosen yet. */
 function defaultChord(): Chord {
   return { letter: 'C', accidental: 'natural', quality: 'major' };
@@ -131,7 +144,8 @@ function randomChord(): Chord {
 const SWIPE_THRESHOLD = 22; // as `edit-layer.ts`; the same gesture should want the same travel
 
 /**
- * One vertically-swipeable field. Three of them inline are the chord editor.
+ * One vertically-swipeable field. Three inline are the chord editor; one on its own is the drum
+ * loop picker.
  *
  * **Up steps forward**, matching the pass axis on the Edit Layer screen. Both are the same rule:
  * the material moves under the finger, so the next value is pulled in from the side you drag
@@ -145,16 +159,16 @@ const SWIPE_THRESHOLD = 22; // as `edit-layer.ts`; the same gesture should want 
  * is a routing hint, not press state — it survives a `pointerup` the page never receives, and
  * gating on it is the bug this project has already shipped once (see CLAUDE.md).
  */
-function chordWheel(
+function swipeWheel(
   caption: string,
   options: readonly { id: string; label: string }[],
   current: () => string,
   onPick: (id: string) => void,
   extraClass = '',
 ): HTMLElement {
-  const node = el('div', `chord-wheel ${extraClass}`);
-  const value = el('div', 'chord-wheel__value');
-  node.append(value, el('div', 'chord-wheel__cap', `↕ ${caption}`));
+  const node = el('div', `lr-wheel ${extraClass}`);
+  const value = el('div', 'lr-wheel__value');
+  node.append(value, el('div', 'lr-wheel__cap', `↕ ${caption}`));
 
   function paint(dir = 0) {
     value.textContent = options.find((o) => o.id === current())?.label ?? '';
@@ -408,9 +422,23 @@ export function playbackScreen(opts: {
 
   // ---- drums
   const drums: RefRow = { id: 'drums', enabled: true, muted: false, level: 0.7 };
+  let drumLoop = DRUM_LOOPS[0]!.id;
   {
-    const parts = referenceRow(drums, DRUM_ICON, el('div', 'ref-detail', 'Dusty Break 02'));
-    parts.inner.appendChild(parts.settings);
+    const detail = el('div', 'ref-detail', drumLoop);
+    const parts = referenceRow(drums, DRUM_ICON, detail);
+
+    // The same wheel as the chord fields, and **always in the panel**. There is nothing to pick
+    // first: a drum row has one loop where a chord row has four chords, so the picker has no
+    // subject to be chosen and no reason to appear and disappear. Which is also why this panel
+    // needs no divider — everything in it is the track's.
+    parts.inner.append(
+      swipeWheel('Loop', DRUM_LOOPS, () => drumLoop, (v) => {
+        drumLoop = v;
+        detail.textContent = v; // the row head names the loop, so it follows the wheel
+      }),
+      parts.settings,
+    );
+
     parts.head.addEventListener('click', (e) => {
       if ((e.target as HTMLElement).closest('.lr-volume')) return;
       parts.row.classList.toggle('is-open');
@@ -480,15 +508,15 @@ export function playbackScreen(opts: {
       const chord = progression[editing]!;
       const changed = () => paintChords();
       chordSection.append(
-        chordWheel('Note', NOTE_LETTERS, () => chord.letter, (v) => {
+        swipeWheel('Note', NOTE_LETTERS, () => chord.letter, (v) => {
           chord.letter = v;
           changed();
         }),
-        chordWheel('Sign', ACCIDENTALS, () => chord.accidental, (v) => {
+        swipeWheel('Sign', ACCIDENTALS, () => chord.accidental, (v) => {
           chord.accidental = v as Chord['accidental'];
           changed();
-        }, 'chord-wheel--sign'),
-        chordWheel('Type', QUALITIES, () => chord.quality, (v) => {
+        }, 'lr-wheel--sign'),
+        swipeWheel('Type', QUALITIES, () => chord.quality, (v) => {
           chord.quality = v as Chord['quality'];
           changed();
         }),
