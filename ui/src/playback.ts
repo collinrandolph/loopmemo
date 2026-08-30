@@ -416,8 +416,19 @@ export function playbackScreen(opts: {
       vol.update();
     });
 
+    /**
+     * `max-height` is the kit's collapse mechanism, and a CSS value has to be a guess big enough
+     * for the tallest panel it will ever hold. The guess costs time: 400 against 180px of content
+     * means the first 55% of a collapse moves nothing, because `max-height` has to fall past the
+     * content before the box starts shrinking. Measured per panel instead, so the transition is
+     * the whole of the movement and a tap gets an immediate response.
+     */
+    function syncPanelHeight() {
+      panel.style.maxHeight = row.classList.contains('is-open') ? `${panel.scrollHeight}px` : '0px';
+    }
+
     refsEl.appendChild(row);
-    return { row, head, inner, settings };
+    return { row, head, panel, inner, settings, syncPanelHeight };
   }
 
   // ---- drums
@@ -442,6 +453,7 @@ export function playbackScreen(opts: {
     parts.head.addEventListener('click', (e) => {
       if ((e.target as HTMLElement).closest('.lr-volume')) return;
       parts.row.classList.toggle('is-open');
+      parts.syncPanelHeight();
     });
   }
 
@@ -527,12 +539,33 @@ export function playbackScreen(opts: {
       parts.row.classList.toggle('is-editing-chord', editing !== null);
       paintEditor();
       paintChords();
+      // Swapping between the chord view and the track view changes the content height, so the
+      // measured cap has to follow it — otherwise the taller of the two is clipped.
+      parts.syncPanelHeight();
     }
+
+    /**
+     * Closing a panel that is showing a chord has to unmount the editor **after** the collapse,
+     * not with it. `is-editing-chord` hides the fields outright, so dropping it alongside
+     * `is-open` shortened the content from 180px to 93px in one frame while `max-height` was
+     * still animating — the panel jumped most of the way down and then eased the remainder.
+     *
+     * The chord button un-highlights immediately, because that is feedback for the tap and does
+     * not move anything. Only the part that changes height waits.
+     */
+    parts.panel.addEventListener('transitionend', (e) => {
+      if (e.propertyName !== 'max-height') return;
+      if (parts.row.classList.contains('is-open')) return; // that was an open, or a reopen
+      parts.row.classList.remove('is-editing-chord');
+      paintEditor();
+    });
 
     function close() {
       editing = null;
+      paintChords();
       parts.row.classList.remove('is-open');
-      render();
+      parts.syncPanelHeight();
+      // `is-editing-chord` deliberately stays; the transitionend above takes it off.
     }
 
     function show(next: number | null) {
