@@ -1,3 +1,4 @@
+import { type MutedSlots, isSlotMuted } from './arrangement.ts';
 import type { BarRef } from './bar-ref.ts';
 import { type PassIndex, type SourceRegion, regionFor } from './pass-index.ts';
 import { framesPerBar } from './timing.ts';
@@ -40,6 +41,7 @@ export function segments(
   index: PassIndex,
   fromSlot: number,
   count: number,
+  muted: MutedSlots,
 ): ScheduledSegment[] {
   if (arrangement.length === 0 || count <= 0) return [];
 
@@ -49,6 +51,12 @@ export function segments(
   for (let step = 0; step < count; step++) {
     const absolute = fromSlot + step;
     const wrapped = ((absolute % arrangement.length) + arrangement.length) % arrangement.length;
+
+    // A muted slot is a rest, not a deletion: nothing is scheduled, and the slots after it
+    // keep the start frames they already had, because those come from the absolute position
+    // rather than from what was queued before them. Time advances through the silence.
+    if (isSlotMuted(muted, wrapped)) continue;
+
     const source = arrangement[wrapped]!;
     const region = regionFor(index, source);
     if (!region) continue;

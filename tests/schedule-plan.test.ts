@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { recordedOrder, setSlot } from '../src/domain/arrangement.ts';
+import { NONE_MUTED, recordedOrder, setSlot } from '../src/domain/arrangement.ts';
 import { barRef } from '../src/domain/bar-ref.ts';
 import { segments, splice } from '../src/domain/schedule-plan.ts';
 import { FPB, LOOP, specIndex } from './fixtures.ts';
@@ -11,7 +11,7 @@ const CROSSFADE = 441; // 10 ms at 44.1 kHz
 describe('SchedulePlan', () => {
   describe('segments', () => {
     it('walks the arrangement contiguously from the anchor', () => {
-      const plan = segments(recordedOrder(16), specIndex(), 0, 4);
+      const plan = segments(recordedOrder(16), specIndex(), 0, 4, NONE_MUTED);
       assert.deepEqual(
         plan.map((s) => s.slot),
         [0, 1, 2, 3],
@@ -26,7 +26,7 @@ describe('SchedulePlan', () => {
       // §1.1: playback progress indexes on the slot, colour on the source. A reordered
       // arrangement keeps the slot ascending while the source jumps.
       const arrangement = setSlot(recordedOrder(16), 0, barRef(2, 9));
-      const [first] = segments(arrangement, specIndex(), 0, 1);
+      const [first] = segments(arrangement, specIndex(), 0, 1, NONE_MUTED);
 
       assert.equal(first?.slot, 0);
       assert.equal(first?.startFrame, 0, 'slot 0 always starts at the anchor');
@@ -35,7 +35,7 @@ describe('SchedulePlan', () => {
     });
 
     it('wraps around the arrangement while time keeps moving forward', () => {
-      const plan = segments(recordedOrder(16), specIndex(), 14, 4);
+      const plan = segments(recordedOrder(16), specIndex(), 14, 4, NONE_MUTED);
       assert.deepEqual(
         plan.map((s) => s.slot),
         [14, 15, 0, 1],
@@ -49,7 +49,7 @@ describe('SchedulePlan', () => {
 
     it('skips a slot pointing at unrecorded audio rather than silencing it', () => {
       const arrangement = setSlot(recordedOrder(16), 2, barRef(3, 12)); // in the gap
-      const plan = segments(arrangement, specIndex(), 0, 4);
+      const plan = segments(arrangement, specIndex(), 0, 4, NONE_MUTED);
       assert.deepEqual(
         plan.map((s) => s.slot),
         [0, 1, 3],
@@ -57,8 +57,8 @@ describe('SchedulePlan', () => {
     });
 
     it('schedules nothing for an empty arrangement or a non-positive horizon', () => {
-      assert.deepEqual(segments([], specIndex(), 0, 4), []);
-      assert.deepEqual(segments(recordedOrder(16), specIndex(), 0, 0), []);
+      assert.deepEqual(segments([], specIndex(), 0, 4, NONE_MUTED), []);
+      assert.deepEqual(segments(recordedOrder(16), specIndex(), 0, 0, NONE_MUTED), []);
     });
   });
 

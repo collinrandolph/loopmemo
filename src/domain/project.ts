@@ -1,4 +1,4 @@
-import type { Arrangement } from './arrangement.ts';
+import { type Arrangement, type MutedSlots, NONE_MUTED } from './arrangement.ts';
 import { type PassIndex, type RecordingSession, passIndex, totalPasses } from './pass-index.ts';
 import { type Timing, loopSeconds, timing } from './timing.ts';
 
@@ -38,10 +38,25 @@ export type Layer = {
   /** Empty means unnamed — the row shows a placeholder rather than a real name (§3.9). */
   readonly name: string;
   readonly level: number;
+  /** Layer mute, set on the Playback screen (§3.7). Independent of `mutedSlots`. */
   readonly muted: boolean;
   /** One per time the user records onto this layer. **Never concatenated** (§1.4). */
   readonly sessions: readonly RecordingSession[];
   readonly barSources: Arrangement;
+  /**
+   * Slots silenced on this layer (§3.7, tap and hold). Sparse, so it carries no length
+   * invariant against `barSources`.
+   *
+   * §1.5's warning about a parallel per-bar map does not apply: that was about a *selection*
+   * map restating what `barSources` already encoded. `barSources` says where a slot's audio
+   * comes from; this says whether it sounds. Different questions, no duplication.
+   *
+   * **Layer mute is never written through into this.** Doing so would destroy the record of
+   * which bars the user muted deliberately, so unmuting the layer could not restore them —
+   * the same trap as writing a derived state into storage anywhere else. The two compose at
+   * read time, through `isSilentAt`.
+   */
+  readonly mutedSlots: MutedSlots;
 };
 
 export type Project = {
@@ -63,7 +78,16 @@ export type Project = {
 };
 
 export function emptyLayer(index: number, id = `layer-${index}`): Layer {
-  return { id, index, name: '', level: 1, muted: false, sessions: [], barSources: [] };
+  return {
+    id,
+    index,
+    name: '',
+    level: 1,
+    muted: false,
+    sessions: [],
+    barSources: [],
+    mutedSlots: NONE_MUTED,
+  };
 }
 
 export function createProject(options: {
@@ -175,5 +199,5 @@ export function sizeProjection(project: Project): SizeProjection {
  * past it (§5.1 #2).
  */
 export function clearLayer(layer: Layer): Layer {
-  return { ...layer, sessions: [], barSources: [] };
+  return { ...layer, sessions: [], barSources: [], mutedSlots: NONE_MUTED };
 }

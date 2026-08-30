@@ -1,5 +1,6 @@
 import { type BarRef, barRef, barRefEquals, steppingBar } from './bar-ref.ts';
 import { type PassIndex, type SourceRegion, regionFor, steppingPass } from './pass-index.ts';
+import { framesPerBar } from './timing.ts';
 
 /**
  * The arrangement: one BarRef per slot.
@@ -12,9 +13,72 @@ import { type PassIndex, type SourceRegion, regionFor, steppingPass } from './pa
  */
 export type Arrangement = readonly BarRef[];
 
+/**
+ * Slots silenced on this layer — a rest in the pattern (§3.7, tap and hold).
+ *
+ * Stored as sparse slot indices rather than a boolean per slot. A parallel array would have
+ * to stay exactly `barCount` long forever, and two arrays with a shared length invariant is
+ * how they drift apart; a sparse list has no invariant to break. Every slot being muted at
+ * once is a legitimate state and costs 32 numbers at the very worst.
+ *
+ * Deliberately **not** folded into `BarRef`. A BarRef says where audio came from and is used
+ * to look up regions; muting is an arrangement decision about a slot. Different questions.
+ *
+ * **Scope is the slot, not the source.** Since swiping is locked while a bar is muted, no
+ * gesture can ever move a mute onto different audio, so the two readings are not even
+ * distinguishable in use — slot is the one that matches the grid the user is looking at.
+ *
+ * **Layer mute is separate and composes at read time** (see `isSilentAt`). Writing a layer
+ * mute through into these would destroy the record of which bars the user muted on purpose,
+ * so unmuting the layer could not restore them.
+ */
+export type MutedSlots = readonly number[];
+
+export const NONE_MUTED: MutedSlots = [];
+
 /** Recorded order: slot n plays pass 1's bar n. */
 export function recordedOrder(barCount: number): Arrangement {
   return Array.from({ length: barCount }, (_, i) => barRef(1, i + 1));
+}
+
+export function isSlotMuted(muted: MutedSlots, slot: number): boolean {
+  return muted.includes(slot);
+}
+
+export function setSlotMuted(muted: MutedSlots, slot: number, value: boolean): MutedSlots {
+  if (isSlotMuted(muted, slot) === value) return muted;
+  return value
+    ? [...muted, slot].sort((a, b) => a - b)
+    : muted.filter((s) => s !== slot);
+}
+
+/** Tap and hold (§3.7). Hold fires at 500 ms and suppresses the pending tap. */
+export function toggleSlotMute(muted: MutedSlots, slot: number): MutedSlots {
+  return setSlotMuted(muted, slot, !isSlotMuted(muted, slot));
+}
+
+/**
+ * Whether this slot is silent on this layer, given both mutes.
+ *
+ * Layer mute and bar mute are independent and either silences: there is no per-bar override
+ * that plays through a muted layer, because that would be solo, and §5.1 #9 rules solo out.
+ */
+export function isSilentAt(muted: MutedSlots, slot: number, layerMuted: boolean): boolean {
+  return layerMuted || isSlotMuted(muted, slot);
+}
+
+/**
+ * Whether a swipe may act on this slot (§3.7).
+ *
+ * **Swiping is locked while a bar is muted.** A muted tile shows no contraction and no
+ * redraw, so a swipe would change the pass with no feedback at all — silent state mutation
+ * the user discovers much later.
+ *
+ * This is domain code rather than a check in the gesture handler so that the gesture and any
+ * other route to the same edit cannot drift apart about when it is allowed.
+ */
+export function canSwipeSlot(muted: MutedSlots, slot: number): boolean {
+  return !isSlotMuted(muted, slot);
 }
 
 function requireSlot(arrangement: Arrangement, slot: number): BarRef {
@@ -43,8 +107,10 @@ export function stepPassAt(
   slot: number,
   delta: number,
   index: PassIndex,
+  muted: MutedSlots,
 ): Arrangement {
   const current = requireSlot(arrangement, slot);
+  if (!canSwipeSlot(muted, slot)) return arrangement;
   const stepped = steppingPass(index, current, delta);
   if (!stepped || barRefEquals(stepped, current)) return arrangement;
   return setSlot(arrangement, slot, stepped);
@@ -64,8 +130,10 @@ export function stepBarAt(
   slot: number,
   delta: number,
   barCount: number,
+  muted: MutedSlots,
 ): Arrangement {
   const current = requireSlot(arrangement, slot);
+  if (!canSwipeSlot(muted, slot)) return arrangement;
   const stepped = steppingBar(current, delta, barCount);
   if (barRefEquals(stepped, current)) return arrangement;
   return setSlot(arrangement, slot, stepped);
@@ -98,29 +166,54 @@ export function isRecordedOrderAt(arrangement: Arrangement, slot: number): boole
   return ref !== undefined && ref.pass === 1 && ref.relativeBar === slot + 1;
 }
 
+/** One bar of the retained loop: audio to copy, or a rest to write as silence. */
+export type RetainedBar =
+  | { readonly kind: 'audio'; readonly region: SourceRegion }
+  | { readonly kind: 'silence'; readonly frameCount: number };
+
 /**
- * What compressing this layer keeps, and what its arrangement becomes (§2.7).
+ * What compressing this layer keeps, and what it holds afterwards (§2.7).
  *
  * Compress discards every recorded pass and keeps each layer's final edited loop. The
  * retained loop is **standardised to Pass 1** and bars are **renumbered to the arranged
  * order**, because the original numbering referenced audio that no longer exists.
  *
- * `regions` is what to render, in slot order — the mixdown is the concatenation of them.
- * `arrangement` is what the layer holds afterwards: plain recorded order over the single
- * retained pass.
+ * **Mute bakes in.** Compress and bounce are both deliberately destructive in order to
+ * reclaim space, so a muted slot is written as an actual silent bar rather than kept as a
+ * flag over audio nobody can hear. Same rule as export: what you hear is what you get (§2.6).
  *
- * Returns undefined if any slot is unresolved. Compressing an arrangement that points at
- * missing audio would bake a silent bar into the one copy that survives.
+ * **A rest is still a bar.** The silence occupies its slot and the arrangement stays
+ * `barCount` long — muting bar 3 does not shorten the loop or renumber what follows it.
+ *
+ * **The flags clear.** They are spent: the silence lives in the audio now, and keeping them
+ * would silence it twice over. Worse, unmuting afterwards would reveal silence rather than
+ * the take that used to be there, which is not something the user could undo.
+ *
+ * A muted slot needs no source, so an unresolved one is not an error there — it is about to
+ * be silence either way. Returns undefined only when an **audible** slot points at audio
+ * that does not exist, because baking that into the one surviving copy is unrecoverable.
  */
 export function compressionPlan(
   arrangement: Arrangement,
   index: PassIndex,
-): { regions: SourceRegion[]; arrangement: Arrangement } | undefined {
-  const regions: SourceRegion[] = [];
-  for (const ref of arrangement) {
-    const region = regionFor(index, ref);
+  muted: MutedSlots,
+): { bars: RetainedBar[]; arrangement: Arrangement; mutedSlots: MutedSlots } | undefined {
+  const silentFrames = framesPerBar(index.timing);
+  const bars: RetainedBar[] = [];
+
+  for (let slot = 0; slot < arrangement.length; slot++) {
+    if (isSlotMuted(muted, slot)) {
+      bars.push({ kind: 'silence', frameCount: silentFrames });
+      continue;
+    }
+    const region = regionFor(index, arrangement[slot]!);
     if (!region) return undefined;
-    regions.push(region);
+    bars.push({ kind: 'audio', region });
   }
-  return { regions, arrangement: recordedOrder(arrangement.length) };
+
+  return {
+    bars,
+    arrangement: recordedOrder(arrangement.length),
+    mutedSlots: NONE_MUTED,
+  };
 }

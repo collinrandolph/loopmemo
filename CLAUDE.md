@@ -154,6 +154,50 @@ after recording onto a compressed project.
 **The available set can be non-contiguous.** A tile legitimately reads `P4` with no `P3`
 behind it. The gap is real and the number preserves provenance.
 
+## Per-bar mute
+
+Tap and hold on a tile (§3.7). **Scope is the slot, not the source** — and since swiping is
+locked while a bar is muted, no gesture can ever move a mute onto different audio, so the two
+readings are not even distinguishable in use.
+
+**Stored as sparse slot indices** (`Layer.mutedSlots`), not a boolean per slot. A parallel
+array would have to stay exactly `barCount` long forever, and two arrays sharing a length
+invariant is how they drift apart. Sparse has no invariant to break, and every slot muted at
+once — a legitimate state — costs 32 numbers at worst. It is deliberately not folded into
+`BarRef` either: a BarRef says where audio came from and is used to look up regions; muting
+is a decision about a slot.
+
+§1.5's warning about a parallel per-bar map does not apply. That was about a *selection* map
+restating what `barSources` already encoded. `barSources` says where a slot's audio comes
+from; `mutedSlots` says whether it sounds. Different questions, no duplication.
+
+**Layer mute is never written through into `mutedSlots`.** Either mute silences a slot, and
+they compose at read time through `isSilentAt`. Writing the layer mute through would destroy
+the record of which bars the user muted deliberately, so unmuting the layer could not restore
+them — the same derived-versus-written trap as anywhere else. There is no per-bar override
+that plays through a muted layer, because that would be solo, and §5.1 #9 rules solo out.
+
+**`canSwipeSlot` is domain code, not a check in the gesture handler**, so the gesture and any
+other route to the same edit cannot drift about when it is allowed. `stepPassAt` and
+`stepBarAt` both consult it and take `MutedSlots` as a required argument — defaulting it would
+mean forgetting it silently permits the thing the gate exists to prevent.
+
+**Compress and bounce both bake it in.** They are deliberately destructive to reclaim space,
+so a muted slot is written as real silence rather than kept as a flag over audio nobody can
+hear. Three consequences, all tested:
+
+- **A rest is still a bar.** The silence occupies its slot and the arrangement stays
+  `barCount` long; muting bar 3 does not shorten the loop or renumber what follows.
+- **The flags clear afterwards.** The silence is in the audio now; keeping them would silence
+  it twice, and unmuting later would reveal silence rather than the take that was there.
+- **A muted slot needs no source.** It is about to be silence either way, so missing audio
+  behind it is not the error it would be for an audible slot.
+
+**Transport knows nothing about mute.** The mockup computes `passed` from the transport and
+applies mute on top, so the progress sweep stays readable through a silent bar — "other layers
+sound through its slot". Height collapses to the dot floor via real height, never `scaleY`
+(§3.3's border-radius trap). Keep that composition; do not feed mute into the played set.
+
 ## Transport, and two deliberate divergences from the kit
 
 §3.6 lists six rules. **Four of them are one rule**: index on position within the *cycle*
