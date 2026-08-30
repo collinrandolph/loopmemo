@@ -16,7 +16,7 @@ import {
 import { loopSeconds } from '../../src/domain/timing.ts';
 import { LR, el, ramp } from './kit.ts';
 import { eqIconSvg, panIconSvg } from './preset-icons.ts';
-import { barPeaks } from './sim.ts';
+import { amp } from './sim.ts';
 
 /**
  * Playback screen (§4.4) — the layer stack as an overview.
@@ -153,7 +153,7 @@ export function playbackScreen(opts: {
         const slot = Math.floor(i / perBar);
         const ref = layer.barSources[slot];
         const silent = !ref || isSilentAt(layer.mutedSlots, slot, layer.muted);
-        const peak = ref ? barPeaks(layer.index, toAbsolute(ref, project.barCount), perBar)[i % perBar]! : 0;
+        const peak = ref ? amp(layer.index, toAbsolute(ref, project.barCount) - 1, i % perBar, perBar) : 0;
         const u = ref ? (toAbsolute(ref, project.barCount) - 1) / total : 0;
         return {
           height: silent ? 2 : Math.round(3 + peak * 21),

@@ -18,7 +18,9 @@ export type WaveNode = HTMLDivElement & {
 export type VolumeNode = HTMLButtonElement & { update(): void };
 
 type Kit = {
+  clamp(v: number, lo: number, hi: number): number;
   clamp01(v: number): number;
+  loop(fn: (dt: number) => void): void;
   ramp: {
     rgb(t: number): Rgb;
     css(t: number): string;
@@ -51,4 +53,4 @@ type Kit = {
 };
 
 export const LR = (window as unknown as { LR: Kit }).LR;
-export const { el, ramp, motion, sizing, clamp01 } = LR;
+export const { el, ramp, motion, sizing, clamp, clamp01 } = LR;

@@ -55,31 +55,19 @@ export function simulatedEngine(sampleRate: number): Engine {
   };
 }
 
-/** Deterministic, so the same bar of the same pass always draws the same way. */
-function noise(seed: number): () => number {
-  let s = seed >>> 0 || 1;
-  return () => {
-    s = (s * 1664525 + 1013904223) >>> 0;
-    return s / 0x100000000;
-  };
-}
-
 /**
- * Peak heights for one absolute bar of a layer.
+ * Sample amplitude, as the mockup generates it: an envelope keyed to the **global** line
+ * index so it flows across bar joins rather than restarting each bar.
  *
- * Keyed on the **source** bar rather than the slot, so swiping a slot onto another pass
- * redraws it with that pass's material — which is the whole point of the two indices (§1.1).
+ * Keyed on the *source* bar, never the slot — swiping a slot onto another pass has to redraw
+ * it with that pass's material, which is the whole point of the two indices (§1.1).
  */
-export function barPeaks(layerIndex: number, absoluteBar: number, count: number): number[] {
-  const rnd = noise(layerIndex * 7919 + absoluteBar * 104729);
-  const out: number[] = [];
-  let env = 0.35 + rnd() * 0.35;
-  for (let i = 0; i < count; i++) {
-    env = Math.min(1, Math.max(0.12, env + (rnd() - 0.48) * 0.35));
-    const accent = i % 4 === 0 ? 1.25 : 1;
-    out.push(Math.min(1, env * accent));
-  }
-  return out;
+export function amp(layerIndex: number, sourceBarIndex: number, lineIndex: number, linesPerBar: number): number {
+  const g = sourceBarIndex * linesPerBar + lineIndex + layerIndex * 613;
+  const env = 0.55 + 0.3 * Math.sin(g * 0.055) + 0.12 * Math.sin(g * 0.017 + 1.3);
+  const det =
+    0.22 * Math.sin(g * 1.31) + 0.14 * Math.sin(g * 2.77 + 0.6) + 0.09 * Math.sin(g * 0.61 + 2.2);
+  return Math.min(1, Math.max(0.06, env + det));
 }
 
 function session(id: string, frames: number): RecordingSession {

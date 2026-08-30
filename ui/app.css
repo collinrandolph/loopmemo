@@ -61,8 +61,13 @@ body { margin: 0; background: var(--lr-page); }
 }
 .tile.is-selected .swipe-hint { color: var(--lr-hint-sel); }
 
-.sim-note {
-  margin: 0 20px 20px; padding: 12px; border-radius: 6px; line-height: 1.6;
-  background: rgba(255,255,255,.1); font-size: 12px; color: rgba(255,255,255,.8);
+.header-controls { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+.header-controls input[type=range] { width: 120px; }
+
+.legend {
+  font-size: 12px; color: rgba(255,255,255,.8); margin-top: 14px; padding: 12px;
+  background: rgba(255,255,255,.1); border-radius: 6px; line-height: 1.6;
 }
-.sim-note strong { color: #fff; }
+.legend strong { color: #fff; }
+.swatch { display: flex; height: 10px; border-radius: 999px; overflow: hidden; margin: 8px 0; }
+.swatch i { flex: 1; }

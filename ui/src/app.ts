@@ -21,6 +21,8 @@ const nav = el('div', 'app-nav');
 const host = el('div');
 document.body.append(nav, host);
 
+let current: { destroy(): void } | undefined;
+
 function replaceLayer(layer: Layer) {
   project = {
     ...project,
@@ -52,24 +54,39 @@ function render() {
     nav.appendChild(button);
   }
 
+  // Screens own a render loop and document-level listeners, so the outgoing one is torn down
+  // before the next is built. Without it every navigation leaves a pass running over nodes
+  // that are no longer on the page.
+  current?.destroy();
+  current = undefined;
   host.innerHTML = '';
-  host.appendChild(
-    route.screen === 'playback'
-      ? playbackScreen({
-          project,
-          onChange: replaceLayer,
-          onEdit(layerIndex) {
-            route = { screen: 'edit', layerIndex };
-            render();
-          },
-        })
-      : editLayerScreen({
-          project,
-          layerIndex: route.layerIndex,
-          engine,
-          onChange: replaceLayer,
-        }),
-  );
+
+  if (route.screen === 'playback') {
+    host.appendChild(
+      playbackScreen({
+        project,
+        onChange: replaceLayer,
+        onEdit(layerIndex) {
+          route = { screen: 'edit', layerIndex };
+          render();
+        },
+      }),
+    );
+    return;
+  }
+
+  const screen = editLayerScreen({
+    project,
+    layerIndex: route.layerIndex,
+    engine,
+    onChange: replaceLayer,
+    onDone() {
+      route = { screen: 'playback' };
+      render();
+    },
+  });
+  current = screen;
+  host.appendChild(screen.node);
 }
 
 render();
