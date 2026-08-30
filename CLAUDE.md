@@ -361,17 +361,15 @@ gesture.
 carry signal. `SURROUND_WET_DB = -1.5` is flagged for confirmation by ear; a test records the
 consequence so changing the number is deliberate rather than incidental.
 
-**The pan icon is derived, and stayed derivable only because the input was corrected.**
-`panIcon` reads **pan position**, not the mixed level — Surround's copy is hard right but
-trimmed to −1.5 dB, and quantising the trimmed gain lights two arcs instead of three. Feeding
-it the trim would have forced a hardcoded exception for one preset, which is worse than a
-plain lookup table: it looks trustworthy and isn't. Reading position gives all six presets
-from one rule. Arc *k* lights at `k/3` of full level — thresholds, not rounding, so an arc
-never lights below its own mark and no preset sits on a boundary except Wide at exactly 1.0.
+**The picker icons are a static table on `PanPreset`, and deriving them was a mistake made
+once already.** They are labels standing in for names, not readouts — the user picks a preset,
+they do not read a balance off it. Deriving them from `panGains` produced a rule that needed
+an exception for Surround, and the derivation bought nothing anyone can act on.
 
-**Do not draw ghost arcs under Surround's stepped set.** They interleave about 2 px apart
-against a 2.2 px stroke and smear. The opposite side already sits at the base radii and is the
-reference.
+**The icon shows nothing about the delay**, and both sides always use the same radii. Drawing
+one side further out to suggest "arrives later" explains a mechanism the user does not need,
+moves the optical centre off the circle, and makes arc size compete with arc count — which is
+the only thing the icon is for. `3 / 3` already belongs to no other preset.
 
 **The delayed tail of the last bar runs past the loop end.** Live that is correct and needs
 nothing. **Bounce and export render fixed-length files**, so there it must wrap to the start or
