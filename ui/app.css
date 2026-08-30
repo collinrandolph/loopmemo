@@ -210,12 +210,12 @@ body { margin: 0; background: var(--lr-page); }
   color: var(--lr-hint); white-space: nowrap;
 }
 
-/* The new value arrives from the direction the drag came from, so a repeat inside one drag
-   reads as travel rather than as a value flickering in place. */
-@keyframes lr-wheel-down { from { transform: translateY(-8px); opacity: 0 } to { transform: none; opacity: 1 } }
-@keyframes lr-wheel-up   { from { transform: translateY(8px);  opacity: 0 } to { transform: none; opacity: 1 } }
-.chord-wheel__value.is-stepping-down { animation: lr-wheel-down .13s ease-out; }
-.chord-wheel__value.is-stepping-up   { animation: lr-wheel-up .13s ease-out; }
+/* The new value follows the finger in, so a repeat inside one drag reads as travel rather than
+   as a value flickering in place. Forward is an upward drag, so forward arrives from below. */
+@keyframes lr-wheel-from-below { from { transform: translateY(8px);  opacity: 0 } to { transform: none; opacity: 1 } }
+@keyframes lr-wheel-from-above { from { transform: translateY(-8px); opacity: 0 } to { transform: none; opacity: 1 } }
+.chord-wheel__value.is-from-below { animation: lr-wheel-from-below .13s ease-out; }
+.chord-wheel__value.is-from-above { animation: lr-wheel-from-above .13s ease-out; }
 
 .random-row .lr-btn { flex: 1; }
 

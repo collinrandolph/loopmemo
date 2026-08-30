@@ -133,12 +133,12 @@ const SWIPE_THRESHOLD = 22; // as `edit-layer.ts`; the same gesture should want 
 /**
  * One vertically-swipeable field. Three of them inline are the chord editor.
  *
- * **Down steps forward**, matching the pass axis on the Edit Layer screen (§3.7). That is the
- * opposite of a physical wheel, where dragging down brings the previous item up — but the same
- * gesture meaning the same thing in both places is worth more here than the physical metaphor,
- * and it is the only vertical-swipe convention the app has.
+ * **Up steps forward**, matching the pass axis on the Edit Layer screen. Both are the same rule:
+ * the material moves under the finger, so the next value is pulled in from the side you drag
+ * toward — the filmstrip §3.7 states for the horizontal axis, applied to the vertical one it
+ * leaves open.
  *
- * A tap steps too, upper half back and lower half forward, on the same axis as the drag: with a
+ * A tap steps too, upper half forward and lower half back, on the same axis as the drag: with a
  * mouse the drag is available but awkward, and a control with no tap affordance reads as inert.
  *
  * The gesture is gated on its own `down` flag and bails when `e.buttons === 0`. Pointer capture
@@ -158,10 +158,11 @@ function chordWheel(
 
   function paint(dir = 0) {
     value.textContent = options.find((o) => o.id === current())?.label ?? '';
-    value.classList.remove('is-stepping-up', 'is-stepping-down');
+    value.classList.remove('is-from-below', 'is-from-above');
     if (!dir) return;
     void value.offsetWidth; // restart the animation rather than let a repeat within one drag skip it
-    value.classList.add(dir > 0 ? 'is-stepping-down' : 'is-stepping-up');
+    // Forward is an upward drag, so the incoming value follows the finger up from underneath.
+    value.classList.add(dir > 0 ? 'is-from-below' : 'is-from-above');
   }
 
   function step(dir: number) {
@@ -188,7 +189,7 @@ function chordWheel(
   node.addEventListener('pointerup', (e) => {
     if (down && !fired) {
       const box = node.getBoundingClientRect();
-      step(e.clientY < box.top + box.height / 2 ? -1 : 1);
+      step(e.clientY < box.top + box.height / 2 ? 1 : -1);
     }
     end();
   });
@@ -200,7 +201,7 @@ function chordWheel(
     }
     const dy = e.clientY - y0;
     if (Math.abs(dy) <= SWIPE_THRESHOLD) return;
-    step(dy > 0 ? 1 : -1);
+    step(dy > 0 ? -1 : 1); // inverted relative to travel, as both Edit Layer axes are
     y0 = e.clientY; // allow repeats within one drag
     fired = true;
   });

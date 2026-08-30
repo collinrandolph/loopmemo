@@ -272,9 +272,12 @@ export function editLayerScreen(opts: {
 
       const travel = axis === 'bar' ? dx : dy;
       if (Math.abs(travel) > SWIPE_THRESHOLD) {
-        // The horizontal axis is inverted: dragging LEFT pulls the next bar in from the
-        // right, the way a filmstrip moves under the finger (§3.7).
-        const dir = axis === 'bar' ? (travel > 0 ? -1 : 1) : travel > 0 ? 1 : -1;
+        // Both axes are inverted relative to travel, and it is the same rule on each: the
+        // material moves under the finger, so the next one is pulled in from the side you are
+        // dragging toward. Dragging LEFT pulls the next bar in from the right (§3.7, which
+        // states this axis); dragging UP pulls the next pass in from below. §3.7 leaves the
+        // vertical direction unspecified — this is the filmstrip applied to it.
+        const dir = travel > 0 ? -1 : 1;
         step(slot, axis, dir);
         x0 = e.clientX;
         y0 = e.clientY; // allow repeats within one drag
@@ -349,9 +352,10 @@ export function editLayerScreen(opts: {
   let keyTimer: number | undefined;
   const onKey = (e: KeyboardEvent) => {
     const map: Record<string, ['pass' | 'bar', number]> = {
-      ArrowUp: ['pass', -1],
-      ArrowDown: ['pass', 1],
-      ArrowLeft: ['bar', 1], // left = forward, matching the swipe inversion
+      // Up and Left are both forward, matching the swipe inversion on their axis.
+      ArrowUp: ['pass', 1],
+      ArrowDown: ['pass', -1],
+      ArrowLeft: ['bar', 1],
       ArrowRight: ['bar', -1],
     };
     const move = map[e.key];
