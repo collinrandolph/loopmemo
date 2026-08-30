@@ -4,53 +4,6 @@
 
 body { margin: 0; background: var(--lr-page); }
 
-/* ------------------------------------------------------------------- mobile -- */
-/* The kit frames the app as a card floating on a page: `body` padding 20, a rounded
-   `.lr-screen` centred at max 900, and 20 either side inside every section. That is
-   right for previewing on a desktop and wrong on the device the app is for — it
-   spends 80px of a 375px screen, 21% of the width, before any content.
-   Below the breakpoint the app goes full bleed and the section padding drops to 12.
-
-   These are overrides, not edits: `docs/kit/` stays the reference. */
-@media (max-width: 640px) {
-  body { padding: 0; }
-  .app-nav { padding: 8px 12px 0; gap: 4px; }
-  .app-nav button { padding: 5px 9px; }
-
-  .lr-screen { border-radius: 0; box-shadow: none; }
-
-  .lr-header { padding: 14px 12px 10px; }
-  .lr-section-label { padding: 0 12px; }
-  .lr-rows { padding: 4px 12px 14px; }
-  .refs { padding: 0 12px 6px; }
-  .lr-footer { padding: 10px 12px; }
-  .grid { padding: 12px; }
-  .lr-panel-inner { padding: 10px; }
-
-  /* The title and the meta stop competing for one line. */
-  .lr-title-row { flex-wrap: wrap; gap: 3px 10px; }
-
-  /* The progress bar was being crushed to a few pixels between the position readout
-     and the master level. Give it its own row rather than shrinking everything. */
-  .lr-transport { flex-wrap: wrap; gap: 10px; }
-  .lr-transport .lr-progress { order: 1; flex: 1 0 100%; }
-  .lr-position { min-width: 0; flex: 1 1 auto; text-align: left; }
-  .lr-transport input[type=range] { flex: 1 1 60px; width: auto; min-width: 0; }
-
-  .lr-footer { flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
-  .lr-footer > span { flex: 1 1 100%; }
-
-  /* Six preset chips beside a 54px label and a 54px value do not fit, and the kit lets
-     `.lr-chips` wrap — so one icon dropped to a second row and the strip stopped reading
-     as one control. Compress instead of wrapping: the icons are a fixed 22px, so the
-     chips have a floor and the row degrades predictably rather than folding. */
-  .lr-panel-row { gap: 8px; }
-  .lr-panel-label { min-width: 40px; }
-  .lr-chips { flex-wrap: nowrap; gap: 3px; }
-  .lr-chips .lr-chip { padding: 4px 2px; min-width: 0; }
-  .lr-panel-row > span:last-child { min-width: 44px; }
-}
-
 .app-nav {
   display: flex; gap: 6px; padding: 10px 20px 0;
 }
@@ -112,16 +65,18 @@ body { margin: 0; background: var(--lr-page); }
 .lr-transport { display: flex; align-items: center; gap: 14px; margin-top: 14px; }
 
 /* fixed label column: the name and the pass badge swap inside one box, so a
-   lane starts at the same x whatever state the layer is in */
+   lane starts at the same x whatever state the layer is in. Kept as narrow as the
+   longest name allows — every pixel here is a pixel the lane does not get, and the
+   lane is what the row is for. */
 .layer-label {
   font-size: 12px; font-weight: 600;
-  flex: 0 0 116px; width: 116px;
+  flex: 0 0 104px; width: 104px;
   display: flex; align-items: baseline; gap: 5px;
 }
 .layer-label .idx { color: var(--lr-ink-faint); font-weight: 500; }
 .layer-name {
   outline: none; border-radius: 3px; padding: 1px 3px; margin: -1px -3px;
-  cursor: text; min-width: 24px; max-width: 92px;
+  cursor: text; min-width: 24px; max-width: 80px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   transition: background .12s, box-shadow .12s;
 }
@@ -138,11 +93,33 @@ body { margin: 0; background: var(--lr-page); }
    animates on arrival — the app is not scoring the take. */
 .lr-pass-badge.is-provisional { opacity: .45; }
 
+/* The lane is the row's subject, so it gets height and it starts where its box starts.
+   The kit centres a lane because a library thumbnail is a token; here the line count
+   follows the container and centring only leaves an unequal margin at the left. */
+.lr-row .lr-wave--lane { height: 54px; justify-content: flex-start; }
+/* Out of flow so "empty" still reads centred once the lines start at the left edge,
+   and so `pushLive` can keep inserting before it. */
+.lr-wave--lane .lr-note { position: absolute; left: 0; right: 0; text-align: center; }
+
 .lr-row.is-empty { background: var(--lr-tile-empty); }
 .lr-row.is-muted .lr-wave { opacity: .5; transition: opacity .18s; }
 .lr-row.has-audio .empty-note { display: none; }
 .lr-row:not(.has-audio) [data-needs-audio] { display: none; }
+.lr-row.is-open .lr-panel { max-height: 400px; }
 .lr-row:not(.has-audio).is-open .lr-panel { max-height: 120px; }
+
+/* A preset picker is a label, a current value and a strip of six icons. Six icons do not
+   fit beside the other two, so the naming goes on its own line and the strip takes the
+   full width — which also lets the icons grow to a size worth tapping. */
+.preset-group { display: grid; gap: 6px; }
+.preset-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.preset-name { font-size: 11px; font-weight: 500; color: var(--lr-ink); }
+.preset-chips { flex-wrap: nowrap; }
+.preset-chips .lr-chip {
+  flex: 1 1 0; min-width: 0; padding: 7px 4px;
+  display: flex; align-items: center; justify-content: center;
+}
+.edit-row .lr-btn { flex: 1; padding: 9px 13px; }
 
 .rec-rule { position: absolute; left: 0; bottom: 0; height: 2px;
             background: var(--lr-rec); width: 0; }
@@ -172,3 +149,53 @@ body { margin: 0; background: var(--lr-page); }
 .legend strong { color: #fff; }
 .swatch { display: flex; height: 10px; border-radius: 999px; overflow: hidden; margin: 8px 0; }
 .swatch i { flex: 1; }
+
+/* ------------------------------------------------------------------- mobile -- */
+/* The kit frames the app as a card floating on a page: `body` padding 20, a rounded
+   `.lr-screen` centred at max 900, and 20 either side inside every section. That is
+   right for previewing on a desktop and wrong on the device the app is for — it
+   spends 80px of a 375px screen, 21% of the width, before any content.
+   Below the breakpoint the app goes full bleed and the section padding drops to 12.
+
+   These are overrides, not edits: `docs/kit/` stays the reference.
+
+   **This block must stay last in the file.** It carries no more specificity than the
+   rules it overrides, so ordering is the only thing making it win — sitting at the top
+   it silently lost `.refs`, `.grid` and `.lr-transport` to their base rules below, and
+   the reference rows sat 8px narrower than the layers for it. */
+@media (max-width: 640px) {
+  body { padding: 0; }
+  .app-nav { padding: 8px 12px 0; gap: 4px; }
+  .app-nav button { padding: 5px 9px; }
+
+  .lr-screen { border-radius: 0; box-shadow: none; }
+
+  .lr-header { padding: 14px 12px 10px; }
+  .lr-section-label { padding: 0 12px; }
+  .lr-rows { padding: 4px 12px 14px; }
+  .refs { padding: 0 12px 6px; }
+  .lr-footer { padding: 10px 12px; }
+  .grid { padding: 12px; }
+  .lr-panel-inner { padding: 10px; }
+
+  /* The title and the meta stop competing for one line. */
+  .lr-title-row { flex-wrap: wrap; gap: 3px 10px; }
+
+  /* The progress bar was being crushed to a few pixels between the position readout
+     and the master level. Give it its own row rather than shrinking everything. */
+  .lr-transport { flex-wrap: wrap; gap: 10px; }
+  .lr-transport .lr-progress { order: 1; flex: 1 0 100%; }
+  .lr-position { min-width: 0; flex: 1 1 auto; text-align: left; }
+  .lr-transport input[type=range] { flex: 1 1 60px; width: auto; min-width: 0; }
+
+  .lr-footer { flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+  .lr-footer > span { flex: 1 1 100%; }
+
+  .lr-panel-row { gap: 8px; }
+  .lr-panel-label { min-width: 40px; }
+  .preset-chips { gap: 3px; }
+  .preset-chips .lr-chip { padding: 6px 2px; }
+
+  .layer-label { flex-basis: 88px; width: 88px; }
+  .layer-name { max-width: 64px; }
+}

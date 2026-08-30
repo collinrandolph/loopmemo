@@ -9,7 +9,6 @@ import {
   type Layer,
   NAME_CHARACTER_LIMIT,
   type Project,
-  isConfigurationLocked,
   layerHasRecording,
   layerPassIndex,
   nextPassNumber,
@@ -25,6 +24,8 @@ import { eqIconSvg, panIconSvg } from './preset-icons.ts';
 import { type Engine, amp } from './sim.ts';
 
 const TARGET_LINES = 40; // lanes are an overview: the count follows the container
+const LANE_AMPLITUDE = 44; // peak line height; the lane box is 54, see `.lr-wave--lane`
+const PRESET_ICON_PX = 28; // the chips span the panel now, so the icon can be worth tapping
 
 type Row = {
   layer: Layer;
@@ -78,18 +79,25 @@ export function playbackScreen(opts: {
   // ------------------------------------------------------------------ header --
   const header = el('div', 'lr-header');
   const titleRow = el('div', 'lr-title-row');
+  const statsRow = el('div', 'lr-meta lr-stats');
   const transportEl = el('div', 'lr-transport');
-  header.append(titleRow, transportEl);
+  header.append(titleRow, statsRow, transportEl);
 
+  /**
+   * Two lines, because there are two kinds of number here. Tempo, bar count and time
+   * signature are what the project *is* — chosen once, and locked as soon as a pass exists
+   * (§1.2) — so they sit on the title's line. Passes and size are what it has *become*, and
+   * they move every take, so they get their own line and can change without redrawing the
+   * name.
+   */
   function paintTitle() {
     const passes = projectTotalPasses(project);
     const size = sizeProjection(project);
     titleRow.innerHTML =
       `<div class="lr-title">${project.name}</div>` +
-      `<div class="lr-meta">${project.bpm} BPM · ${project.barCount} bars · ${project.beatsPerBar}/4 · ` +
-      `${passes} pass${passes === 1 ? '' : 'es'} · ${(size.uncompressedBytes / 1e6).toFixed(1)} MB` +
-      (isConfigurationLocked(project) ? ' · <span class="lr-tag">locked</span>' : '') +
-      '</div>';
+      `<div class="lr-meta">${project.bpm} BPM · ${project.barCount} bars · ${project.beatsPerBar}/4</div>`;
+    statsRow.textContent =
+      `${passes} pass${passes === 1 ? '' : 'es'} · ${(size.uncompressedBytes / 1e6).toFixed(1)} MB`;
   }
 
   function frameNow() {
@@ -160,9 +168,13 @@ export function playbackScreen(opts: {
       enabled: true,
       muted: false,
       level: 0.7,
+      // A drum in side view: head, shell, and two tension lugs. The circle-with-spokes it
+      // replaces read as a wheel — the spokes are the only thing that made it a cymbal, and
+      // at 22px they lost against the rim.
       icon:
-        '<circle cx="12" cy="12" r="9"/><path d="M5.6 5.6 l4.4 4.4"/><path d="M18.4 5.6 l-4.4 4.4"/>' +
-        '<path d="M5.6 18.4 l4.4 -4.4"/><path d="M18.4 18.4 l-4.4 -4.4"/>',
+        '<ellipse cx="12" cy="6.6" rx="9" ry="3.1"/>' +
+        '<path d="M3 6.6 v10.4 c0 1.7 4 3.1 9 3.1 s9 -1.4 9 -3.1 V6.6"/>' +
+        '<path d="M4.1 10.2 L8.1 14.4 M19.9 10.2 L15.9 14.4 M12 11.2 v4.4"/>',
       body: '<div class="ref-detail">Dusty Break 02</div>',
       panel: '',
     },
@@ -171,9 +183,13 @@ export function playbackScreen(opts: {
       enabled: true,
       muted: false,
       level: 0.55,
+      // A real keyboard rather than a grid: five white keys with the black keys where a
+      // piano actually puts them, so the gap at x=14 is the E–F pair. The rect-and-bars it
+      // replaces was symmetrical, which is exactly what a keyboard is not.
       icon:
-        '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 14 h20"/>' +
-        '<path d="M7 4 v10 M12 4 v10 M17 4 v10"/>',
+        '<rect x="2" y="5" width="20" height="14" rx="1.6"/>' +
+        '<path d="M6 12.8 v6.2 M10 12.8 v6.2 M14 5 v14 M18 12.8 v6.2"/>' +
+        '<path d="M6 6 v6.8 M10 6 v6.8 M18 6 v6.8" stroke-width="2.6"/>',
       body:
         '<div class="chord-slots">' +
         ['Dm', 'G', 'Am'].map((c) => `<span class="chord">${c}</span>`).join('') +
@@ -356,27 +372,33 @@ export function playbackScreen(opts: {
       '<span class="lr-panel-label">Volume</span>' +
         `<input class="level" type="range" min="0" max="100" value="${Math.round(initial.level * 100)}" style="flex:1">`,
     );
-    const editBtn = el('button', 'lr-btn', 'Edit bars');
-    editBtn.setAttribute('data-needs-audio', '');
+    inner.appendChild(volumeRow);
+
+    inner.appendChild(
+      presetGroup('EQ', EQ_PRESETS, () => row.layer.eq, (id) => {
+        row.layer = { ...row.layer, eq: id as EqPresetId };
+        opts.onChange(row.layer);
+      }, (p) => eqIconSvg(p.id as EqPresetId, PRESET_ICON_PX)),
+    );
+    inner.appendChild(
+      presetGroup('Pan', PAN_PRESETS, () => row.layer.pan, (id) => {
+        row.layer = { ...row.layer, pan: id as PanPresetId };
+        opts.onChange(row.layer);
+      }, (p) => panIconSvg(panPreset(p.id as PanPresetId), PRESET_ICON_PX)),
+    );
+
+    // Below the presets and on its own row: it leaves this screen, which the mixer controls
+    // above it do not.
+    const editRow = el('div', 'lr-panel-row edit-row');
+    editRow.setAttribute('data-needs-audio', '');
+    const editBtn = el('button', 'lr-btn', 'Edit Layer');
     editBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       opts.onEdit(row.layer.index);
     });
-    volumeRow.appendChild(editBtn);
-    inner.appendChild(volumeRow);
+    editRow.appendChild(editBtn);
+    inner.appendChild(editRow);
 
-    inner.appendChild(
-      presetRow('EQ', EQ_PRESETS, () => row.layer.eq, (id) => {
-        row.layer = { ...row.layer, eq: id as EqPresetId };
-        opts.onChange(row.layer);
-      }, (p) => eqIconSvg(p.id as EqPresetId)),
-    );
-    inner.appendChild(
-      presetRow('Pan', PAN_PRESETS, () => row.layer.pan, (id) => {
-        row.layer = { ...row.layer, pan: id as PanPresetId };
-        opts.onChange(row.layer);
-      }, (p) => panIconSvg(panPreset(p.id as PanPresetId))),
-    );
     inner.appendChild(
       el(
         'div',
@@ -493,7 +515,7 @@ export function playbackScreen(opts: {
         const slot = Math.min(project.barCount - 1, Math.floor(u * project.barCount));
         const silent = isSilentAt(row.layer.mutedSlots, slot, false) || !row.layer.barSources[slot];
         return {
-          height: silent ? 2 : motion.snapEven(amp(row.layer.index, 0, i, lineCount) * 34, 2),
+          height: silent ? 2 : motion.snapEven(amp(row.layer.index, 0, i, lineCount) * LANE_AMPLITUDE, 2),
           rgb: ramp.rgb(from + (to - from) * u),
         };
       });
@@ -518,7 +540,7 @@ export function playbackScreen(opts: {
       const u = lineCount > 1 ? i / (lineCount - 1) : 0;
       const line = el('div', 'lr-wave__line');
       const level = amp(row.layer.index, row.layer.sessions.length, i, lineCount) * (0.55 + 0.45 * Math.random());
-      line.style.height = `${motion.snapEven(level * 34, 2)}px`;
+      line.style.height = `${motion.snapEven(level * LANE_AMPLITUDE, 2)}px`;
       line.style.color = `rgb(${ramp.rgb(from + (to - from) * u)})`;
       row.wave.insertBefore(line, row.note);
       row.live.push(line);
@@ -582,7 +604,7 @@ export function playbackScreen(opts: {
 
     progressBar.set(progress);
     const bar = Math.min(project.barCount, Math.floor(progress * project.barCount) + 1);
-    position.textContent = `bar ${bar} · ${LR.fmtTime(progress * seconds)} / ${LR.fmtTime(seconds)}`;
+    position.textContent = `Bar ${bar} · ${LR.fmtTime(progress * seconds)} / ${LR.fmtTime(seconds)}`;
   });
 
   // Escape disarms; it cannot stop a pass in progress (§3.5).
@@ -639,24 +661,31 @@ export function playbackScreen(opts: {
   };
 }
 
-function presetRow<P extends { id: string; name: string }>(
+/**
+ * A preset picker: the label and the current preset's name on one line, the six icons on
+ * their own below. Six icons will not share a line with both of those — they were being
+ * squeezed to a couple of pixels of padding each and pushing the name off the right edge —
+ * and giving the strip the full width is also what lets the icons reach a tappable size.
+ *
+ * The icons are all the user sees, so the name is the only place a preset is named at all.
+ */
+function presetGroup<P extends { id: string; name: string }>(
   label: string,
   presets: readonly P[],
   current: () => string,
   onPick: (id: string) => void,
   icon: (p: P) => string,
 ): HTMLElement {
-  const row = el('div', 'lr-panel-row', `<span class="lr-panel-label">${label}</span>`);
-  row.setAttribute('data-needs-audio', '');
+  const group = el('div', 'preset-group');
+  group.setAttribute('data-needs-audio', '');
 
-  const chips = el('div', 'lr-chips');
-  chips.style.flex = '1';
-  const name = el('span');
-  name.style.cssText = 'font-size:11px;color:var(--lr-ink);min-width:54px;text-align:right';
+  const head = el('div', 'preset-head', `<span class="lr-panel-label">${label}</span>`);
+  const name = el('span', 'preset-name');
+  head.appendChild(name);
 
+  const chips = el('div', 'lr-chips preset-chips');
   for (const preset of presets) {
     const chip = el('span', `lr-chip${preset.id === current() ? ' is-active' : ''}`, icon(preset));
-    chip.style.cssText += 'display:flex;padding:4px 6px;flex:1;justify-content:center';
     chip.addEventListener('click', (e) => {
       e.stopPropagation();
       name.textContent = preset.name;
@@ -666,6 +695,6 @@ function presetRow<P extends { id: string; name: string }>(
   }
   name.textContent = presets.find((p) => p.id === current())?.name ?? '';
 
-  row.append(chips, name);
-  return row;
+  group.append(head, chips);
+  return group;
 }
