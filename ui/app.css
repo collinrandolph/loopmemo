@@ -64,15 +64,28 @@ body { margin: 0; background: var(--lr-page); }
 /* --- Playback screen; lifted from docs/mockups/playback-screen-mockup.html --- */
 .lr-transport { display: flex; align-items: center; gap: 14px; margin-top: 14px; }
 
-/* fixed label column: the name and the pass badge swap inside one box, so a
-   lane starts at the same x whatever state the layer is in. Kept as narrow as the
-   longest name allows — every pixel here is a pixel the lane does not get, and the
-   lane is what the row is for. */
+/* The project's settings, opposite its name: heavier than the running totals below because
+   they are what the project *is*, lighter than the name because they are not what it is
+   called. `margin-left: auto` rather than `space-between` so they stay right-aligned on the
+   line of their own they take when a long name wraps them. */
+.lr-settings {
+  font-size: 15px; font-weight: 600; color: rgba(255,255,255,.86);
+  margin-left: auto; white-space: nowrap;
+}
+.lr-stats { margin-top: 2px; }
+
+/* Fixed label column: the name and the pass badge swap inside one box, so a lane
+   starts at the same x whatever state the layer is in. The width is measured from the
+   names actually present rather than guessed at — see `syncLabelWidth`. Every pixel
+   here is a pixel the lane does not get, and the lane is what the row is for. */
+.lr-screen { --layer-label-w: 104px; }
 .layer-label {
   font-size: 12px; font-weight: 600;
-  flex: 0 0 104px; width: 104px;
+  flex: 0 0 var(--layer-label-w); width: var(--layer-label-w);
   display: flex; align-items: baseline; gap: 5px;
 }
+/* One frame with the columns released, so `syncLabelWidth` can read what they want. */
+.is-measuring .layer-label { flex-basis: auto; width: auto; }
 .layer-label .idx { color: var(--lr-ink-faint); font-weight: 500; }
 .layer-name {
   outline: none; border-radius: 3px; padding: 1px 3px; margin: -1px -3px;
@@ -93,10 +106,10 @@ body { margin: 0; background: var(--lr-page); }
    animates on arrival — the app is not scoring the take. */
 .lr-pass-badge.is-provisional { opacity: .45; }
 
-/* The lane is the row's subject, so it gets height and it starts where its box starts.
-   The kit centres a lane because a library thumbnail is a token; here the line count
-   follows the container and centring only leaves an unequal margin at the left. */
-.lr-row .lr-wave--lane { height: 54px; justify-content: flex-start; }
+/* The lane is the row's subject, so it starts where its box starts. The kit centres a
+   lane because a library thumbnail is a token; here the line count follows the container
+   and centring only leaves an unequal margin at the left. Height stays the kit's 40. */
+.lr-row .lr-wave--lane { justify-content: flex-start; }
 /* Out of flow so "empty" still reads centred once the lines start at the left edge,
    and so `pushLive` can keep inserting before it. */
 .lr-wave--lane .lr-note { position: absolute; left: 0; right: 0; text-align: center; }
@@ -119,7 +132,18 @@ body { margin: 0; background: var(--lr-page); }
   flex: 1 1 0; min-width: 0; padding: 7px 4px;
   display: flex; align-items: center; justify-content: center;
 }
-.edit-row .lr-btn { flex: 1; padding: 9px 13px; }
+/* The panel's one navigation, and the path most often taken: every other control here
+   adjusts the layer in place, this one leaves for the grid. Filled and unoutlined so it
+   does not read as one more chip in a panel already full of them.
+   The accent is a saturated lift of the row surface within the kit's single violet family
+   (§ kit palette: "one violet family, no pure neutrals"). It is not a kit token — flagged
+   for confirmation against `docs/kit/` rather than adopted there. */
+.lr-screen { --lr-accent: #5A46D6; --lr-accent-hi: #6857E8; }
+.edit-row .lr-btn {
+  flex: 1; padding: 10px 13px; font-size: 13px; font-weight: 600;
+  border: none; background: var(--lr-accent); color: #fff;
+}
+.edit-row .lr-btn:hover { background: var(--lr-accent-hi); }
 
 .rec-rule { position: absolute; left: 0; bottom: 0; height: 2px;
             background: var(--lr-rec); width: 0; }
@@ -196,6 +220,7 @@ body { margin: 0; background: var(--lr-page); }
   .preset-chips { gap: 3px; }
   .preset-chips .lr-chip { padding: 6px 2px; }
 
-  .layer-label { flex-basis: 88px; width: 88px; }
+  /* No label width here: `syncLabelWidth` measures it, and a fixed override would beat the
+     variable and put the dead column back. */
   .layer-name { max-width: 64px; }
 }

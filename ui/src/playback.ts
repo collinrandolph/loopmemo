@@ -24,13 +24,47 @@ import { eqIconSvg, panIconSvg } from './preset-icons.ts';
 import { type Engine, amp } from './sim.ts';
 
 const TARGET_LINES = 40; // lanes are an overview: the count follows the container
-const LANE_AMPLITUDE = 44; // peak line height; the lane box is 54, see `.lr-wave--lane`
+const LANE_AMPLITUDE = 34; // peak line height; the lane box is 40, see `.lr-wave--lane`
 const PRESET_ICON_PX = 28; // the chips span the panel now, so the icon can be worth tapping
+
+/** The label column never shrinks below this, so a one-character name still holds a column. */
+const LABEL_MIN_PX = 52;
+/**
+ * `.layer-name` pads itself and pulls the padding back with a negative margin, so its hover
+ * and focus highlight has room without the text shifting. That makes the box it *paints* 6px
+ * wider than the box it *occupies* — measure only the latter and the highlight bleeds into
+ * the lane on the right. Added back here rather than by dropping the negative margins, which
+ * would move every name 3px and reopen the shift they exist to prevent.
+ */
+const LABEL_PAINT_SLACK_PX = 6;
+/** …and never past this, so one long name cannot take the width away from every lane. */
+const LABEL_MAX_PX = 104;
+
+/**
+ * Reference-track icons from **Lucide** (`drum`, `keyboard-music`), ISC licensed — path data
+ * inlined rather than depended on, since this repo carries no runtime dependencies. Lucide's
+ * 24-unit box, 2px stroke and round caps are already what `.ref-icon` declares, so they drop
+ * straight in; take any future icon from the same set so the weights stay consistent.
+ *
+ * `keyboard-music` rather than Lucide's `piano`: the latter is a grand piano in silhouette and
+ * needs its outline to be read, which at 22px it does not get — side by side in the row it
+ * reads as a bag. Compared at size rather than chosen from the icon sheet.
+ */
+const DRUM_ICON =
+  '<path d="m2 2 8 8"/><path d="m22 2-8 8"/><ellipse cx="12" cy="9" rx="10" ry="5"/>' +
+  '<path d="M7 13.4v7.9"/><path d="M12 14v8"/><path d="M17 13.4v7.9"/>' +
+  '<path d="M2 9v8a10 5 0 0 0 20 0V9"/>';
+
+const PIANO_ICON =
+  '<rect width="20" height="16" x="2" y="4" rx="2"/>' +
+  '<path d="M6 8h4"/><path d="M14 8h.01"/><path d="M18 8h.01"/><path d="M2 12h20"/>' +
+  '<path d="M6 12v4"/><path d="M10 12v4"/><path d="M14 12v4"/><path d="M18 12v4"/>';
 
 type Row = {
   layer: Layer;
   rec: RecordState;
   el: HTMLElement;
+  label: HTMLElement;
   wave: WaveNode;
   rule: HTMLElement;
   note: HTMLElement;
@@ -95,9 +129,9 @@ export function playbackScreen(opts: {
     const size = sizeProjection(project);
     titleRow.innerHTML =
       `<div class="lr-title">${project.name}</div>` +
-      `<div class="lr-meta">${project.bpm} BPM · ${project.barCount} bars · ${project.beatsPerBar}/4</div>`;
+      `<div class="lr-settings">${project.bpm} BPM · ${project.barCount} Bars · ${project.beatsPerBar}/4</div>`;
     statsRow.textContent =
-      `${passes} pass${passes === 1 ? '' : 'es'} · ${(size.uncompressedBytes / 1e6).toFixed(1)} MB`;
+      `${passes} Pass${passes === 1 ? '' : 'es'} · ${(size.uncompressedBytes / 1e6).toFixed(1)} MB`;
   }
 
   function frameNow() {
@@ -168,13 +202,7 @@ export function playbackScreen(opts: {
       enabled: true,
       muted: false,
       level: 0.7,
-      // A drum in side view: head, shell, and two tension lugs. The circle-with-spokes it
-      // replaces read as a wheel — the spokes are the only thing that made it a cymbal, and
-      // at 22px they lost against the rim.
-      icon:
-        '<ellipse cx="12" cy="6.6" rx="9" ry="3.1"/>' +
-        '<path d="M3 6.6 v10.4 c0 1.7 4 3.1 9 3.1 s9 -1.4 9 -3.1 V6.6"/>' +
-        '<path d="M4.1 10.2 L8.1 14.4 M19.9 10.2 L15.9 14.4 M12 11.2 v4.4"/>',
+      icon: DRUM_ICON,
       body: '<div class="ref-detail">Dusty Break 02</div>',
       panel: '',
     },
@@ -183,13 +211,7 @@ export function playbackScreen(opts: {
       enabled: true,
       muted: false,
       level: 0.55,
-      // A real keyboard rather than a grid: five white keys with the black keys where a
-      // piano actually puts them, so the gap at x=14 is the E–F pair. The rect-and-bars it
-      // replaces was symmetrical, which is exactly what a keyboard is not.
-      icon:
-        '<rect x="2" y="5" width="20" height="14" rx="1.6"/>' +
-        '<path d="M6 12.8 v6.2 M10 12.8 v6.2 M14 5 v14 M18 12.8 v6.2"/>' +
-        '<path d="M6 6 v6.8 M10 6 v6.8 M18 6 v6.8" stroke-width="2.6"/>',
+      icon: PIANO_ICON,
       body:
         '<div class="chord-slots">' +
         ['Dm', 'G', 'Am'].map((c) => `<span class="chord">${c}</span>`).join('') +
@@ -337,6 +359,7 @@ export function playbackScreen(opts: {
       layer: initial,
       rec: 'unarmed',
       el: rowEl,
+      label,
       wave,
       rule,
       note,
@@ -497,6 +520,7 @@ export function playbackScreen(opts: {
       node.textContent = clean;
       row.layer = { ...row.layer, name: clean };
       opts.onChange(row.layer);
+      syncLabelWidth(); // a shorter name is width the lanes can have back
     });
     node.addEventListener('paste', (e) => {
       e.preventDefault();
@@ -545,6 +569,28 @@ export function playbackScreen(opts: {
       row.wave.insertBefore(line, row.note);
       row.live.push(line);
     }
+  }
+
+  /**
+   * The label column is fixed width so every lane starts at the same x — a ragged left edge
+   * across seven rows is worse than the space it costs. But it was fixed at a width chosen for
+   * the longest name a layer *could* have, not the longest one present, so eight layers named
+   * "Bass" left a column of nothing between the name and the lane.
+   *
+   * Measure what the names actually need, take the widest, and give the rest to the lanes. The
+   * clamp at the top keeps one long name from spending every lane's width; past it, names
+   * ellipsize as before. Changing this changes the lane width, so the lane's `ResizeObserver`
+   * re-runs `syncSizing` on its own — nothing needs to call both.
+   */
+  function syncLabelWidth() {
+    root.classList.add('is-measuring');
+    let widest = LABEL_MIN_PX;
+    for (const row of rows) {
+      if (row.rec !== 'unarmed') continue; // armed and recording labels are auto-width already
+      widest = Math.max(widest, row.label.getBoundingClientRect().width + LABEL_PAINT_SLACK_PX);
+    }
+    root.classList.remove('is-measuring');
+    root.style.setProperty('--layer-label-w', `${Math.min(LABEL_MAX_PX, Math.ceil(widest))}px`);
   }
 
   function syncSizing() {
@@ -639,6 +685,7 @@ export function playbackScreen(opts: {
   let observer: ResizeObserver | undefined;
   requestAnimationFrame(() => {
     if (!alive) return;
+    syncLabelWidth();
     syncSizing();
     buildLanes();
     for (const row of rows) row.volume.update();
