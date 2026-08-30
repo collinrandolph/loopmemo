@@ -18,7 +18,7 @@ type Route = { screen: 'playback' } | { screen: 'edit'; layerIndex: number };
 let route: Route = { screen: 'playback' };
 
 const nav = el('div', 'app-nav');
-const host = el('div');
+const host = el('div', 'app-host');
 document.body.append(nav, host);
 
 let current: { destroy(): void } | undefined;
