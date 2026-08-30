@@ -73,6 +73,7 @@ src/domain/            the whole domain layer — no platform APIs, no dependenc
   pass-index.ts        pass numbering, availability, region lookup, vertical stepping
   schedule-plan.ts     what plays when; mid-bar splice entry points
   arrangement.ts       the edit operations; compression plan
+  transport.ts         playback position, the played set, the release edge
   project.ts           Project, Layer, quality, size projection
 tests/                 node:test, one file per module
 Tools/                 toolchain-free cross-checks against docs/kit/lr-kit.js
@@ -152,6 +153,43 @@ after recording onto a compressed project.
 
 **The available set can be non-contiguous.** A tile legitimately reads `P4` with no `P3`
 behind it. The gap is real and the number preserves provenance.
+
+## Transport, and two deliberate divergences from the kit
+
+§3.6 lists six rules. **Four of them are one rule**: index on position within the *cycle*
+(`origin → end → wrap → back to origin`) rather than on raw slot, and gating, wrap-release,
+hold-while-wrapped and release-at-the-origin all fall out of `cyclePosition(slot) < phase`.
+The fifth falls out of bar mode being a cycle of length 1. The sixth — selection clears on
+stop — is UI state and lives in the caller.
+
+Verified against the kit across 32,768 played-set states and 144,000 rendered line-frames.
+
+**`wrapped` does two jobs, and only one is redundant.** As *state* it is exactly
+`head < origin`, so the comparison above replaces it. As an *edge detector* it is not
+redundant: it fires the cycle event, which sets the mockup's per-tile `resetA` — and
+`passed = max(passedAt, resetA)` decaying over `TAU.reset` is the 180 ms release. Drop the
+flag naively and `isPlayed` stays perfectly correct while the release degrades to a
+one-frame snap, which **no played-set test can see**. `completedCycleBetween` is that edge
+without the flag. `tests/transport-animation.test.ts` guards it.
+
+**Divergence 1 — transport owns no clock.** The kit integrates its own `tick(dt)`. Here the
+engine's frame position is authoritative (§2.4), because a software clock free-runs against
+the audible playhead — 1% on a 40-second loop is 400 ms. It also made the cycle edge fire a
+frame early under float accumulation, offsetting the whole release. Exact frame counts and
+integer division remove the class.
+
+**Divergence 2 — the colour feather stays continuous across the wrap.** The kit satisfies
+"hold lines from the origin onward as played" with `return COLOR_FEATHER`, a constant. That
+holds them, but it also snaps the *trailing* feather: at the instant the playhead leaves the
+last slot, that slot's final line is one line behind and should read ~40% spent and still
+fading — the kit jumps it to 100% in a frame. §3.4 asks for "a soft colour edge trailing a
+crisp height edge", so we return the true distance, which holds the line just as played and
+lets the feather finish. Height is unaffected either way (its window is one line, so both
+clamp). There is a test asserting the kit still snaps — if it stops, re-check whether this
+divergence is still wanted.
+
+**This has not been seen on screen.** It is verified numerically against the reference, which
+is not the same as looking right. Confirm in the UI when there is one.
 
 ## Where the audio work is still ahead
 

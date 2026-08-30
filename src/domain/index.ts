@@ -10,4 +10,5 @@ export * from './timing.ts';
 export * from './pass-index.ts';
 export * from './schedule-plan.ts';
 export * from './arrangement.ts';
+export * from './transport.ts';
 export * from './project.ts';
