@@ -16,6 +16,11 @@ export type WaveNode = HTMLDivElement & {
 };
 
 export type VolumeNode = HTMLButtonElement & { update(): void };
+export type PlayNode = HTMLButtonElement & { setPlaying(on: boolean): void };
+export type ProgressNode = HTMLDivElement & { set(fraction: number): void };
+
+/** Three states, cycled by tap; a hold while armed cancels (§3.5). */
+export type RecordState = 'unarmed' | 'armed' | 'recording';
 
 type Kit = {
   clamp(v: number, lo: number, hi: number): number;
@@ -50,6 +55,13 @@ type Kit = {
     onToggle(): void;
     large?: boolean;
   }): VolumeNode;
+  PlayButton(onToggle: () => void): PlayNode;
+  ProgressBar(opts: { ticks?: number; onSeek?(fraction: number): void }): ProgressNode;
+  RecordDot(opts: {
+    state(): RecordState;
+    blocked?(): boolean;
+    set(state: RecordState): void;
+  }): HTMLButtonElement;
 };
 
 export const LR = (window as unknown as { LR: Kit }).LR;

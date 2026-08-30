@@ -103,6 +103,13 @@ mockup rather than reinventing it. The kit supplies presentation (`ramp`, `motio
 `Waveform`, `VolumeControl`); its own `timing` and `Transport` are deliberately **not** used,
 because those are what `src/domain` replaces.
 
+**Recording on the Playback screen goes through the domain, and the mockup's version does
+not.** The mockup increments a pass counter at each loop point; here the badge is
+`recordingBadge` (provisional until the traversal earns a bar) and the take is committed by
+`recordSession` at the stop, which may decline it. **Nothing is written at the loop point** —
+one continuous recording is one session however many passes it spans (§1.4). Stop inside the
+first bar and no pass appears, which is visible in the UI.
+
 **Gate pointer gestures on your own `down` flag, never on `hasPointerCapture`.** `pointermove`
 fires on plain hover, and capture is only a routing hint: it survives a `pointerup` the page
 never receives — released outside the window, focus lost, the browser taking the gesture over.

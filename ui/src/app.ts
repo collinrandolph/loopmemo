@@ -62,16 +62,17 @@ function render() {
   host.innerHTML = '';
 
   if (route.screen === 'playback') {
-    host.appendChild(
-      playbackScreen({
-        project,
-        onChange: replaceLayer,
-        onEdit(layerIndex) {
-          route = { screen: 'edit', layerIndex };
-          render();
-        },
-      }),
-    );
+    const playback = playbackScreen({
+      project,
+      engine,
+      onChange: replaceLayer,
+      onEdit(layerIndex) {
+        route = { screen: 'edit', layerIndex };
+        render();
+      },
+    });
+    current = playback;
+    host.appendChild(playback.node);
     return;
   }
 
