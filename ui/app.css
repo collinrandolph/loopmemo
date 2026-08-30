@@ -160,8 +160,12 @@ body { margin: 0; background: var(--lr-page); }
             background: var(--lr-rec); width: 0; }
 
 .refs { display: grid; gap: var(--lr-seam); padding: 0 20px 6px; }
-.ref-icon {
-  width: 22px; height: 22px; flex: 0 0 22px;
+/* One rule for every line icon on the screen, so the help control cannot drift away from the
+   reference rows it is meant to match. Sized to the record dot (20px) rather than the 22 it
+   was: a stroke icon fills its box edge to edge where a filled dot does not, so at equal boxes
+   the icon read as the larger of the two. */
+.ref-icon, .lr-help svg {
+  width: 20px; height: 20px; flex: 0 0 20px; display: block;
   fill: none; stroke: var(--lr-ink); stroke-width: 2;
   stroke-linecap: round; stroke-linejoin: round;
 }
@@ -235,16 +239,15 @@ body { margin: 0; background: var(--lr-page); }
 .header-controls input[type=range] { width: 120px; }
 
 /* ------------------------------------------------------------------- help -- */
-/* A question mark where a line of instructions used to run the width of the footer. */
+/* A question mark where a line of instructions used to run the width of the footer. Bare, like
+   the reference-track icons — a chip around it would have made it the only framed line icon. */
 .lr-help {
-  width: 28px; height: 28px; flex: 0 0 28px; border-radius: 50%;
-  background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.26);
-  color: #fff; font-size: 14px; font-weight: 700; line-height: 1; cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  font-family: inherit; -webkit-tap-highlight-color: transparent;
-  transition: background .12s;
+  background: none; border: none; padding: 0; cursor: pointer;
+  display: flex; align-items: center; flex: 0 0 auto;
+  -webkit-tap-highlight-color: transparent;
 }
-.lr-help:hover { background: rgba(255,255,255,.24); }
+.lr-help svg { transition: stroke .12s; }
+.lr-help:hover svg { stroke: #fff; }
 
 /* Fixed to the viewport, not to `.lr-screen`, which clips its own overflow. Bottom-anchored:
    the control that opens it is in the footer, and a thumb is already down there. */
