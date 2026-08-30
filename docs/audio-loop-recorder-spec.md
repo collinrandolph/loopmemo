@@ -626,20 +626,23 @@ exist inside a project, and the seven-layer ceiling stops being a wall — it be
 
 Applied per layer, in real time, persisted with the project.
 
-**EQ presets** — ⚠️ **the table below is a placeholder, not a decision.** It gives frequencies and
-directions with no gain, no Q and no filter type, which are the numbers that separate a usable
-preset from a caricature. The set of presets is not settled either. This needs its own research
-pass; nothing in `src/domain` implements it, deliberately, so that guesses do not calcify as fact.
+**EQ presets** — six, named for what they do rather than for a source, since any layer can hold
+anything. Chosen by icon like the pan presets, each drawn as its curve.
 
-| Preset | Shape |
-|--------|-------|
-| Flat | No EQ |
-| Warm Vocals | Boost 3 kHz, cut 200 Hz |
-| Bass Thump | Boost 60/100 Hz, cut 500 Hz |
-| Crisp Drums | Boost 5/10 kHz, cut 150 Hz |
-| Airy Strings | Boost 8/12 kHz, cut 500 Hz |
-| Gritty Guitar | Boost 1/3 kHz, cut 250 Hz |
-| Lead Synth | Boost 2 kHz and 10 kHz |
+| Preset | Shape | Also called |
+|--------|-------|-------------|
+| Flat | No EQ | — |
+| Low Cut | High-pass; removes rumble and body | High Pass, Thin |
+| High Cut | Low-pass; removes air and edge | Low Pass, Dark |
+| Presence | Upper-mid boost; pushes forward | Vocal, Forward |
+| Scoop | Mid cut; makes room for other layers | Mid Cut, Scooped |
+| Distant | Band-pass; sends it to the back | Telephone, Radio, Lo-Fi |
+
+⚠️ **The band values are not decided.** Frequency, gain, Q and filter type per preset still need
+their own pass, and nothing in `src/domain` implements EQ until they do. The icons are drawn for
+contrast between presets, not from real filter curves. Note the retired set was source-based —
+Warm Vocals, Bass Thump, Crisp Drums, Airy Strings, Gritty Guitar, Lead Synth — and
+`docs/mockups/playback-screen-mockup.html` still lists those names.
 
 **Pan presets**: Center (0°), Slight L (−15°), Slight R (+15°), Wide L (−45°), Wide R (+45°), and
 **Surround** — a Haas effect where the duplicate is delayed, panned opposite and sits below the dry.
@@ -678,29 +681,17 @@ the live one never had.
 
 ### Pan preset icons
 
-Presets are chosen **by icon only** — no names in the picker. The name of the *selected* preset
-appears beside the word **Pan** in the layer panel, so the row still reads in words without the
-strip carrying six labels.
-
-The icon is `((o))`: a filled circle for the centre, with three arcs on each side. The full shape is
-always drawn — unlit arcs stay as dim ghosts — so the icons share one silhouette and only their lit
-portions differ.
+Presets are chosen by icon rather than by name. The icon is `((o))`: a filled circle with three arcs
+each side, drawn in full with unlit arcs as dim ghosts. Arcs lit per preset:
 
 | Center | Slight L | Slight R | Wide L | Wide R | Surround |
 |---|---|---|---|---|---|
 | 2 / 2 | 2 / 1 | 1 / 2 | 3 / 0 | 0 / 3 | 3 / 3 |
 
-**These are labels, not readouts.** They stand for the presets the way words would, and are picked to
-be legible at 26 px rather than computed from the pan gains. An earlier version derived them, which
-bought nothing the user can use and cost a rule with an exception in it.
+These are static labels standing in for names, not readouts — they are not derived from the pan
+gains, and they indicate nothing about the delay. Both sides always use the same radii.
 
-**Nothing about the delay is shown.** How Surround works is not something anyone needs to reason
-about in order to choose it, and it is the only preset with a second signal path, so a mark saying so
-would explain a mechanism rather than name a preset. `3 / 3` already belongs to nothing else.
-
-**Both sides use the same radii, always.** Drawing one side's arcs further out to suggest the delay
-moves the optical centre off the circle and makes arc *size* compete with arc *count*, which is the
-only thing the icon is meant to say.
+Layout, sizing and states follow `docs/kit/` and `docs/mockups/`.
 
 Native `AVAudioUnitEQ` plus mixer panning is sufficient for v1; Superpowered or JUCE only if the
 effects rack in §6.2 is built.

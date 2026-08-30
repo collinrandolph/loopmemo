@@ -362,14 +362,13 @@ carry signal. `SURROUND_WET_DB = -1.5` is flagged for confirmation by ear; a tes
 consequence so changing the number is deliberate rather than incidental.
 
 **The picker icons are a static table on `PanPreset`, and deriving them was a mistake made
-once already.** They are labels standing in for names, not readouts — the user picks a preset,
-they do not read a balance off it. Deriving them from `panGains` produced a rule that needed
-an exception for Surround, and the derivation bought nothing anyone can act on.
+once already.** They are labels standing in for names — deriving them from `panGains` produced
+a rule that needed an exception for Surround and bought nothing anyone can act on.
 
-**The icon shows nothing about the delay**, and both sides always use the same radii. Drawing
-one side further out to suggest "arrives later" explains a mechanism the user does not need,
-moves the optical centre off the circle, and makes arc size compete with arc count — which is
-the only thing the icon is for. `3 / 3` already belongs to no other preset.
+**Do not design UI here.** `docs/kit/` and `docs/mockups/` are the reference for layout,
+sizing, states and styling, and they are better than anything derivable from the spec text.
+Interface work cannot be judged before there is a build to look at, so proposing panel
+layouts, control placement or new components ahead of one is wasted effort.
 
 **The delayed tail of the last bar runs past the loop end.** Live that is correct and needs
 nothing. **Bounce and export render fixed-length files**, so there it must wrap to the start or
