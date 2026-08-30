@@ -84,8 +84,11 @@ body { margin: 0; background: var(--lr-page); }
   flex: 0 0 var(--layer-label-w); width: var(--layer-label-w);
   display: flex; align-items: baseline; gap: 5px;
 }
-/* One frame with the columns released, so `syncLabelWidth` can read what they want. */
+/* One frame with the columns released, so `syncLabelWidth` can read what they want — first
+   as they stand, then wearing the pass badge the armed and recording states put there. */
 .is-measuring .layer-label { flex-basis: auto; width: auto; }
+.is-measuring-badge .layer-name { display: none; }
+.is-measuring-badge .lr-pass-badge { display: block; font-size: 12px; padding: 3px 8px; }
 .layer-label .idx { color: var(--lr-ink-faint); font-weight: 500; }
 .layer-name {
   outline: none; border-radius: 3px; padding: 1px 3px; margin: -1px -3px;
@@ -96,10 +99,17 @@ body { margin: 0; background: var(--lr-page); }
 .layer-name:hover { background: rgba(255,255,255,.09); }
 .layer-name:focus { background: rgba(0,0,0,.25); box-shadow: 0 0 0 1px rgba(255,255,255,.35); }
 .layer-name:empty::before { content: attr(data-placeholder); color: var(--lr-ink-faint); }
+/* The badge replaces the name in the same fixed column, so the lane of the layer being
+   recorded starts at the same x as every other lane. `syncLabelWidth` measures both states
+   and sizes the column for the wider. */
 .lr-row.is-armed .layer-name,
 .lr-row.is-recording .layer-name { display: none; }
-.lr-row.is-armed .layer-label,
-.lr-row.is-recording .layer-label { flex-basis: auto; width: auto; }
+
+/* Arming hides the layer's existing lane: the take is about to replace what is there, so the
+   row shows only what is being played into it, exactly as an empty layer does. Live lines
+   carry `is-live` and are the one thing that stays. */
+.lr-row.is-armed .lr-wave__line:not(.is-live),
+.lr-row.is-recording .lr-wave__line:not(.is-live) { display: none; }
 
 /* A traversal that has not yet earned its first bar is not a pass, so the number
    it is claiming reads as unearned rather than settled (§3.9). Quiet, and nothing

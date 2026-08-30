@@ -1,4 +1,5 @@
 import { isSilentAt } from '../../src/domain/arrangement.ts';
+import { toAbsolute } from '../../src/domain/bar-ref.ts';
 import { type ReferenceSource, isAudibleInMixdown } from '../../src/domain/bounce.ts';
 import { PAN_PRESETS, type PanPresetId, panPreset } from '../../src/domain/effects.ts';
 import { EQ_PRESETS, type EqPresetId } from '../../src/domain/eq.ts';
@@ -125,8 +126,13 @@ export function playbackScreen(opts: {
    * name.
    */
   function paintTitle() {
-    const passes = projectTotalPasses(project);
-    const size = sizeProjection(project);
+    // From the rows, not from `opts.project`. That is the snapshot the screen was built with;
+    // edits go out through `onChange` and come back on the next mount, so reading it here left
+    // the pass count and the size frozen at whatever they were when the screen opened — a
+    // recording committed and the header did not move.
+    const live: Project = { ...project, layers: rows.map((r) => r.layer) };
+    const passes = projectTotalPasses(live);
+    const size = sizeProjection(live);
     titleRow.innerHTML =
       `<div class="lr-title">${project.name}</div>` +
       `<div class="lr-settings">${project.bpm} BPM · ${project.barCount} Bars · ${project.beatsPerBar}/4</div>`;
@@ -278,6 +284,7 @@ export function playbackScreen(opts: {
   }
 
   function setRec(index: number, state: RecordState) {
+    let stopped = false;
     rows.forEach((row, i) => {
       const next = i === index ? state : 'unarmed'; // arming is exclusive
       const was = row.rec;
@@ -307,12 +314,23 @@ export function playbackScreen(opts: {
         paintRow(row);
         paintTitle();
         buildLanes();
+        stopped = true;
       }
       row.note.style.display = next === 'unarmed' && !layerHasRecording(row.layer) ? '' : 'none';
       row.rule.style.width = '0';
       paintBadge(row);
     });
     layersEl.classList.toggle('is-capturing', capturingIndex() >= 0);
+
+    if (stopped) {
+      // The take ends where it ends; the loop does not carry on past it. Rewinding to the
+      // downbeat also puts the transport where the next pass will start, since recording
+      // restarts the loop anyway.
+      setPlaying(false);
+      // A committed pass can widen the badge — "Pass 9" to "Pass 10" — and the badge shares
+      // the label column with the name.
+      syncLabelWidth();
+    }
   }
 
   function capturedSession(layer: Layer, frames: number): RecordingSession {
@@ -531,15 +549,35 @@ export function playbackScreen(opts: {
   }
 
   // ------------------------------------------------------------------- lanes --
+  /**
+   * The lane is an overview of the **arrangement**, not of the last take — so a slot draws the
+   * material its `BarRef` points at. Height indexes on the source, colour on the layer: on this
+   * screen colour is layer identity (§4.4), and the source ramp is the Edit Layer grid's job.
+   *
+   * In recorded order `src * linesPerSlot + lineInSlot` comes back to the global line index, so
+   * an unedited layer draws what it drew when the lane keyed on nothing and a slot pulled from
+   * another pass is the only thing that changes. Exactly, when the lines divide evenly into
+   * bars; within a line at the far end when they do not, which a synthetic peak can absorb.
+   */
   function buildLanes() {
+    const bars = project.barCount;
+    const linesPerSlot = Math.max(1, Math.round(lineCount / bars));
     for (const row of rows) {
       if (!layerHasRecording(row.layer)) continue;
       const [from, to] = ramp.slice(row.layer.index, LAYER_COUNT);
       row.wave.build(lineCount, (i, u) => {
-        const slot = Math.min(project.barCount - 1, Math.floor(u * project.barCount));
-        const silent = isSilentAt(row.layer.mutedSlots, slot, false) || !row.layer.barSources[slot];
+        const slot = Math.min(bars - 1, Math.floor((i * bars) / lineCount));
+        const ref = row.layer.barSources[slot];
+        const silent = isSilentAt(row.layer.mutedSlots, slot, false) || !ref;
+        const src = ref ? toAbsolute(ref, bars) : 0;
+        // `ceil`, not `floor`: this has to invert the `slot` above, and the first line of slot
+        // s is the first i with `floor(i * bars / lineCount) === s`. Flooring picks a line one
+        // slot earlier whenever the division is not exact, which offsets the material.
+        const lineInSlot = i - Math.ceil((slot * lineCount) / bars);
         return {
-          height: silent ? 2 : motion.snapEven(amp(row.layer.index, 0, i, lineCount) * LANE_AMPLITUDE, 2),
+          height: silent
+            ? 2
+            : motion.snapEven(amp(row.layer.index, src, lineInSlot, linesPerSlot) * LANE_AMPLITUDE, 2),
           rgb: ramp.rgb(from + (to - from) * u),
         };
       });
@@ -562,7 +600,10 @@ export function playbackScreen(opts: {
     while (row.live.length < upto && row.live.length < lineCount) {
       const i = row.live.length;
       const u = lineCount > 1 ? i / (lineCount - 1) : 0;
-      const line = el('div', 'lr-wave__line');
+      // `is-live` is what keeps the layer's existing lane hidden underneath: while armed or
+      // recording every line without it is display:none, so a layer with audio behaves like an
+      // empty one for the length of the take.
+      const line = el('div', 'lr-wave__line is-live');
       const level = amp(row.layer.index, row.layer.sessions.length, i, lineCount) * (0.55 + 0.45 * Math.random());
       line.style.height = `${motion.snapEven(level * LANE_AMPLITUDE, 2)}px`;
       line.style.color = `rgb(${ramp.rgb(from + (to - from) * u)})`;
@@ -581,15 +622,20 @@ export function playbackScreen(opts: {
    * clamp at the top keeps one long name from spending every lane's width; past it, names
    * ellipsize as before. Changing this changes the lane width, so the lane's `ResizeObserver`
    * re-runs `syncSizing` on its own — nothing needs to call both.
+   *
+   * The pass badge takes the name's place while armed and recording, so the column has to hold
+   * whichever of the two is wider. It used to go auto-width for those states, which moved the
+   * lane sideways on the one row you were watching most closely.
    */
   function syncLabelWidth() {
-    root.classList.add('is-measuring');
     let widest = LABEL_MIN_PX;
+    root.classList.add('is-measuring');
     for (const row of rows) {
-      if (row.rec !== 'unarmed') continue; // armed and recording labels are auto-width already
       widest = Math.max(widest, row.label.getBoundingClientRect().width + LABEL_PAINT_SLACK_PX);
     }
-    root.classList.remove('is-measuring');
+    root.classList.add('is-measuring-badge');
+    for (const row of rows) widest = Math.max(widest, row.label.getBoundingClientRect().width);
+    root.classList.remove('is-measuring', 'is-measuring-badge');
     root.style.setProperty('--layer-label-w', `${Math.min(LABEL_MAX_PX, Math.ceil(widest))}px`);
   }
 
