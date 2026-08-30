@@ -188,6 +188,16 @@ lets the feather finish. Height is unaffected either way (its window is one line
 clamp). There is a test asserting the kit still snaps — if it stops, re-check whether this
 divergence is still wanted.
 
+**The snap is NOT what stops the gradient bleeding onto the previous bar.** That was checked,
+because it is the obvious reason to keep a constant and it would make the divergence unsafe.
+Two independent fixes: the *gate* stops the bleed (rule 1 — "the colour feather reaches
+backwards across the bar boundary and tints the tail of the previous bar, which never
+played"), and the *constant* holds played lines (rule 3). The kit has both; we reproduce the
+gate structurally through cycle position and replace only the constant. Measured: zero bleed
+events in the kit across five origins and sixty-five phases of single-bar playback, and zero
+in ours. `tests/transport-bleed.test.ts` keeps it that way — it is the most visible failure
+in the whole transport, so it has its own file.
+
 **This has not been seen on screen.** It is verified numerically against the reference, which
 is not the same as looking right. Confirm in the UI when there is one.
 
