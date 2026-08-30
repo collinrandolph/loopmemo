@@ -32,18 +32,37 @@ describe('a partially recorded bar is an ordinary bar', () => {
   });
 });
 
-describe('stop latency does not manufacture a pass', () => {
-  // Stopping is never instant, so a pass played to exactly the loop point captures a few
-  // frames past it. Left alone that crumb becomes a phantom bar, and a phantom pass.
-  const CRUMB = session(LOOP + 100);
+describe('an overrun past the loop point does not manufacture a pass', () => {
+  // A junk pass is far worse than a junk bar: it renumbers every pass after it, a single
+  // pass cannot be deleted (§5.1 #2), and the only escape is clearing the whole layer.
+  it('needs a complete bar before a traversal counts', () => {
+    assert.equal(passCount(T, LOOP + 100), 1, 'a few frames over');
+    assert.equal(passCount(T, LOOP + FPB / 2), 1, 'half a bar over');
+    assert.equal(passCount(T, LOOP + FPB - 300), 1, 'short of a bar by more than latency');
+    assert.equal(passCount(T, LOOP + FPB), 2, 'a whole bar is a pass');
+  });
 
-  it('ignores an overrun inside the tolerance', () => {
-    assert.equal(passCount(T, LOOP + 100), 1);
-    assert.equal(barExists(T, 2, 1, LOOP + 100), false);
+  it('forgives stop latency on that bar, so a played pass is not lost', () => {
+    // The far-edge tolerance survives here and only here: a completeness test is the one
+    // kind that needs it.
+    assert.equal(passCount(T, LOOP + FPB - 88), 2, '2 ms short of the bar still counts');
+  });
+
+  it('offers no bar of a pass that does not exist', () => {
+    assert.equal(barExists(T, 2, 1, LOOP + FPB / 2), false);
+    assert.deepEqual(availablePasses(passIndex([session(LOOP + FPB / 2)], T), 1), [1]);
+  });
+
+  it('leaves the numbering of a later session alone', () => {
+    // The annoyance the gate exists to prevent: without it the overrun takes pass 2, and
+    // everything the user records next is misnumbered from there on.
+    const index = passIndex([session(LOOP + FPB / 2), session(LOOP)], T);
+    assert.deepEqual(index.firstPass, [1, 2]);
+    assert.deepEqual(availablePasses(index, 1), [1, 2]);
   });
 
   it('keeps the size projection honest', () => {
-    const index = passIndex([CRUMB], T);
+    const index = passIndex([session(LOOP + 100)], T);
     assert.deepEqual(availablePasses(index, 1), [1], 'one pass offered');
     assert.equal(passCount(T, LOOP + 100), 1, 'and one pass counted');
   });
@@ -52,7 +71,9 @@ describe('stop latency does not manufacture a pass', () => {
     // The guarantee behind deriving one from the other: these were computed independently
     // once, and disagreed on every recording that overran the loop point.
     const L = loopFrames(T);
-    for (const frames of [0, 1, toleranceFrames(T), 100, FPB, L - 1, L, L + 100, 2 * L + 7]) {
+    const lengths = [0, 1, toleranceFrames(T), 100, FPB - 1, FPB, L - 1, L];
+    lengths.push(L + 100, L + FPB / 2, L + FPB - 1, L + FPB, 2 * L + 7);
+    for (const frames of lengths) {
       let counted = 0;
       for (let p = 1; p <= 5; p++) if (barExists(T, p, 1, frames)) counted++;
       assert.equal(passCount(T, frames), counted, `at ${frames} frames`);
@@ -128,11 +149,20 @@ describe('recordSession', () => {
     assert.deepEqual(second.barSources[11], barRef(1, 1), 'but slot 11 was not moved onto it');
   });
 
-  it('refuses a session with no usable audio', () => {
-    // It would contribute no passes, and on an empty layer would initialise an arrangement
-    // of nothing but muted placeholders.
+  it('refuses a session that never completed a bar', () => {
+    // It contributes no passes, and on an empty layer would initialise an arrangement of
+    // nothing but muted placeholders. The gate applies to the first pass like any other:
+    // a take shorter than a bar is not a pass.
     assert.equal(recordSession(layer, session(0, 'empty'), T), layer);
     assert.equal(recordSession(layer, session(toleranceFrames(T), 'crumb'), T), layer);
+    assert.equal(recordSession(layer, session(FPB / 2, 'half'), T), layer);
+  });
+
+  it('accepts a take of one bar, and arranges the rest as muted placeholders', () => {
+    const after = recordSession(layer, session(FPB, 'onebar'), T);
+    assert.equal(after.sessions.length, 1);
+    assert.deepEqual(after.barSources[0], barRef(1, 1));
+    assert.deepEqual(after.mutedSlots.length, 15, 'every slot but the one that has audio');
   });
 
   it('never mutates the layer it was given', () => {

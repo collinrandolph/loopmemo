@@ -200,10 +200,25 @@ session[i].firstPass = 1 + Σ passCount(session[0..i-1])       // numbering foll
 barExists(p, r) = ((localPass - 1) × loopFrames + (r - 1) × framesPerBar) + tolerance
                   < session.frames
 
-// a pass is a traversal that holds its own bar 1 — one derivation, not two
-passCount(session)   = count of p ≥ 1 where barExists(p, 1)
-                     = ceil((session.frames - tolerance) / loopFrames)
+// a traversal becomes a pass once it holds one COMPLETE bar
+passExists(p)        = (p - 1) × loopFrames + framesPerBar <= session.frames + tolerance
+passCount(session)   = count of p ≥ 1 where passExists(p)     // one derivation, not two
 ```
+
+**A partial bar is kept; a partial *pass* is not.** The two gates differ on purpose, because
+the mistakes cost different amounts. An overrun bar is one tap-and-hold from silence and is local
+to its slot. An overrun **pass** renumbers every pass after it, permanently — a single pass cannot
+be deleted (§5.1 #2), so the only escape is clearing the whole layer, and it inflates the size
+projection the Library exists to show. It is also worth almost nothing when intended: a traversal
+that has not completed bar 1 contributes a fragment to one bar position and nothing to any other.
+Discarding it costs at most one bar of a take that can be played again.
+
+Gate it **in bars, not in milliseconds.** A stop overrun is a reaction-time quantity — roughly
+constant in absolute terms and therefore a wildly different *fraction* of a bar across the BPM
+range (about 10% at 60 BPM and 40% at 240 BPM for the same physical action), so no percentage
+threshold works at both ends. "One complete bar" needs no tuning and is expressed in the app's own
+units. This is also the one place the tolerance sits at the **far** edge of a bar: a completeness
+test is the only kind that needs it, so that stop latency cannot lose a pass played to the end.
 
 **A bar exists once the recording reaches into it**, not once it is whole. Stopping halfway through
 bar 10 keeps bar 10 as an ordinary, selectable bar that runs out of audio partway; the region is

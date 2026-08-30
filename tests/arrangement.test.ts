@@ -12,8 +12,9 @@ import {
   unresolvedSlots,
 } from '../src/domain/arrangement.ts';
 import { barRef } from '../src/domain/bar-ref.ts';
-import { regionFor } from '../src/domain/pass-index.ts';
-import { singlePassIndex, specIndex } from './fixtures.ts';
+import { passIndex, regionFor } from '../src/domain/pass-index.ts';
+import { framesPerBar } from '../src/domain/timing.ts';
+import { FPB, T, session, singlePassIndex, specIndex } from './fixtures.ts';
 
 describe('Arrangement', () => {
   it('starts in recorded order', () => {
@@ -98,7 +99,30 @@ describe('Arrangement', () => {
       assert.deepEqual(plan.bars[0], {
         kind: 'audio',
         region: regionFor(specIndex(), barRef(2, 9)),
+        frameCount: framesPerBar(T),
       });
+    });
+
+    it('keeps a partial bar at full width, with the shortfall as a rest', () => {
+      // Compress writes the retained bars back to back. A bar narrower than framesPerBar
+      // would pull every later bar early and leave the loop physically short — permanently,
+      // in the only surviving copy.
+      const index = passIndex([session(9 * FPB + FPB / 2)], T);
+      const plan = compressionPlan(recordedOrder(16), index, [10, 11, 12, 13, 14, 15]);
+      const partial = plan?.bars[9];
+
+      assert.equal(partial?.kind, 'audio');
+      assert.equal(partial?.frameCount, FPB, 'occupies a whole bar');
+      assert.equal(
+        partial?.kind === 'audio' ? partial.region.frameCount : undefined,
+        FPB / 2,
+        'but only half a bar of audio to copy',
+      );
+      assert.equal(
+        plan?.bars.reduce((sum, b) => sum + b.frameCount, 0),
+        16 * FPB,
+        'the retained loop is still exactly one loop long',
+      );
     });
 
     it('refuses when a slot points at missing audio', () => {

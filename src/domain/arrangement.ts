@@ -225,9 +225,26 @@ export function isRecordedOrderAt(arrangement: Arrangement, slot: number): boole
   return ref !== undefined && ref.pass === 1 && ref.relativeBar === slot + 1;
 }
 
-/** One bar of the retained loop: audio to copy, or a rest to write as silence. */
+/**
+ * One bar of the retained loop: audio to copy, or a rest to write as silence.
+ *
+ * **`frameCount` is what the bar occupies, and it is always `framesPerBar`** — on both
+ * variants. For an audio bar, `region.frameCount` is a different quantity: how much audio
+ * there is to copy, which may be *less*. A partial bar keeps its full width and the shortfall
+ * is written as silence at its end, exactly as playback treats it.
+ *
+ * The two were the same number until partial bars became selectable (§1.4), and collapsing
+ * them again is a quiet, destructive failure: compress writes the retained bars back to back,
+ * so a bar narrower than `framesPerBar` pulls every later bar early and leaves the compressed
+ * loop physically shorter than `barCount × framesPerBar` — permanently, in the only surviving
+ * copy. Hence a field the writer cannot overlook rather than a rule it has to remember.
+ */
 export type RetainedBar =
-  | { readonly kind: 'audio'; readonly region: SourceRegion }
+  | {
+      readonly kind: 'audio';
+      readonly region: SourceRegion;
+      readonly frameCount: number;
+    }
   | { readonly kind: 'silence'; readonly frameCount: number };
 
 /**
@@ -257,17 +274,19 @@ export function compressionPlan(
   index: PassIndex,
   muted: MutedSlots,
 ): { bars: RetainedBar[]; arrangement: Arrangement; mutedSlots: MutedSlots } | undefined {
-  const silentFrames = framesPerBar(index.timing);
+  const perBar = framesPerBar(index.timing);
   const bars: RetainedBar[] = [];
 
   for (let slot = 0; slot < arrangement.length; slot++) {
     if (isSlotMuted(muted, slot)) {
-      bars.push({ kind: 'silence', frameCount: silentFrames });
+      bars.push({ kind: 'silence', frameCount: perBar });
       continue;
     }
     const region = regionFor(index, arrangement[slot]!);
     if (!region) return undefined;
-    bars.push({ kind: 'audio', region });
+    // Full width regardless of how much audio is behind it: a partial bar keeps its slot and
+    // the shortfall becomes a rest, the same way playback already treats it.
+    bars.push({ kind: 'audio', region, frameCount: perBar });
   }
 
   return {

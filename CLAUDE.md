@@ -139,8 +139,19 @@ it, and that crumb would otherwise become a phantom bar and a phantom pass.
 **`passCount` and `barExists` are one derivation, not two.** They used to be computed
 independently and disagreed on every recording that overran the loop point: two complete
 passes plus 20 ms reported three passes to the size projection while offering two to the
-swipe axis, so the Library over-stated the project by 50%. `passCount` is now "traversals
-that hold their own bar 1". `tests/recording.test.ts` sweeps lengths asserting they agree.
+swipe axis, so the Library over-stated the project by 50%. Both now go through `passExists`.
+`tests/recording.test.ts` sweeps lengths asserting they agree.
+
+**A partial bar is kept; a partial pass is not — and that asymmetry is deliberate.** An
+overrun bar is one tap-and-hold from silence and local to its slot. An overrun *pass*
+renumbers every pass after it, permanently, and a single pass cannot be deleted (§5.1 #2), so
+the only escape is clearing the layer. It is near-worthless even when intended: a traversal
+that has not completed bar 1 contributes a fragment to one bar position and nothing to any
+other. **Gate it in bars, not milliseconds** — a stop overrun is roughly constant in absolute
+time, so it is ~10% of a bar at 60 BPM and ~40% at 240 BPM, and no percentage threshold works
+at both ends of the range. "One complete bar" needs no tuning. This is also the only surviving
+use of the tolerance at the *far* edge of a bar; a completeness test is the one kind that
+needs it.
 
 **One derivation per quantity.** An earlier `Layer` counted passes one way for its total
 (against a hardcoded `16 * 4410`, which is not `framesPerBar` for any tempo) and another way
@@ -189,8 +200,16 @@ rather than conflicts: unmuting is the step where the user decides the slot shou
 **Nothing ever reaches back to unmute them** — by then they are ordinary muted slots and our
 guesses would be indistinguishable from the user's choices.
 
-**A session with no usable audio is not recorded.** On an empty layer it would initialise an
-arrangement of nothing but muted placeholders.
+**A session that never completed a bar is not recorded.** It holds no passes, and on an empty
+layer would initialise an arrangement of nothing but muted placeholders. The pass gate applies
+to the first pass like any other.
+
+**A retained bar occupies `framesPerBar` no matter how much audio is behind it.**
+`RetainedBar.frameCount` is the width of the slot; `region.frameCount` is how much there is to
+copy, and for a partial bar it is less. They were the same number until partial bars became
+selectable, and collapsing them again is silent and destructive — compress writes bars back to
+back, so a narrow one pulls every later bar early and leaves the compressed loop shorter than
+`barCount × framesPerBar`, in the only surviving copy.
 
 **The layer being recorded onto is silent for the take**, and it is derived (`isLayerAudible`),
 never written into `layer.muted`. Writing through would make our state indistinguishable from

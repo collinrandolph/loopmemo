@@ -82,20 +82,47 @@ export function frameOffsetInLoop(t: Timing, relativeBar: number): number {
 }
 
 /**
+ * Does the `localPass`-th traversal hold **at least one complete bar**? (§1.4)
+ *
+ * This is the one place §1.4's original formula still applies, and the question it was always
+ * really asking. Stopping late overruns the loop point, and without this the overrun becomes
+ * a whole numbered pass holding nothing but junk — which **renumbers every pass after it,
+ * permanently**. A single pass cannot be deleted (§5.1 #2: `barSources` references pass
+ * numbers, so removing one breaks every reference past it), leaving no escape but clearing
+ * the entire layer. It also inflates the size projection the Library exists to show.
+ *
+ * Gated in bars rather than in milliseconds because that is what a pass is worth: a traversal
+ * that has not completed bar 1 contributes a fragment to one bar position and nothing to any
+ * other, so it is near-worthless even when it *was* intended. Discarding it costs at most one
+ * bar of a take the user can play again; admitting it costs a renumbering they cannot undo.
+ *
+ * **Deliberately not applied at the bar level.** A partial bar *inside* a pass is kept and
+ * exposed (see `barExists`) — an overrun there is a minor annoyance the user silences with
+ * one tap-and-hold, and guessing at their intent would cost more than it saves.
+ *
+ * The tolerance appears here at the **far** edge of the bar, which is a completeness test and
+ * is the only kind that needs it: stop latency must not lose a pass whose final bar the user
+ * played to the end.
+ */
+export function passExists(t: Timing, localPass: number, sessionFrames: number): boolean {
+  const start = (localPass - 1) * loopFrames(t);
+  return start + framesPerBar(t) <= sessionFrames + toleranceFrames(t);
+}
+
+/**
  * Total passes a session of `frames` holds, partial ones included (§1.4).
  *
- * **Derived from `barExists`, not counted separately**: this is exactly the number of
- * traversals `p` for which the session captured bar 1 of `p`. The two used to be computed
- * independently — `ceil(frames / loopFrames)` here against the tolerance formula there — and
- * they disagreed on every recording that overran the loop point. A session of two complete
- * passes plus 20 ms reported three passes to the size projection while offering two to the
- * swipe axis, so the Library over-stated the project by 50%. One derivation per quantity
- * (§1.5).
+ * **Derived from `passExists`, not counted separately.** This and `barExists` used to be
+ * computed independently — `ceil(frames / loopFrames)` here against the tolerance formula
+ * there — and they disagreed on every recording that overran the loop point. A session of two
+ * complete passes plus 20 ms reported three passes to the size projection while offering two
+ * to the swipe axis, so the Library over-stated the project by 50%. One derivation per
+ * quantity (§1.5).
  */
 export function passCount(t: Timing, frames: number): number {
-  const usable = frames - toleranceFrames(t);
-  if (usable <= 0) return 0;
-  return Math.ceil(usable / loopFrames(t));
+  const usable = frames + toleranceFrames(t) - framesPerBar(t);
+  if (usable < 0) return 0;
+  return Math.floor(usable / loopFrames(t)) + 1;
 }
 
 /**
@@ -118,6 +145,11 @@ export function passCount(t: Timing, frames: number): number {
  * yields usable bars instead of discarding the user's last few seconds of playing.
  *
  * The tolerance moves to the near edge accordingly: see `TOLERANCE_SECONDS`.
+ *
+ * The pass gate comes first, so no bar can outlive the pass that would hold it. That also
+ * keeps this in exact agreement with `passCount` at `relativeBar = 1` — the two thresholds
+ * are different, but the pass floor is a whole bar and the bar floor a few milliseconds, so
+ * clearing the former always clears the latter.
  */
 export function barExists(
   t: Timing,
@@ -128,6 +160,7 @@ export function barExists(
   if (!Number.isInteger(localPass) || localPass < 1) {
     throw new RangeError(`localPass is 1-based, got ${localPass}`);
   }
+  if (!passExists(t, localPass, sessionFrames)) return false;
   const start = (localPass - 1) * loopFrames(t) + frameOffsetInLoop(t, relativeBar);
   return start + toleranceFrames(t) < sessionFrames;
 }
