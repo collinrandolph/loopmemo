@@ -74,6 +74,7 @@ src/domain/            the whole domain layer — no platform APIs, no dependenc
   schedule-plan.ts     what plays when; mid-bar splice entry points
   arrangement.ts       the edit operations; compression plan
   transport.ts         playback position, the played set, the release edge
+  effects.ts           pan law, presets, the Haas delay — no EQ, deliberately
   project.ts           Project, Layer, quality, size projection
 tests/                 node:test, one file per module
 Tools/                 toolchain-free cross-checks against docs/kit/lr-kit.js
@@ -332,6 +333,37 @@ whichever platform wins:
 
 `segments()` and `splice()` in `schedule-plan.ts` already decide *what* plays and *when*. The
 audio layer's job is to execute that, and little else.
+
+## Pan and the Haas delay
+
+**There is no EQ in `effects.ts` on purpose.** §2.8's preset table is a placeholder — frequencies
+and directions with no gain, Q or filter type, and the set itself unsettled. Implementing it
+would turn invented numbers into apparent decisions. It needs a research pass first.
+
+**`7500 / BPM` ms is one eighth of a beat** (`60000/BPM ÷ 8`), so it is a note division, not a
+magic constant — `noteDelayFrames` takes beats and shares its arithmetic with `framesPerBar`
+(`noteDelayFrames(t, t.beatsPerBar) === framesPerBar(t)`, tested).
+
+**Clamped to 35 ms, because Haas only fuses below ~35–40 ms.** Unclamped it is 62.5 ms at
+120 BPM and 125 ms at 60 BPM — audible echoes, not width — and only stays in the window above
+~214 BPM. **Floor the clamp, never round**: `round(44100 × 0.035)` is 1544 frames, which is
+35.01 ms, i.e. past the limit the clamp exists to enforce.
+
+**±45° is a hard pan** — the angle is the equal-power angle, not 45° of a 90° half-field. The
+law must be equal-power; sources are mono, so linear panning would dip ~3 dB through centre.
+
+**Every preset reports the same `delayFrames`, and the five plain ones silence the path with
+gain.** The audio layer builds the delay once per layer and only ramps `wet`. Rebuilding the
+graph clicks, and so does moving a running delay line's time — and preset changes are a live
+gesture.
+
+**Surround is ~2.3 dB hotter than the other presets**, being the only one whose two paths both
+carry signal. `SURROUND_WET_DB = -1.5` is flagged for confirmation by ear; a test records the
+consequence so changing the number is deliberate rather than incidental.
+
+**The delayed tail of the last bar runs past the loop end.** Live that is correct and needs
+nothing. **Bounce and export render fixed-length files**, so there it must wrap to the start or
+the rendered loop has a seam the live one never had. Not yet implemented — bounce is not built.
 
 ## Build order (§0.5)
 

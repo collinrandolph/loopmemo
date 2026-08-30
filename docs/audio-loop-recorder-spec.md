@@ -626,7 +626,10 @@ exist inside a project, and the seven-layer ceiling stops being a wall — it be
 
 Applied per layer, in real time, persisted with the project.
 
-**EQ presets** (`AVAudioUnitEQ`):
+**EQ presets** — ⚠️ **the table below is a placeholder, not a decision.** It gives frequencies and
+directions with no gain, no Q and no filter type, which are the numbers that separate a usable
+preset from a caricature. The set of presets is not settled either. This needs its own research
+pass; nothing in `src/domain` implements it, deliberately, so that guesses do not calcify as fact.
 
 | Preset | Shape |
 |--------|-------|
@@ -639,8 +642,39 @@ Applied per layer, in real time, persisted with the project.
 | Lead Synth | Boost 2 kHz and 10 kHz |
 
 **Pan presets**: Center (0°), Slight L (−15°), Slight R (+15°), Wide L (−45°), Wide R (+45°), and
-**Surround** — a Haas effect where the duplicate is delayed by `7500 / BPM` ms (62.5 ms at 120 BPM)
-and panned opposite, via a circular delay buffer.
+**Surround** — a Haas effect where the duplicate is delayed, panned opposite and sits below the dry.
+
+**The angle is the equal-power angle**, so ±45° is a *hard* pan and Slight is a third of the way
+across. Sources are mono (§2.7), so panning is positioning rather than balancing and the law must be
+equal-power (`L = cos θ`, `R = sin θ`); linear panning dips about 3 dB through the centre, heard as
+a layer going quiet in the middle of the sweep.
+
+**The Surround delay is `7500 / BPM` ms clamped to 35 ms.** That formula is exactly **one eighth of
+a beat** — a 32nd note at 4/4, since `60000/BPM ÷ 8 = 7500/BPM` — so it is a note division rather
+than a magic constant, and is computed in frames like everything else. But **the Haas effect only
+fuses below roughly 35–40 ms**; past that the ear hears a second attack instead of a wider image.
+Unclamped the delay is 62.5 ms at 120 BPM and 125 ms at 60 BPM, both plainly echoes, and it only
+stays inside the window above about 214 BPM. The clamp costs the tempo sync at most tempos and keeps
+the preset doing what its name says at all of them. **The 32nd-note slap it discards is a good
+effect in its own right and belongs to the v2 delay (§6.2)**, which is why `DelaySpec` is shaped for
+a general delay — Surround is one configuration of it, with a single repeat and no feedback.
+
+Surround's fixed choices: **dry left, delayed right** (fixed, or every Surround layer leans the same
+way), and the copy at **−1.5 dB**. That level is a considered split between unity and −3 dB and is
+**flagged for confirmation by ear** — Surround is the only preset whose two paths both carry signal,
+so it lands about 2.3 dB hotter in total power than any other, and switching to it reads partly as a
+level change. There is a test recording that consequence so a change to the number is deliberate.
+
+**Build the delay path on every layer and silence it with gain** rather than adding it when Surround
+is chosen. Every preset therefore reports the same delay time, and switching presets is a gain ramp:
+rebuilding the node graph clicks, and so does moving the delay time of a running line. Preset changes
+are a live gesture. The delay time then only ever moves when the tempo does, and tempo locks after
+the first recording (§4.5).
+
+**The delayed copy of the last bar runs past the loop end.** Live that needs nothing — the line keeps
+running across the boundary the way any delay does. **Bounce and export render a fixed-length file**,
+so there the tail must wrap into the start of the loop, or the rendered version has a discontinuity
+the live one never had.
 
 Native `AVAudioUnitEQ` plus mixer panning is sufficient for v1; Superpowered or JUCE only if the
 effects rack in §6.2 is built.
