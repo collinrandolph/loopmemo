@@ -86,7 +86,27 @@ docs/                  the spec, the design kit, the mockups, the platform resea
 ```bash
 npm run check      # typecheck + tests + the lr-kit.js cross-check
 npm test           # just the tests
+npm run ui         # build the browser bundle and serve it on :5173
 ```
+
+## The UI pass
+
+`ui/` is a browser app over the **real domain** — `tsc -p tsconfig.build.json` emits the same
+`src/` sources as ES modules (`rewriteRelativeImportExtensions` turns the `.ts` specifiers into
+`.js`), so nothing in `src/` changes for the browser's benefit and there is still no bundler
+and no runtime dependency. `Tools/serve.js` is a 40-line static server.
+
+It exists because several decisions were verified numerically and never seen — transport most
+of all. It is **not** a place to design interface: `docs/kit/` and `docs/mockups/` are the
+reference for layout, sizing and states, and `ui/app.css` copies the Edit Layer grid from the
+mockup rather than reinventing it. The kit supplies presentation (`ramp`, `motion`, `sizing`,
+`Waveform`, `VolumeControl`); its own `timing` and `Transport` are deliberately **not** used,
+because those are what `src/domain` replaces.
+
+**`ui/src/sim.ts` is the only fake part, and that is the test.** It provides a frame counter
+and synthetic waveform peaks — exactly what a real engine provides. If a screen ever needs
+something from it that a real audio engine could not give, the platform-bound surface has
+grown past what the deferral assumed, and that is worth stopping for.
 
 **No build step and no runtime dependencies.** Node 22.6+ runs the TypeScript directly by
 stripping types, so `tsconfig.json` sets `erasableSyntaxOnly` — enums, namespaces and

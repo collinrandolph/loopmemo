@@ -1,0 +1,20 @@
+{
+  // Emits browser-ready ES modules from the same sources Node runs directly.
+  //
+  // `rewriteRelativeImportExtensions` turns the `./foo.ts` specifiers into `./foo.js` on the
+  // way out, which is what lets the domain keep the extensions Node's type-stripping needs
+  // while still loading in a browser. Nothing in `src/` changes for the UI's benefit.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "rootDir": ".",
+    "outDir": "ui/dist",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "rewriteRelativeImportExtensions": true,
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": [],
+    "sourceMap": true
+  },
+  "include": ["src/**/*.ts", "ui/src/**/*.ts"]
+}

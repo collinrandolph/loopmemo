@@ -1,18 +1,2 @@
-# Node
 node_modules/
-*.tsbuildinfo
-
-# SwiftPM
-.build/
-.swiftpm/
-Package.resolved
-
-# Xcode (for whenever this reaches a Mac)
-*.xcodeproj/xcuserdata/
-*.xcworkspace/xcuserdata/
-DerivedData/
-
-# OS
-.DS_Store
-Thumbs.db
-desktop.ini
+ui/dist/

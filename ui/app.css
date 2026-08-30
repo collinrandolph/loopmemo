@@ -1,0 +1,68 @@
+/* Screen-level styles the shared kit does not cover.
+   The Edit Layer grid below is lifted from docs/mockups/edit-layer-mockup.html — that file is
+   the reference, not this copy. */
+
+body { margin: 0; background: var(--lr-page); }
+
+.app-nav {
+  display: flex; gap: 6px; padding: 10px 20px 0;
+}
+.app-nav button {
+  font-size: 12px; padding: 6px 12px; border-radius: 6px; cursor: pointer;
+  background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.24);
+  color: #fff; font-weight: 500; font-family: inherit;
+}
+.app-nav button.is-active { background: rgba(255,255,255,.94); color: var(--lr-ink-on-light); border-color: transparent; }
+
+.grid { padding: 20px; }
+.grid-title { font-size: 14px; font-weight: 600; color: rgba(255,255,255,.92); margin-bottom: 14px; }
+
+/* a row of bar tiles; the row is transparent so the seams read as separation */
+.bar-row { display: grid; grid-template-columns: repeat(4, 1fr);
+           column-gap: var(--lr-seam); row-gap: var(--lr-seam); }
+.bar-row + .bar-row { margin-top: var(--lr-seam); }
+
+.tile {
+  height: 120px; padding: 1px 5px; background: var(--lr-tile);
+  border-radius: 0;                 /* square interiors: rounding every corner
+                                       produced a Hermann grid at the seams */
+  cursor: pointer; position: relative; display: flex; flex-direction: column;
+  transition: background .15s;
+  touch-action: none; user-select: none; -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.bar-row .tile:first-child { border-radius: var(--lr-radius) 0 0 var(--lr-radius); }
+.bar-row .tile:last-child  { border-radius: 0 var(--lr-radius) var(--lr-radius) 0; }
+.tile:hover        { background: var(--lr-tile-hover); }
+.tile.is-selected,
+.tile.is-selected:hover { background: var(--lr-tile-sel); }
+.tile.is-muted     { background: var(--lr-tile-muted); }
+.tile.is-muted.is-selected { background: var(--lr-tile-muted-sel); }
+
+.tile-label {
+  display: flex; align-items: baseline; justify-content: space-between;
+  font-size: 16px; font-weight: 600; color: var(--lr-ink-dim);
+  padding: 8px 6px 0; line-height: 1;
+}
+.tile-label .pass { font-size: 12px; font-weight: 700; color: var(--lr-ink-pass); }
+.tile.is-selected .tile-label { color: var(--lr-ink); }
+.tile.is-selected .tile-label .pass { color: var(--lr-hint-sel); }
+.tile.is-muted .tile-label { opacity: .55; }
+
+/* fixed EVEN height so the centreline lands on a whole pixel */
+.tile .lr-wave { height: 72px; justify-content: center; margin: auto 0; }
+
+/* always visible: touch has no hover, so a hover-gated hint never appears on
+   the platform the gesture is designed for */
+.swipe-hint {
+  position: absolute; inset: auto 6px 5px 6px; display: flex;
+  justify-content: space-between; font-size: 9px; letter-spacing: .03em;
+  color: var(--lr-hint); pointer-events: none; transition: color .15s;
+}
+.tile.is-selected .swipe-hint { color: var(--lr-hint-sel); }
+
+.sim-note {
+  margin: 0 20px 20px; padding: 12px; border-radius: 6px; line-height: 1.6;
+  background: rgba(255,255,255,.1); font-size: 12px; color: rgba(255,255,255,.8);
+}
+.sim-note strong { color: #fff; }
