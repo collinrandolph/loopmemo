@@ -204,6 +204,14 @@ guesses would be indistinguishable from the user's choices.
 layer would initialise an arrangement of nothing but muted placeholders. The pass gate applies
 to the first pass like any other.
 
+**The pass badge previews the gate rather than restating it.** `recordingBadge` increments the
+number at the loop point and marks it provisional until `passExists` says the traversal has
+earned its bar — the same predicate that decides survival at the stop, so the two cannot
+drift. It takes the engine's frame count, not a software clock, for the same reason transport
+does (§2.4): a free-running counter would commit the badge at a different instant than the
+stop actually does. The provisional number is never reassigned — stop early and the discarded
+traversal hands that number straight to the next take, which is tested.
+
 **A retained bar occupies `framesPerBar` no matter how much audio is behind it.**
 `RetainedBar.frameCount` is the width of the slot; `region.frameCount` is how much there is to
 copy, and for a partial bar it is less. They were the same number until partial bars became

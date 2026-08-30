@@ -3,8 +3,20 @@ import { describe, it } from 'node:test';
 
 import { initialArrangement, isSlotMuted, recordedOrder } from '../src/domain/arrangement.ts';
 import { barRef } from '../src/domain/bar-ref.ts';
-import { availablePasses, hasAudio, passIndex, regionFor } from '../src/domain/pass-index.ts';
-import { emptyLayer, isLayerAudible, recordSession } from '../src/domain/project.ts';
+import {
+  availablePasses,
+  hasAudio,
+  passIndex,
+  regionFor,
+  totalPasses,
+} from '../src/domain/pass-index.ts';
+import {
+  emptyLayer,
+  isLayerAudible,
+  nextPassNumber,
+  recordSession,
+  recordingBadge,
+} from '../src/domain/project.ts';
 import { barExists, loopFrames, passCount, toleranceFrames } from '../src/domain/timing.ts';
 import { FPB, LOOP, T, session } from './fixtures.ts';
 
@@ -169,6 +181,58 @@ describe('recordSession', () => {
     recordSession(layer, session(LOOP), T);
     assert.deepEqual(layer.sessions, []);
     assert.deepEqual(layer.barSources, []);
+  });
+});
+
+describe('the pass badge while recording (§3.9)', () => {
+  const empty = emptyLayer(0);
+  const badge = (frames: number, layer = empty) => recordingBadge(layer, T, frames);
+
+  it('shows the pass about to be captured from the first frame', () => {
+    assert.deepEqual(badge(0), { pass: 1, isCommitted: false });
+  });
+
+  it('commits once the traversal has completed a bar', () => {
+    assert.equal(badge(FPB - 300).isCommitted, false, 'still short of the bar');
+    assert.equal(badge(FPB).isCommitted, true);
+    assert.equal(badge(LOOP - 1).isCommitted, true, 'and stays committed all pass');
+  });
+
+  it('increments at the loop point, and goes provisional again', () => {
+    // Waiting for the bar to increment would freeze the badge through the loop point, which
+    // reads as broken. The number moves at once and is marked unearned instead.
+    assert.deepEqual(badge(LOOP), { pass: 2, isCommitted: false });
+    assert.deepEqual(badge(LOOP + FPB / 2), { pass: 2, isCommitted: false });
+    assert.deepEqual(badge(LOOP + FPB), { pass: 2, isCommitted: true });
+  });
+
+  it('numbers from what the layer already holds', () => {
+    const held = recordSession(empty, session(2 * LOOP), T); // passes 1 and 2
+    assert.deepEqual(badge(0, held), { pass: 3, isCommitted: false });
+    assert.deepEqual(badge(LOOP + FPB, held), { pass: 4, isCommitted: true });
+  });
+
+  it('never shows a number that ends up belonging to something else', () => {
+    // A provisional number is either committed or handed straight back: stopping before the
+    // bar completes discards the traversal, and the next take claims the same number.
+    const stoppedEarly = badge(LOOP + FPB / 2);
+    assert.equal(stoppedEarly.isCommitted, false);
+
+    const after = recordSession(empty, session(LOOP + FPB / 2), T);
+    assert.equal(nextPassNumber(after, T), stoppedEarly.pass, 'the number is still next up');
+  });
+
+  it('agrees with what survives the stop, at every length', () => {
+    // The badge is a live preview of the gate, not a second rule that could drift from it.
+    for (const frames of [0, 1, FPB - 1, FPB, LOOP - 1, LOOP, LOOP + FPB - 1, 2 * LOOP + 7]) {
+      const live = badge(frames);
+      const stopped = recordSession(empty, session(frames, `s${frames}`), T);
+      assert.equal(
+        live.isCommitted,
+        totalPasses(passIndex(stopped.sessions, T)) === live.pass,
+        `at ${frames} frames`,
+      );
+    }
   });
 });
 

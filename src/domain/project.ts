@@ -5,7 +5,7 @@ import {
   initialArrangement,
 } from './arrangement.ts';
 import { type PassIndex, type RecordingSession, passIndex, totalPasses } from './pass-index.ts';
-import { type Timing, loopSeconds, timing } from './timing.ts';
+import { type Timing, loopFrames, loopSeconds, passExists, timing } from './timing.ts';
 
 /**
  * Capture format. Global setting, **snapshotted into each project at creation and immutable
@@ -146,6 +146,48 @@ export function layerHasRecording(layer: Layer): boolean {
 /** The pass about to be captured: `Pass 1` for an empty layer, `passes + 1` otherwise (§3.9). */
 export function nextPassNumber(layer: Layer, t: Timing): number {
   return totalPasses(layerPassIndex(layer, t)) + 1;
+}
+
+/** What the pass badge reads while recording (§3.9). */
+export type RecordingBadge = {
+  readonly pass: number;
+  /**
+   * Whether this traversal has passed the one-bar gate and would survive a stop right now.
+   * False for the first bar of every traversal, including the first.
+   */
+  readonly isCommitted: boolean;
+};
+
+/**
+ * The pass badge during a recording, from the engine's own frame count (§3.9).
+ *
+ * The number increments the moment a traversal begins, but reads **provisional** until that
+ * traversal has completed a bar and become a real pass. Waiting for the bar to increment
+ * would leave the badge frozen through the loop point, which reads as broken; showing the
+ * number immediately and marking it unearned tells the truth about both.
+ *
+ * **The provisional number never lies about what it will be.** If the take is stopped before
+ * the bar completes, the traversal is discarded (`passExists`) and that same number is what
+ * the next take will claim — so it is either committed or handed straight back. The badge
+ * cannot show a number that later turns out to belong to something else.
+ *
+ * Commitment is decided by the very same `passExists` that decides survival after the stop,
+ * so this is a live preview of the gate rather than a second rule that could drift from it.
+ *
+ * `framesRecorded` comes from the engine, not from a software clock — same reason transport
+ * owns no clock (§2.4): a free-running counter drifts against the audible playhead, and here
+ * it would commit the badge at a different instant than the stop actually would.
+ *
+ * Takes the layer as it stands **before** the session is appended; `recordSession` adds it at
+ * the stop.
+ */
+export function recordingBadge(layer: Layer, t: Timing, framesRecorded: number): RecordingBadge {
+  const elapsed = Math.max(0, framesRecorded);
+  const traversal = Math.floor(elapsed / loopFrames(t)) + 1;
+  return {
+    pass: nextPassNumber(layer, t) + traversal - 1,
+    isCommitted: passExists(t, traversal, elapsed),
+  };
 }
 
 /**

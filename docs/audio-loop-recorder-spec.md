@@ -949,9 +949,25 @@ panel that expands on tap.
 ## 3.9 Labels and badges
 
 **Pass badge** — shows the pass about to be captured: `Pass 1` for an empty layer, `passes + 1`
-otherwise; increments live as passes complete. From the moment a layer is **armed** it takes the
-name's place and holds it through the recording: the label helps you find a layer later, but once
-you've committed to recording onto it the only thing that matters is which pass is being captured.
+otherwise. From the moment a layer is **armed** it takes the name's place and holds it through the
+recording: the label helps you find a layer later, but once you've committed to recording onto it
+the only thing that matters is which pass is being captured.
+
+**It has two states while recording, because a pass now has to be earned** (§1.4). The number
+**increments the instant a traversal begins**, and reads **provisional** until that traversal has
+completed a bar and become a real pass. Waiting for the bar to increment would freeze the badge
+through the loop point, which reads as broken; showing the number at once and marking it unearned
+is honest about both facts at the same time.
+
+The provisional number never lies about what it will be. Stop before the bar completes and the
+traversal is discarded, and that same number is what the next take claims — it is either committed
+or handed straight back, never reassigned to something else.
+
+Treat this as a **quiet state change, not an alert**: the two states differ the way a placeholder
+name differs from a real one, and nothing animates on arrival. It is peripheral information for a
+user who is playing, and the app is not scoring the take (§0.4). Commitment is `passExists` — the
+same predicate that decides survival at the stop, so the badge is a live preview of the gate rather
+than a second rule that could drift from it.
 
 **Fixed-width label column.** The name and the badge swap **inside one box**, so a lane starts at the
 same x in every state. As siblings, arming a layer widened that row and pushed its lane out of
@@ -1039,8 +1055,9 @@ states.
 
 **Recording**: the playhead resets to the top of the loop (a pass starting mid-loop would have bar
 boundaries that don't align with everything else, breaking the whole bar-swapping model), the lane
-draws the incoming waveform in real time, and the pass badge increments as each pass completes. All
-other layers play at their current level, mute, EQ and pan.
+draws the incoming waveform in real time, and the pass badge increments at each loop point,
+provisional until that pass has earned its first bar (§3.9). All other layers play at their current
+level, mute, EQ and pan — the layer being recorded onto is silent for the take (§1.6).
 
 **Live waveform**, real implementation:
 
