@@ -62,7 +62,7 @@ function bell(frequency: number, gainDb: number, q = 1): EqBand {
 export const EQ_PRESETS: readonly EqPreset[] = [
   { id: 'flat', name: 'Flat', bands: [] },
   { id: 'lowCut', name: 'Low Cut', bands: [cut('highpass', 100)] },
-  { id: 'highCut', name: 'High Cut', bands: [cut('lowpass', 8000)] },
+  { id: 'highCut', name: 'High Cut', bands: [cut('lowpass', 7000)] },
   { id: 'presence', name: 'Presence', bands: [bell(4000, 3.5)] },
   { id: 'scoop', name: 'Scoop', bands: [bell(500, -4)] },
   { id: 'distant', name: 'Distant', bands: [cut('highpass', 300), cut('lowpass', 3400)] },

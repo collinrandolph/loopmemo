@@ -90,11 +90,11 @@ describe('each preset does what its name and icon promise', () => {
   });
 
   it('High Cut removes the top and leaves everything else alone', () => {
-    near(at('highCut', 8000), -3.01, 0.05, 'corner');
+    near(at('highCut', 7000), -3.01, 0.05, 'corner');
     // Steeper than 12 dB/oct up here: a digital biquad's response is warped toward Nyquist,
     // so it falls away faster than the analogue prototype it is derived from.
-    near(at('highCut', 12_000), -10.6, 0.2, '12 kHz');
-    near(at('highCut', 18_000), -28.8, 0.3, '18 kHz');
+    near(at('highCut', 12_000), -13.2, 0.2, '12 kHz');
+    near(at('highCut', 18_000), -31.7, 0.3, '18 kHz');
     near(at('highCut', 1000), 0, 0.15, '1 kHz untouched');
     near(at('highCut', 100), 0, 0.05, '100 Hz untouched');
 

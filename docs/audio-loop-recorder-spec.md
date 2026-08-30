@@ -633,7 +633,7 @@ anything. Chosen by icon like the pan presets, each drawn as its curve.
 |--------|-------|------|
 | Flat | — | No EQ |
 | Low Cut | high-pass 100 Hz, Q 0.707 | Removes rumble and body |
-| High Cut | low-pass 8 kHz, Q 0.707 | Removes air and edge |
+| High Cut | low-pass 7 kHz, Q 0.707 | Removes air and edge |
 | Presence | peak 4 kHz, +3.5 dB, Q 1 | Pushes forward |
 | Scoop | peak 500 Hz, −4 dB, Q 1 | Makes room for other layers |
 | Distant | high-pass 300 Hz + low-pass 3.4 kHz, Q 0.707 | Sends it to the back |
