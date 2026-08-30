@@ -234,6 +234,49 @@ body { margin: 0; background: var(--lr-page); }
 }
 .header-controls input[type=range] { width: 120px; }
 
+/* ------------------------------------------------------------------- help -- */
+/* A question mark where a line of instructions used to run the width of the footer. */
+.lr-help {
+  width: 28px; height: 28px; flex: 0 0 28px; border-radius: 50%;
+  background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.26);
+  color: #fff; font-size: 14px; font-weight: 700; line-height: 1; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  font-family: inherit; -webkit-tap-highlight-color: transparent;
+  transition: background .12s;
+}
+.lr-help:hover { background: rgba(255,255,255,.24); }
+
+/* Fixed to the viewport, not to `.lr-screen`, which clips its own overflow. Bottom-anchored:
+   the control that opens it is in the footer, and a thumb is already down there. */
+.lr-help-overlay {
+  position: fixed; inset: 0; z-index: 50; padding: 16px;
+  background: rgba(18,10,38,.6);
+  display: flex; align-items: flex-end; justify-content: center;
+  animation: lr-help-fade .16s ease-out;
+}
+.lr-help-sheet {
+  width: 100%; max-width: 520px; max-height: 76vh; overflow-y: auto;
+  background: var(--lr-tile); color: var(--lr-ink);
+  border: 1px solid rgba(255,255,255,.18); border-radius: 12px;
+  padding: 12px 16px 16px; box-shadow: 0 12px 44px rgba(0,0,0,.45);
+  animation: lr-help-rise .2s cubic-bezier(.22,.9,.3,1);
+}
+.lr-help-head {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 13px; font-weight: 600; color: #fff; margin-bottom: 10px;
+}
+.lr-help-close {
+  background: none; border: none; color: var(--lr-ink-dim); cursor: pointer;
+  font-size: 22px; line-height: 1; padding: 0 4px; font-family: inherit;
+}
+.lr-help-close:hover { color: #fff; }
+.lr-help-body { display: grid; gap: 12px; }
+.lr-help-text { font-size: 12px; line-height: 1.7; color: rgba(255,255,255,.82); }
+.lr-help-body .legend { margin-top: 0; }
+
+@keyframes lr-help-fade { from { opacity: 0 } to { opacity: 1 } }
+@keyframes lr-help-rise { from { transform: translateY(14px) } to { transform: none } }
+
 .legend {
   font-size: 12px; color: rgba(255,255,255,.8); margin-top: 14px; padding: 12px;
   background: rgba(255,255,255,.1); border-radius: 6px; line-height: 1.6;
@@ -280,8 +323,8 @@ body { margin: 0; background: var(--lr-page); }
   .lr-position { min-width: 0; flex: 1 1 auto; text-align: left; }
   .lr-transport input[type=range] { flex: 1 1 60px; width: auto; min-width: 0; }
 
-  .lr-footer { flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
-  .lr-footer > span { flex: 1 1 100%; }
+  /* The footer is a question mark and one action now, so it has nothing left to wrap — the
+     kit's own space-between puts them at the two ends. */
 
   .lr-panel-row { gap: 8px; }
   .lr-panel-label { min-width: 40px; }

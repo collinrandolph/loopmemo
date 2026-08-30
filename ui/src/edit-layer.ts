@@ -24,6 +24,7 @@ import {
   playheadAt,
   stop,
 } from '../../src/domain/transport.ts';
+import { helpControl } from './help.ts';
 import { type Rgb, type WaveNode, LR, clamp01, el, motion, ramp, sizing } from './kit.ts';
 import { type Engine, amp } from './sim.ts';
 
@@ -95,22 +96,26 @@ export function editLayerScreen(opts: {
 
   const grid = el('div', 'grid');
   const rowsEl = el('div');
+  grid.append(rowsEl);
+
+  // Kept as a live node rather than markup: `refresh` repaints it and rebuilds its swatch, so it
+  // stays current whether or not the sheet is open. §4.7 calls reading the gradient the manual's
+  // highest-value entry, which is why it belongs here rather than under the grid.
   const legend = el('div', 'legend');
-  grid.append(rowsEl, legend);
+  const help = helpControl({
+    title: 'Edit Layer',
+    content: () => [
+      'tap · repeat bar (tap again to stop) &nbsp; double tap · play loop from here' +
+        ' &nbsp; hold · mute / unmute &nbsp; swipe · change pass / bar' +
+        ' <span style="color:rgba(255,255,255,.4)">(locked while muted)</span>',
+      legend,
+    ],
+  });
 
   const footer = el('div', 'lr-footer');
   const doneBtn = el('button', 'lr-btn lr-btn--primary', 'Done');
   doneBtn.addEventListener('click', opts.onDone);
-  footer.append(
-    el(
-      'span',
-      '',
-      'tap · repeat bar (tap again to stop) &nbsp; double tap · play loop from here' +
-        ' &nbsp; hold · mute / unmute &nbsp; swipe · change pass / bar' +
-        ' <span style="color:rgba(255,255,255,.4)">(locked while muted)</span>',
-    ),
-    doneBtn,
-  );
+  footer.append(help.node, doneBtn);
   root.append(header, grid, footer);
 
   const volume = LR.VolumeControl({
@@ -507,6 +512,7 @@ export function editLayerScreen(opts: {
       alive = false;
       observer?.disconnect();
       document.removeEventListener('keydown', onKey);
+      help.destroy();
       opts.engine.stop();
     },
   };

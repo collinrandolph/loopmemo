@@ -20,6 +20,7 @@ import {
   sizeProjection,
 } from '../../src/domain/project.ts';
 import { framesPerBar, loopFrames, loopSeconds } from '../../src/domain/timing.ts';
+import { helpControl } from './help.ts';
 import { type RecordState, type WaveNode, LR, el, motion, ramp, sizing } from './kit.ts';
 import { eqIconSvg, panIconSvg } from './preset-icons.ts';
 import { type Engine, amp } from './sim.ts';
@@ -1031,15 +1032,15 @@ export function playbackScreen(opts: {
   };
   document.addEventListener('keydown', onKey);
 
-  const footer = el('div', 'lr-footer');
-  footer.append(
-    el(
-      'span',
-      '',
+  const help = helpControl({
+    title: 'Playback',
+    content: () => [
       'tap the name to rename · row for its mixer · speaker to mute · dot to arm, again to record, hold to cancel',
-    ),
-    el('button', 'lr-btn lr-btn--primary', 'Export'),
-  );
+    ],
+  });
+
+  const footer = el('div', 'lr-footer');
+  footer.append(help.node, el('button', 'lr-btn lr-btn--primary', 'Export'));
 
   root.append(
     header,
@@ -1073,6 +1074,7 @@ export function playbackScreen(opts: {
       alive = false;
       observer?.disconnect();
       document.removeEventListener('keydown', onKey);
+      help.destroy();
       opts.engine.stop();
     },
   };
