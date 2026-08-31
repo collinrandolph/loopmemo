@@ -56,6 +56,25 @@ const TILE_SHORT = 72;
  */
 const TILE_CHROME_TALL = 48; // label + hint strip
 const TILE_CHROME_COMPACT = 28; // label alone, arrows folded in
+
+/**
+ * Where the hint strip stops fitting, and so where the label folds the arrows in.
+ *
+ * Derived rather than picked: the tall form is label + waveform + hint, and the waveform is
+ * `WAVE_RATIO` of the tile, so it fits while `0.6h + 40 ≤ h` — that is, at 100 and above.
+ */
+const TILE_HINT_MIN = 100;
+
+/**
+ * The waveform is the smaller of "what is left after the chrome" and this fraction of the tile.
+ *
+ * Both halves are needed. Subtracting alone lets the waveform **grow as the tile shrinks**: at
+ * 120 the tall chrome leaves 72, and one pixel later the compact chrome leaves 91, so a 20-bar
+ * grid that shaved 3px off its tiles drew a *bigger* waveform than a 16-bar one. The fraction
+ * caps that. The subtraction still governs at the short end, where a fraction would run the
+ * waveform under the label.
+ */
+const WAVE_RATIO = 0.6;
 /** Peaks fill two thirds of the waveform box, which is the mockup's 48 in its 72. */
 const PEAK_RATIO = 2 / 3;
 const WAVE_MIN = 16;
@@ -608,11 +627,14 @@ export function editLayerScreen(opts: {
   function apply(height: number) {
     if (height === tileHeight) return;
     tileHeight = height;
-    const compact = height < TILE_TALL;
+    const compact = height < TILE_HINT_MIN;
     root.classList.toggle('is-compact-tiles', compact);
     // Even, so the waveform's centreline still lands on a whole pixel (§3.3).
     const chrome = compact ? TILE_CHROME_COMPACT : TILE_CHROME_TALL;
-    const wave = motion.snapEven(Math.max(WAVE_MIN, height - chrome), 2);
+    const wave = motion.snapEven(
+      Math.max(WAVE_MIN, Math.min(height - chrome, height * WAVE_RATIO)),
+      2,
+    );
     peakHeight = wave * PEAK_RATIO;
     root.style.setProperty('--tile-h', `${height}px`);
     root.style.setProperty('--tile-wave-h', `${wave}px`);

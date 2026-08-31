@@ -104,10 +104,14 @@ export function demoLibrary(): Project[] {
     compressed?: boolean;
     bounced?: boolean;
   }[] = [
+    // Bar counts chosen to walk the fit behaviour rather than to look varied: 8 is well under
+    // the threshold, 20 is the last that holds a full 120px tile at 375×812, and 24, 28 and 32
+    // each compact a little harder. `demoProject` covers 16.
     { id: 'hallway', name: 'Hallway Idea', bpm: 128, barCount: 8, quality: 'standard', layers: 3, passes: 2, modified: '2026-08-30T07:40:00.000Z' },
-    { id: 'sunday', name: 'Sunday Loop', bpm: 84, barCount: 32, quality: 'standard', layers: 7, passes: 1, modified: '2026-08-29T21:05:00.000Z', bounced: true },
-    { id: 'kitchen', name: 'Kitchen Take', bpm: 110, barCount: 16, quality: 'high', layers: 4, passes: 1, modified: '2026-08-27T18:20:00.000Z', compressed: true },
-    { id: 'latenight', name: 'Late Night', bpm: 72, barCount: 12, quality: 'standard', layers: 1, passes: 4, modified: '2026-08-24T02:11:00.000Z' },
+    { id: 'kitchen', name: 'Kitchen Take', bpm: 110, barCount: 20, quality: 'high', layers: 4, passes: 1, modified: '2026-08-29T21:05:00.000Z', compressed: true },
+    { id: 'stairwell', name: 'Stairwell', bpm: 104, barCount: 24, quality: 'standard', layers: 2, passes: 1, modified: '2026-08-28T11:30:00.000Z' },
+    { id: 'latenight', name: 'Late Night', bpm: 72, barCount: 28, quality: 'standard', layers: 1, passes: 1, modified: '2026-08-27T02:11:00.000Z' },
+    { id: 'sunday', name: 'Sunday Loop', bpm: 84, barCount: 32, quality: 'standard', layers: 7, passes: 1, modified: '2026-08-24T21:05:00.000Z', bounced: true },
   ];
 
   const built = specs.map((s) => {
@@ -135,42 +139,59 @@ export function demoLibrary(): Project[] {
 
   // Deliberately unsorted here: the screen sorts, and handing it a sorted list would let a
   // broken sort look correct.
-  return [built[2]!, demoProject(), built[0]!, built[3]!, richLayer(built[1]!)];
+  return [built[3]!, demoProject(), built[0]!, built[4]!, built[1]!, built[2]!].map(richLayer);
 }
 
 /**
- * The same states `demoProject` carries, at 32 bars — the longest project, and so the only one
- * whose Edit Layer grid has to shrink its tiles to fit.
+ * Give a project's first layer the states `demoProject` carries, at whatever bar count it has.
  *
- * Without this its first layer is one clean pass in recorded order: every tile reads `P1`,
- * nothing is muted and the colour runs straight through. That says nothing about whether a
- * shrunk tile can still show a two-digit pass number, a colour jump or a muted bar, which is
- * the whole reason to look at it.
+ * Every demo layer was otherwise one clean pass in recorded order: every tile reading `P1`,
+ * nothing muted, colour running straight through. That says nothing about whether a tile can
+ * still show a two-digit pass number, a colour jump or a muted bar once the grid has shrunk to
+ * fit — which is the only reason to look at a 24, 28 or 32-bar project.
+ *
+ * Everything here is proportional to `barCount`, so one shape covers all eight valid lengths
+ * rather than a hand-placed set per project.
  */
 function richLayer(project: Project): Project {
   const t = projectTiming(project);
   const loop = loopFrames(t);
-  const bar = framesPerBar(t);
   const bars = project.barCount;
-
   const first = project.layers[0]!;
-  // §1.4's shape: a long take that stops half way through its third traversal, then a second
-  // take. Passes 1, 2 and 5 cover every bar; pass 3 covers only the first half, so the back half
-  // of the grid has a real gap in its available set.
-  let l = recordSession({ ...first, sessions: [] }, simSession('sun-a', 2 * loop + bars / 2 * bar), t);
-  l = recordSession(l, simSession('sun-b', 2 * loop), t);
+  if (first.sessions.length === 0) return project;
+
+  // §1.4's shape: a long take stopping part way through its third traversal, then a second take.
+  // Passes 1, 2, 4 and 5 cover every bar; pass 3 covers only the front half, so the back half of
+  // the grid carries a real gap in its available set.
+  let l = recordSession(
+    { ...first, sessions: [] },
+    simSession(`${project.id}-a`, 2 * loop + Math.floor(bars / 2) * framesPerBar(t)),
+    t,
+  );
+  l = recordSession(l, simSession(`${project.id}-b`, 2 * loop), t);
+
+  /** A slot at a fraction of the grid, and a bar number that exists at any length. */
+  const at = (fraction: number) => Math.min(bars - 1, Math.floor(bars * fraction));
+  const barAt = (fraction: number) => Math.min(bars, Math.max(1, Math.round(bars * fraction)));
 
   let sources = l.barSources;
-  sources = setSlot(sources, 4, barRef(4, 21)); // a jump early in the grid
-  sources = setSlot(sources, 5, barRef(4, 22));
-  sources = setSlot(sources, 18, barRef(2, 7)); // and another in the second half
-  sources = setSlot(sources, 29, barRef(5, 3)); // two digits either side, in the last row
+  // Two adjacent slots pulled from late in pass 4 — a jump big enough to read as a colour break,
+  // and two digits either side once the project is long enough to have them.
+  sources = setSlot(sources, at(0.14), barRef(4, barAt(0.66)));
+  sources = setSlot(sources, at(0.17), barRef(4, barAt(0.69)));
+  sources = setSlot(sources, at(0.56), barRef(2, barAt(0.22))); // one in the second half
+  sources = setSlot(sources, at(0.91), barRef(5, barAt(0.09))); // one in the last row
 
   return {
     ...project,
     layers: project.layers.map((layer, i) =>
       i === 0
-        ? { ...l, name: 'Keys', barSources: sources, mutedSlots: setSlotMuted(l.mutedSlots, 11, true) }
+        ? {
+            ...l,
+            name: layer.name || 'Keys',
+            barSources: sources,
+            mutedSlots: setSlotMuted(l.mutedSlots, at(0.35), true),
+          }
         : layer,
     ),
   };
