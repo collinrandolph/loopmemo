@@ -299,13 +299,11 @@ export function editLayerScreen(opts: {
     }
 
     const passes = availablePasses(index(), ref.relativeBar);
-    // The axis arrows sit beside the number each one steps, and CSS shows them only on a tile
-    // too short for the separate hint strip. Beside the numbers rather than in the middle
-    // because that says more than the strip does: `↕` next to the pass is what a vertical swipe
-    // changes, `↔` next to the bar is what a horizontal one changes.
+    // Both axis arrows together at the left, ahead of the label. CSS shows them only on a tile
+    // too short to carry the separate hint strip.
     tile.label.innerHTML =
-      `<span class="pass"><i class="ax">↕</i>P${ref.pass}</span>` +
-      `<span class="rel">${ref.relativeBar}<i class="ax">↔</i></span>`;
+      `<span class="pass"><i class="ax">↕↔</i>P${ref.pass}</span>` +
+      `<span class="rel">${ref.relativeBar}</span>`;
     tile.node.title = `slot ${slot + 1} · pass ${ref.pass}, bar ${ref.relativeBar} · available: ${passes.join(', ') || 'none'}`;
 
     // Colour indexes per LINE across the whole recording, so any length gets one continuous,
@@ -578,8 +576,12 @@ export function editLayerScreen(opts: {
       const padding = Number.parseFloat(style.paddingTop) + Number.parseFloat(style.paddingBottom);
       // Document-relative, so the measurement does not change with how far the page is scrolled.
       const top = box.top + window.scrollY;
-      const available =
-        window.innerHeight - top - footer.getBoundingClientRect().height - padding;
+      // `documentElement.clientHeight`, **not** `window.innerHeight`. The first is the layout
+      // viewport, which is what CSS lays out against; the second is the visual viewport, and the
+      // two are different numbers whenever the browser is scaling — and on a phone, whenever the
+      // address bar is part-collapsed. Measured 1213 against 812 on the same screen, which is
+      // the difference between a 120px tile and a 72px one, so the grid simply did not fit.
+      const available = viewportHeight() - top - footer.getBoundingClientRect().height - padding;
       const perRow = Math.floor((available - (rows - 1) * SEAM) / rows);
       height = Math.min(TILE_TALL, Math.max(TILE_SHORT, perRow));
     }
@@ -592,7 +594,12 @@ export function editLayerScreen(opts: {
     // which is exactly the state this exists to prevent. Measuring what actually happened costs
     // one reflow and cannot be wrong about it.
     for (let pass = 0; pass < 3 && opts.fitGrid; pass++) {
-      const over = document.documentElement.scrollHeight - window.innerHeight;
+      // How far past the bottom of the screen the footer has been pushed — **not**
+      // `documentElement.scrollHeight`, which is stretched to the visual viewport regardless of
+      // what the page contains and reported 401px of overflow on a page whose footer sat exactly
+      // on the fold. The footer is the last thing in the screen, so where it ends is where the
+      // content ends.
+      const over = Math.round(footer.getBoundingClientRect().bottom + window.scrollY) - viewportHeight();
       if (over <= 0 || tileHeight <= TILE_SHORT) break;
       apply(Math.max(TILE_SHORT, tileHeight - Math.ceil(over / rows)));
     }
@@ -686,4 +693,9 @@ export function editLayerScreen(opts: {
 
 function mb(bytes: number): string {
   return bytes < 1e6 ? `${Math.max(1, Math.round(bytes / 1e3))} KB` : `${(bytes / 1e6).toFixed(1)} MB`;
+}
+
+/** The layout viewport — what CSS sizes against. See `syncTileHeight`. */
+function viewportHeight(): number {
+  return document.documentElement.clientHeight;
 }
