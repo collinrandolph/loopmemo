@@ -2,7 +2,10 @@ import {
   type Arrangement,
   type MutedSlots,
   NONE_MUTED,
+  type RetainedBar,
+  compressionPlan,
   initialArrangement,
+  recordedOrder,
 } from './arrangement.ts';
 import type { PanPresetId } from './effects.ts';
 import type { EqPresetId } from './eq.ts';
@@ -303,6 +306,70 @@ export function sizeProjection(project: Project): SizeProjection {
     savingBytes,
     isWorthCompressing: savingBytes > 0,
   };
+}
+
+/**
+ * What compressing this project keeps, per layer (§2.7, §4.1).
+ *
+ * `compressionPlan` already does the per-layer work; this is the project-level pass that the
+ * Library's Compress action needs, and it exists here for the same reason `bouncePlan` does —
+ * so no screen has to decide what compress means.
+ *
+ * **Refused whole, never partly.** One layer with an audible slot pointing at audio that does
+ * not exist fails the project, because compress is destructive and a half-compressed project
+ * is a state nothing else in the app knows how to describe. Empty layers are skipped rather
+ * than refused: a layer with no audio has nothing to discard and is not an error.
+ */
+export type CompressionPlan = {
+  readonly layers: readonly {
+    readonly layerIndex: number;
+    readonly bars: readonly RetainedBar[];
+  }[];
+  readonly projection: SizeProjection;
+};
+
+export function projectCompressionPlan(project: Project): CompressionPlan | undefined {
+  const t = projectTiming(project);
+  const layers: { layerIndex: number; bars: readonly RetainedBar[] }[] = [];
+
+  for (const layer of project.layers) {
+    if (!layerHasRecording(layer)) continue;
+    const plan = compressionPlan(layer.barSources, layerPassIndex(layer, t), layer.mutedSlots);
+    if (!plan) return undefined;
+    layers.push({ layerIndex: layer.index, bars: plan.bars });
+  }
+
+  return { layers, projection: sizeProjection(project) };
+}
+
+/**
+ * The project a compress produces, given the one loop each layer's audio was written to.
+ *
+ * The caller supplies the written files — that is the platform-bound half — and everything
+ * else is decided here. Each compressed layer holds **exactly one session of exactly one
+ * loop**, so it is Pass 1 by construction, its arrangement is recorded order, and its mute
+ * flags are spent because the silence is in the audio now (see `compressionPlan`).
+ *
+ * `isCompressed` is a label and a storage fact only. Recording a new pass clears it, and
+ * nothing gates on it — the pass axis re-enables by itself because availability derives from
+ * audio (§1.4).
+ */
+export function compressedProject(
+  project: Project,
+  sessionFor: (layerIndex: number) => RecordingSession,
+  options: { now?: string } = {},
+): Project {
+  const now = options.now ?? new Date().toISOString();
+  const layers = project.layers.map((layer) => {
+    if (!layerHasRecording(layer)) return layer;
+    return {
+      ...layer,
+      sessions: [sessionFor(layer.index)],
+      barSources: recordedOrder(project.barCount),
+      mutedSlots: NONE_MUTED,
+    };
+  });
+  return { ...project, layers, isCompressed: true, lastModified: now };
 }
 
 /**

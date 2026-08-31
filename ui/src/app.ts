@@ -2,20 +2,28 @@ import type { Layer, Project } from '../../src/domain/project.ts';
 import { QUALITY_SPEC } from '../../src/domain/project.ts';
 import { editLayerScreen } from './edit-layer.ts';
 import { el } from './kit.ts';
+import { libraryScreen } from './library.ts';
 import { playbackScreen } from './playback.ts';
-import { demoProject, simulatedEngine } from './sim.ts';
+import { demoLibrary, simulatedEngine } from './sim.ts';
 
 /**
- * Shell for the UI pass: two screens over the real domain and a simulated engine.
+ * Shell for the UI pass: the screens over the real domain and a simulated engine.
  *
- * Project state lives here as one immutable value, replaced on every edit — the same shape the
- * domain functions already take and return, so nothing needs an adapter.
+ * Project state lives here as immutable values, replaced on every edit — the same shape the
+ * domain functions already take and return, so nothing needs an adapter. The Library is the
+ * entry point (§4.1); everything else is reached from a project.
  */
-let project: Project = demoProject();
-const engine = simulatedEngine(QUALITY_SPEC[project.audioQuality].sampleRate);
+let projects: readonly Project[] = demoLibrary();
+// The most recently modified, which is what the Library puts at the top and what a user
+// returning to the app last had open.
+let openId = [...projects].sort((a, b) => b.lastModified.localeCompare(a.lastModified))[0]!.id;
 
-type Route = { screen: 'playback' } | { screen: 'edit'; layerIndex: number };
-let route: Route = { screen: 'playback' };
+type Route =
+  | { screen: 'library' }
+  | { screen: 'playback' }
+  | { screen: 'edit'; layerIndex: number }
+  | { screen: 'export' };
+let route: Route = { screen: 'library' };
 
 const nav = el('div', 'app-nav');
 const host = el('div', 'app-host');
@@ -23,17 +31,32 @@ document.body.append(nav, host);
 
 let current: { destroy(): void } | undefined;
 
+function open(): Project {
+  return projects.find((p) => p.id === openId) ?? projects[0]!;
+}
+
+function replaceProject(next: Project) {
+  projects = projects.map((p) => (p.id === next.id ? next : p));
+}
+
 function replaceLayer(layer: Layer) {
-  project = {
+  const project = open();
+  replaceProject({
     ...project,
     layers: project.layers.map((l) => (l.index === layer.index ? layer : l)),
-  };
+  });
 }
 
 function render() {
+  const project = open();
+  // One engine per mount, at the open project’s capture rate, so frame arithmetic on the
+  // Playback and Edit screens is in the same units the domain computes in.
+  const engine = simulatedEngine(QUALITY_SPEC[project.audioQuality].sampleRate);
+
   nav.innerHTML = '';
   const tabs: { label: string; route: Route }[] = [
-    { label: 'Playback', route: { screen: 'playback' } },
+    { label: 'Projects', route: { screen: 'library' } },
+    { label: project.name, route: { screen: 'playback' } },
     ...project.layers
       .filter((l) => l.sessions.length > 0)
       .map((l) => ({
@@ -45,7 +68,8 @@ function render() {
   for (const tab of tabs) {
     const active =
       tab.route.screen === route.screen &&
-      (tab.route.screen !== 'edit' || tab.route.layerIndex === (route as { layerIndex: number }).layerIndex);
+      (tab.route.screen !== 'edit' ||
+        tab.route.layerIndex === (route as { layerIndex: number }).layerIndex);
     const button = el('button', active ? 'is-active' : '', tab.label);
     button.addEventListener('click', () => {
       route = tab.route;
@@ -61,33 +85,61 @@ function render() {
   current = undefined;
   host.innerHTML = '';
 
-  if (route.screen === 'playback') {
-    const playback = playbackScreen({
-      project,
-      engine,
-      onChange: replaceLayer,
-      onEdit(layerIndex) {
-        route = { screen: 'edit', layerIndex };
-        render();
-      },
-    });
-    current = playback;
-    host.appendChild(playback.node);
-    return;
-  }
+  const screen =
+    route.screen === 'library'
+      ? libraryScreen({
+          projects,
+          engine,
+          onOpen(id) {
+            openId = id;
+            route = { screen: 'playback' };
+            render();
+          },
+          onExport(id) {
+            openId = id;
+            route = { screen: 'export' };
+            render();
+          },
+          onChange(next) {
+            projects = next;
+            if (!projects.some((p) => p.id === openId)) openId = projects[0]?.id ?? '';
+          },
+        })
+      : route.screen === 'playback'
+        ? playbackScreen({
+            project,
+            engine,
+            onChange: replaceLayer,
+            onEdit(layerIndex) {
+              route = { screen: 'edit', layerIndex };
+              render();
+            },
+          })
+        : route.screen === 'edit'
+          ? editLayerScreen({
+              project,
+              layerIndex: route.layerIndex,
+              engine,
+              onChange: replaceLayer,
+              onDone() {
+                route = { screen: 'playback' };
+                render();
+              },
+            })
+          : exportPlaceholder();
 
-  const screen = editLayerScreen({
-    project,
-    layerIndex: route.layerIndex,
-    engine,
-    onChange: replaceLayer,
-    onDone() {
-      route = { screen: 'playback' };
-      render();
-    },
-  });
   current = screen;
   host.appendChild(screen.node);
+}
+
+/** The Export screen is next; this keeps the route reachable in the meantime. */
+function exportPlaceholder(): { node: HTMLElement; destroy(): void } {
+  const node = el('div', 'lr-screen');
+  node.append(
+    el('div', 'lr-header', '<div class="lr-title-row"><div class="lr-title">Export</div></div>'),
+    el('div', 'grid', '<div class="lr-note">Not built yet.</div>'),
+  );
+  return { node, destroy() {} };
 }
 
 render();

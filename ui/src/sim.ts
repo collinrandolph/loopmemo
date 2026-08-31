@@ -28,6 +28,8 @@ import { framesPerBar, loopFrames } from '../../src/domain/timing.ts';
  * but it stays on the engine's side of the line so the substitution is a swap, not a rewrite.
  */
 export type Engine = {
+  /** A real engine runs at the device rate and exposes it; screens that need seconds divide. */
+  readonly sampleRate: number;
   frame(): number;
   running(): boolean;
   start(atFrame: number): void;
@@ -39,6 +41,7 @@ export function simulatedEngine(sampleRate: number): Engine {
   let startedAt: number | undefined;
 
   return {
+    sampleRate,
     frame: () =>
       startedAt === undefined
         ? origin
@@ -70,7 +73,8 @@ export function amp(layerIndex: number, sourceBarIndex: number, lineIndex: numbe
   return Math.min(1, Math.max(0.06, env + det));
 }
 
-function session(id: string, frames: number): RecordingSession {
+/** A stand-in for the file a real recording or a real compress would have written. */
+export function simSession(id: string, frames: number): RecordingSession {
   return {
     id,
     audioFileURL: `sim://${id}`,
@@ -78,6 +82,60 @@ function session(id: string, frames: number): RecordingSession {
     recordedAt: '2026-08-30T00:00:00.000Z',
     waveformPeaks: [],
   };
+}
+
+/**
+ * A shelf of projects for the Library (§4.1), chosen to cover the states the row has to show:
+ * both qualities, compressed, bounced, a single-layer sketch and a full seven.
+ *
+ * `lastModified` is spread across a week because §4.1 sorts on it, and a list that is already
+ * in order cannot show that the sort works.
+ */
+export function demoLibrary(): Project[] {
+  const specs: {
+    id: string;
+    name: string;
+    bpm: number;
+    barCount: number;
+    quality: 'standard' | 'high';
+    layers: number;
+    passes: number;
+    modified: string;
+    compressed?: boolean;
+    bounced?: boolean;
+  }[] = [
+    { id: 'hallway', name: 'Hallway Idea', bpm: 128, barCount: 8, quality: 'standard', layers: 3, passes: 2, modified: '2026-08-30T07:40:00.000Z' },
+    { id: 'sunday', name: 'Sunday Loop', bpm: 84, barCount: 32, quality: 'standard', layers: 7, passes: 1, modified: '2026-08-29T21:05:00.000Z', bounced: true },
+    { id: 'kitchen', name: 'Kitchen Take', bpm: 110, barCount: 16, quality: 'high', layers: 4, passes: 1, modified: '2026-08-27T18:20:00.000Z', compressed: true },
+    { id: 'latenight', name: 'Late Night', bpm: 72, barCount: 12, quality: 'standard', layers: 1, passes: 4, modified: '2026-08-24T02:11:00.000Z' },
+  ];
+
+  const built = specs.map((s) => {
+    const base = createProject({
+      id: s.id,
+      name: s.name,
+      bpm: s.bpm,
+      barCount: s.barCount,
+      quality: s.quality,
+      now: s.modified,
+    });
+    const t = projectTiming(base);
+    const layers = base.layers.map((layer, i) =>
+      i < s.layers
+        ? recordSession(layer, simSession(`${s.id}-${i}`, s.passes * loopFrames(t)), t)
+        : layer,
+    );
+    return {
+      ...base,
+      layers,
+      isCompressed: s.compressed ?? false,
+      ...(s.bounced ? { bouncedFromProjectId: 'gone' } : {}),
+    };
+  });
+
+  // Deliberately unsorted here: the screen sorts, and handing it a sorted list would let a
+  // broken sort look correct.
+  return [built[2]!, demoProject(), built[0]!, built[3]!, built[1]!];
 }
 
 /**
@@ -105,8 +163,8 @@ export function demoProject(): Project {
 
   const layers: Layer[] = base.layers.map((layer, i) => {
     if (i === 0) {
-      let l = recordSession(layer, session('a', 2 * loop + 8 * bar), t);
-      l = recordSession(l, session('b', 2 * loop), t);
+      let l = recordSession(layer, simSession('a', 2 * loop + 8 * bar), t);
+      l = recordSession(l, simSession('b', 2 * loop), t);
       let sources = l.barSources;
       sources = setSlot(sources, 2, barRef(4, 11)); // a jump, mid-row
       sources = setSlot(sources, 3, barRef(4, 12));
@@ -121,11 +179,11 @@ export function demoProject(): Project {
       };
     }
     if (i === 1) {
-      const l = recordSession(layer, session('c', loop), t);
+      const l = recordSession(layer, simSession('c', loop), t);
       return { ...l, name: 'Bass', level: 0.82, eq: 'lowCut', pan: 'center' };
     }
     if (i === 2) {
-      const l = recordSession(layer, session('d', 9 * bar + bar / 2), t);
+      const l = recordSession(layer, simSession('d', 9 * bar + bar / 2), t);
       return { ...l, name: 'Shaker', level: 0.55, eq: 'highCut', pan: 'surround' };
     }
     return layer;

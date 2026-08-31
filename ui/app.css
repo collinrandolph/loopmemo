@@ -255,6 +255,63 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
 }
 .header-controls input[type=range] { width: 120px; }
 
+/* --- Project Library; lifted from docs/mockups/project-library-mockup.html --- */
+.storage { font-size: 11px; color: rgba(255,255,255,.62); margin-left: auto;
+           font-variant-numeric: tabular-nums; }
+.sort-note { font-size: 11px; color: rgba(255,255,255,.5); margin-top: 6px; }
+.new-btn { margin-top: 14px; width: 100%; justify-content: center; display: flex;
+           align-items: center; gap: 8px; padding: 12px; font-size: 13px; }
+.new-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor;
+               stroke-width: 2; stroke-linecap: round; }
+
+.library .lr-rows { padding: 6px 20px 18px; }
+.library .lr-row-head { gap: 14px; padding: 12px; }
+
+/* One mini-lane per recorded layer, each in that layer's slice of the ramp: a project is
+   recognisable by its colour signature and stripe count before the name is read. */
+.thumb { width: 84px; flex: 0 0 84px; display: grid; gap: 2px; }
+/* Six, not the kit five: see THUMB_HEIGHT in library.ts — even heights survive snapEven. */
+.library .lr-wave--thumb { height: 6px; }
+
+.p-main { flex: 1 1 auto; min-width: 0; }
+/* `min-width: 0` on both, and the tags wrap rather than push: a flex item's default
+   `min-width: auto` refuses to shrink below its content, so a long name plus two tags widened
+   the row instead of ellipsising inside it. */
+.p-name { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 7px;
+          min-width: 0; flex-wrap: wrap; }
+.p-meta { font-size: 11px; color: var(--lr-ink-dim); margin-top: 3px; }
+.p-right { font-size: 11px; color: var(--lr-ink-faint); text-align: right; min-width: 74px;
+           font-variant-numeric: tabular-nums; }
+/* The readouts swap in one fixed box, so the row does not change width when a preview starts. */
+.lr-row.is-playing .p-size { display: none; }
+.p-time { display: none; color: var(--lr-ink); }
+.lr-row.is-playing .p-time { display: block; }
+
+.lr-play--sm { width: 34px; height: 34px; flex-basis: 34px;
+               background: rgba(255,255,255,.14); color: #fff;
+               border: 1px solid rgba(255,255,255,.28); }
+.lr-play--sm:hover { background: rgba(255,255,255,.26); }
+.lr-play--sm svg { width: 13px; height: 13px; }
+.lr-row.is-playing .lr-play--sm { background: rgba(255,255,255,.92);
+                                  color: var(--lr-ink-on-light); border-color: transparent; }
+
+.chev { width: 14px; height: 14px; flex: 0 0 14px; fill: none; stroke: var(--lr-ink-faint);
+        stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+        transition: transform .2s; }
+.lr-row.is-open .chev { transform: rotate(90deg); }
+
+.library .lr-panel-inner { padding: 0 12px 12px; display: flex; gap: 8px; flex-wrap: wrap;
+                           align-items: center; }
+.acts { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+/* Destructive actions confirm in place and state the outcome (§4.1), so the confirmation
+   replaces the actions inside the same panel rather than opening a dialogue over them. */
+.confirm { display: none; align-items: center; gap: 8px; flex-wrap: wrap; }
+.lr-row.is-confirming .acts { display: none; }
+.lr-row.is-confirming .confirm { display: flex; }
+.confirm-text { font-size: 12px; color: var(--lr-ink); flex: 1; min-width: 220px; line-height: 1.5; }
+.confirm-text b { color: #fff; }
+.hint { font-size: 11px; color: var(--lr-ink-faint); flex-basis: 100%; margin-top: 2px; }
+
 /* ------------------------------------------------------------------- help -- */
 /* A question mark where a line of instructions used to run the width of the footer. Bare, like
    the reference-track icons — a chip around it would have made it the only framed line icon. */
@@ -354,4 +411,15 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
   /* No label width here: `syncLabelWidth` measures it, and a fixed override would beat the
      variable and put the dead column back. */
   .layer-name { max-width: 64px; }
+
+  /* The library row is five columns wide and the mockup sizes them for a 760px card. On a
+     phone the metadata was down to ~65px and wrapping to five lines, so the two fixed columns
+     either side of it give ground: the thumbnail is still a colour signature at 56, and the
+     size readout only ever holds "24.7 MB". */
+  .library .lr-rows { padding: 6px 12px 14px; }
+  .library .lr-row-head { gap: 10px; padding: 10px; }
+  .thumb { width: 56px; flex-basis: 56px; }
+  .p-right { min-width: 52px; }
+  .library .lr-panel-inner { padding: 0 10px 10px; }
+  .new-btn { padding: 11px; }
 }
