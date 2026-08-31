@@ -1,4 +1,4 @@
-import type { ReferenceSource } from './bounce.ts';
+import { type BackingTrack, isAudibleInMixdown } from './bounce.ts';
 import { isStereoPreset, panPreset } from './effects.ts';
 import {
   type AudioQuality,
@@ -19,7 +19,7 @@ import { loopSeconds } from './timing.ts';
  *
  * | | Renders | From |
  * |---|---|---|
- * | **Full loop** | the mix as you hear it — level, EQ, pan, references, mutes | the mixdown |
+ * | **Full loop** | the mix as you hear it — level, EQ, pan, backing, mutes | the mixdown |
  * | **Stems** | one file per layer, the edited loop and nothing else | `compressionPlan` |
  * | **Stems + effects** | the same, with the layer's level, EQ and pan applied | `compressionPlan` + §2.8 |
  * | **All recorded passes** | every session, unedited | `Layer.sessions` — no rendering at all |
@@ -76,8 +76,8 @@ export type ExportPlan = {
 export type ExportOptions = {
   readonly format: ExportFormat;
   readonly mp3Bitrate: Mp3Bitrate;
-  /** §2.6's reference tracks, still provisional here — see `bounce.ts`. */
-  readonly references?: readonly (ReferenceSource & { readonly label: string })[];
+  /** §2.6's backing tracks, still provisional here — see `bounce.ts`. */
+  readonly backing?: readonly (BackingTrack & { readonly label: string })[];
 };
 
 /**
@@ -142,7 +142,7 @@ export function exportPlan(
   const t = projectTiming(project);
   const loop = loopSeconds(t);
   const files: ExportFile[] = [];
-  const references = options.references ?? [];
+  const backing = options.backing ?? [];
 
   if (selection.fullLoop) {
     files.push(file('loop', project.name, loop, project, options));
@@ -159,12 +159,17 @@ export function exportPlan(
       const label = layerLabel(layer.name, layer.index);
       files.push(file(kind, `${project.name} - ${label} - ${suffix}`, loop, project, options, layer));
     }
-    // References are not layers, but a stem set without the drums is missing the thing every
-    // layer was played against (§2.6). `enabled`, not audible: mute belongs to the mixdown.
-    // They carry no EQ or pan of their own, so both sets render them the same and mono.
-    for (const reference of references) {
-      if (!reference.enabled) continue;
-      files.push(file(kind, `${project.name} - ${reference.label} - ${suffix}`, loop, project, options));
+    // Backing tracks are not layers, but a stem set without the drums is missing the thing every
+    // layer was played against (§2.6). They carry no EQ or pan of their own, so both sets render
+    // them the same, and mono.
+    //
+    // **Muting one removes it here**, where muting a *layer* does not. A muted layer is a
+    // performance the user made and is not using right now; a muted backing track is a decision
+    // that the sketch does not have one. Same control, two meanings, because the two kinds of
+    // thing are not the same.
+    for (const track of backing) {
+      if (!isAudibleInMixdown(track)) continue;
+      files.push(file(kind, `${project.name} - ${track.label} - ${suffix}`, loop, project, options));
     }
   };
 

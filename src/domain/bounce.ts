@@ -26,31 +26,36 @@ import { loopFrames } from './timing.ts';
  */
 
 /**
- * Enough of a reference track to apply the mixdown rule to it.
+ * Enough of a backing track to apply the mixdown rule to it.
  *
  * ⚠️ **Provisional.** §2.6's drum loop and chord bed are not modelled yet — no `originalBPM`,
  * no playback ratio, no chord settings — so this is the subset bounce needs rather than a
  * definition of what they are. When §2.6 is built this should be absorbed, not duplicated.
+ *
+ * **There is no `enabled`.** A backing track is either in the sketch or muted out of it, and
+ * those were two ways of saying one thing — with only mute reachable, `enabled` was a flag the
+ * user could not set that nonetheless decided whether a stem file got written. Muting is the
+ * whole of it now.
  */
-export type ReferenceSource = {
+export type BackingTrack = {
   readonly id: string;
-  readonly enabled: boolean;
   readonly muted: boolean;
   readonly level: number;
 };
 
 /**
  * §2.6's export rule: *what you hear is what you export*, and it applies identically to a
- * bounce mixdown. Any enabled track is included; to exclude one, mute it.
+ * bounce mixdown. To exclude a backing track, mute it.
  *
  * Shared with export deliberately — two implementations of "was this audible" would let the
  * bounced mixdown and the exported file disagree about the same project.
+ *
+ * **Layers and backing tracks diverge past this point, and deliberately.** A muted *layer* is a
+ * performance the user made and is not using right now, so it still exports as a stem. A muted
+ * *backing track* is a decision that the sketch does not have one, so it produces nothing.
  */
-export function isAudibleInMixdown(track: {
-  readonly enabled?: boolean;
-  readonly muted: boolean;
-}): boolean {
-  return track.enabled !== false && !track.muted;
+export function isAudibleInMixdown(track: { readonly muted: boolean }): boolean {
+  return !track.muted;
 }
 
 /** One layer's contribution: the bars to read, and the processing to bake onto them. */
@@ -67,7 +72,7 @@ export type BouncePlan = {
   /** The mixdown is exactly one loop, which is what makes it Pass 1 of the new project. */
   readonly frameCount: number;
   readonly layers: readonly MixSource[];
-  readonly references: readonly ReferenceSource[];
+  readonly backing: readonly BackingTrack[];
   /**
    * Frames of delay tail that must **wrap to the start of the loop** rather than being
    * truncated (§2.8).
@@ -94,7 +99,7 @@ function contributes(bars: readonly RetainedBar[]): boolean {
  */
 export function bouncePlan(
   project: Project,
-  references: readonly ReferenceSource[] = [],
+  backing: readonly BackingTrack[] = [],
 ): BouncePlan | undefined {
   const t = projectTiming(project);
   const layers: MixSource[] = [];
@@ -119,13 +124,13 @@ export function bouncePlan(
     });
   }
 
-  const audibleReferences = references.filter(isAudibleInMixdown);
-  if (layers.length === 0 && audibleReferences.length === 0) return undefined;
+  const audibleBacking = backing.filter(isAudibleInMixdown);
+  if (layers.length === 0 && audibleBacking.length === 0) return undefined;
 
   return {
     frameCount: loopFrames(t),
     layers,
-    references: audibleReferences,
+    backing: audibleBacking,
     tailFrames: usesDelay ? haasDelayFrames(t) : 0,
   };
 }

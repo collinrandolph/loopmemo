@@ -4,7 +4,7 @@ import { describe, it } from 'node:test';
 import { setSlot, setSlotMuted } from '../src/domain/arrangement.ts';
 import { barRef } from '../src/domain/bar-ref.ts';
 import {
-  type ReferenceSource,
+  type BackingTrack,
   bouncePlan,
   bounceSeed,
   isAudibleInMixdown,
@@ -46,24 +46,22 @@ function withLayers(p: Project, count: number, edit?: (l: Layer, i: number) => L
   return { ...p, layers };
 }
 
-const ref = (over: Partial<ReferenceSource> = {}): ReferenceSource => ({
+const ref = (over: Partial<BackingTrack> = {}): BackingTrack => ({
   id: 'drums',
-  enabled: true,
   muted: false,
   level: 1,
   ...over,
 });
 
 describe('the mixdown rule (§2.6)', () => {
-  it('includes anything enabled and not muted', () => {
+  it('includes anything not muted', () => {
     assert.equal(isAudibleInMixdown(ref()), true);
     assert.equal(isAudibleInMixdown(ref({ muted: true })), false, 'mute is how you exclude');
-    assert.equal(isAudibleInMixdown(ref({ enabled: false })), false);
   });
 
-  it('carries enabled reference tracks into the plan', () => {
+  it('carries audible backing tracks into the plan', () => {
     const plan = bouncePlan(withLayers(project(), 2), [ref(), ref({ id: 'chords', muted: true })]);
-    assert.deepEqual(plan?.references.map((r) => r.id), ['drums']);
+    assert.deepEqual(plan?.backing.map((r: BackingTrack) => r.id), ['drums']);
   });
 });
 
@@ -158,10 +156,10 @@ describe('bouncePlan', () => {
     });
 
     it('allows a reference-only mixdown', () => {
-      // Every layer muted but the drum loop enabled is still something to hear.
+      // Every layer muted but the drum loop audible is still something to hear.
       const p = withLayers(project(), 2, (l) => ({ ...l, muted: true }));
       assert.deepEqual(bouncePlan(p, [ref()])?.layers, []);
-      assert.equal(bouncePlan(p, [ref()])?.references.length, 1);
+      assert.equal(bouncePlan(p, [ref()])?.backing.length, 1);
     });
   });
 });

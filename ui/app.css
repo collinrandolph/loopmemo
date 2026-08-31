@@ -174,7 +174,7 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
 .lr-row.has-audio .empty-note { display: none; }
 .lr-row:not(.has-audio) [data-needs-audio] { display: none; }
 .lr-row.is-open .lr-panel { max-height: 400px; }
-/* Scoped to `.lr-rows`: reference rows never carry `has-audio` either, and this was quietly
+/* Scoped to `.lr-rows`: backing rows never carry `has-audio` either, and this was quietly
    capping the chord panel at the height its old two-row version happened to fit in. */
 .lr-rows .lr-row:not(.has-audio).is-open .lr-panel { max-height: 120px; }
 
@@ -205,17 +205,17 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
 .rec-rule { position: absolute; left: 0; bottom: 0; height: 2px;
             background: var(--lr-rec); width: 0; }
 
-.refs { display: grid; gap: var(--lr-seam); padding: 0 20px 6px; }
+.backing { display: grid; gap: var(--lr-seam); padding: 0 20px 6px; }
 /* One rule for every line icon on the screen, so the help control cannot drift away from the
-   reference rows it is meant to match. Sized to the record dot (20px) rather than the 22 it
+   backing rows it is meant to match. Sized to the record dot (20px) rather than the 22 it
    was: a stroke icon fills its box edge to edge where a filled dot does not, so at equal boxes
    the icon read as the larger of the two. */
-.ref-icon, .lr-help svg {
+.backing-icon, .lr-help svg {
   width: 20px; height: 20px; flex: 0 0 20px; display: block;
   fill: none; stroke: var(--lr-ink); stroke-width: 2;
   stroke-linecap: round; stroke-linejoin: round;
 }
-.ref-detail { font-size: 12px; color: var(--lr-ink); flex: 1; font-weight: 500; }
+.backing-detail { font-size: 12px; color: var(--lr-ink); flex: 1; font-weight: 500; }
 .chord-slots { display: flex; gap: 4px; flex: 1; }
 .chord {
   background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.14);
@@ -419,7 +419,7 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
 
 /* ------------------------------------------------------------------- help -- */
 /* A question mark where a line of instructions used to run the width of the footer. Bare, like
-   the reference-track icons — a chip around it would have made it the only framed line icon. */
+   the backing-track icons — a chip around it would have made it the only framed line icon. */
 .lr-help {
   background: none; border: none; padding: 0; cursor: pointer;
   display: flex; align-items: center; flex: 0 0 auto;
@@ -478,8 +478,8 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
 
    **This block must stay last in the file.** It carries no more specificity than the
    rules it overrides, so ordering is the only thing making it win — sitting at the top
-   it silently lost `.refs`, `.grid` and `.lr-transport` to their base rules below, and
-   the reference rows sat 8px narrower than the layers for it. */
+   it silently lost `.backing`, `.grid` and `.lr-transport` to their base rules below, and
+   the backing rows sat 8px narrower than the layers for it. */
 @media (max-width: 640px) {
   body { padding: 0; }
   .app-nav { padding: 8px 12px 0; gap: 4px; }
@@ -490,7 +490,7 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
   .lr-header { padding: 14px 12px 10px; }
   .lr-section-label { padding: 0 12px; }
   .lr-rows { padding: 4px 12px 14px; }
-  .refs { padding: 0 12px 6px; }
+  .backing { padding: 0 12px 6px; }
   .lr-footer { padding: 10px 12px; }
   .grid { padding: 12px; }
   .lr-panel-inner { padding: 10px; }

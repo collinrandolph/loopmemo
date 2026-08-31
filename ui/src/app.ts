@@ -133,11 +133,12 @@ function render() {
           : exportScreen({
               project,
               engine,
-              // §2.6 is still unmodelled, so the two reference tracks are named here rather
-              // than read off the project. `reference-rows.ts` owns the live ones.
-              references: [
-                { id: 'drums', enabled: true, muted: false, level: 0.7, label: 'Drums' },
-                { id: 'chords', enabled: true, muted: false, level: 0.55, label: 'Chords' },
+              // §2.6 is still unmodelled, so the two backing tracks are named here rather than
+              // read off the project. `backing-rows.ts` owns the live ones, which is exactly the
+              // gap: mute one there and this list does not know.
+              backing: [
+                { id: 'drums', muted: false, level: 0.7, label: 'Drums' },
+                { id: 'chords', muted: false, level: 0.55, label: 'Chords' },
               ],
               // Back where you came from, not always the Library.
               onCancel: () => go({ screen: back }),

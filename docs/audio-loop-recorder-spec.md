@@ -42,7 +42,7 @@ Settled deliberately. Earlier drafts used other words; these are the current one
 | **session** | One continuous recording onto a layer. A layer accumulates several. | — |
 | **tile** | One bar's cell on the Edit Layer screen. | — |
 | **lane** | One layer's full-loop strip on the Playback screen. | — |
-| **reference tracks** | The drum loop and chord bed collectively. | — |
+| **backing tracks** | The drum loop and chord bed collectively. | "reference tracks" |
 
 **Why "pass" rather than "take".** *Take* implies converging on one right version of the same
 performance. This app leaves the loop running so the player can improvise, and each traversal may
@@ -109,7 +109,7 @@ Breaking any of these produces bugs that look cosmetic but aren't.
 5. Gestures and transport (§3.7, §3.6) — the fiddliest part; the mockup is the reference.
 6. Live editing: mid-bar splice (§2.5).
 7. Project Library, compress, bounce (§4.1).
-8. Chord reference (§4.4), settings (§4.6), user manual (§4.7).
+8. Chord bed (§4.4), settings (§4.6), user manual (§4.7).
 
 ---
 
@@ -276,9 +276,9 @@ Project
 │   ├── isCompressed (Bool)           // a label and a storage fact only;
 │   │                                 // cleared by recording. Never gate UI on it.
 │   └── bouncedFromProjectId (UUID?)  // lineage
-├── drumLoop                           // reference track
+├── drumLoop                           // backing track
 │   └── id, name, audioFileURL, duration, originalBPM, channels
-├── chordProgression                   // reference track, optional
+├── chordProgression                   // backing track, optional
 │   ├── enabled, scale, tone, level
 │   └── slots[4]                       // one chord per bar, repeats every 4 bars
 │       └── root (note + natural/flat/sharp)
@@ -499,7 +499,7 @@ Accepted for the hunting workflow. If it proves disruptive, the fallback is to s
 the first half of a bar and defer in the second — but do not build that until real recordings
 demonstrate the need.
 
-## 2.6 Reference tracks
+## 2.6 Backing tracks
 
 The drum loop and the chord bed are the same kind of object: non-recorded backing the user plays
 against. They share a row treatment, an enable/level/mute control, and one export rule.
@@ -518,7 +518,7 @@ trigger, never how they sound. The chord bed is immune to the ratio limits above
 
 ### Export rule
 
-**Any enabled track is exported, reference tracks included.** To exclude one, mute it. The export
+**Any enabled track is exported, backing tracks included.** To exclude one, mute it. The export
 screen has no mute controls of its own — muting happens on the Playback screen, where the user can
 hear the result. The rule is *what you hear is what you export*, and it applies identically to a
 bounce mixdown.
@@ -600,7 +600,7 @@ Discards every recorded pass, keeping each layer's final edited loop.
 
 Creates a **new project** seeded with a combined, compressed copy of the original.
 
-- All layers are mixed into a **single audio file** with EQ, pan and level baked in. Enabled reference tracks are included; the mixdown contains exactly what was audible.
+- All layers are mixed into a **single audio file** with EQ, pan and level baked in. Enabled backing tracks are included; the mixdown contains exactly what was audible.
 - That file becomes **layer 1** of the new project, as **Pass 1**, and layer 1 can record further passes like any other layer. Layer 1 starts **neutral** — level 1, Flat, Center, unmuted — because the processing is already in the audio.
 - **The original project is untouched.**
 - BPM, bar count, beats per bar and chord settings are preset from the source.
@@ -615,7 +615,7 @@ bounce needs no arrangement logic of its own.
 
 **Refused in two cases**: a slot pointing at audio that does not exist, since baking a hole into the
 seed is not a repair even though the original survives; and a mixdown with nothing audible in it,
-which would seed a project with a loop of silence. Every layer muted but a reference track enabled
+which would seed a project with a loop of silence. Every layer muted but a backing track enabled
 is still a valid bounce.
 
 **A Surround layer's delay tail must wrap.** Live, the delayed copy of the last bar runs past the
@@ -633,7 +633,7 @@ otherwise ask nothing.
 
 Both are legitimate. Keeping the source quality preserves the mixdown exactly and suits a bounce that
 is the foundation of the new piece. Taking the current setting costs one resample of material that is
-already a composite — and suits a bounce that is **a reference the user will mute or delete**, where
+already a composite — and suits a bounce that is **something the user will mute or delete**, where
 matching the working rate of everything recorded next matters more.
 
 **Why bounce makes a new project**: nothing is destroyed, no partially-editable layer state has to
@@ -1022,7 +1022,7 @@ Also required:
 
 ## 3.8 Row and panel — `.lr-row`
 
-One primitive serves layer rows, reference rows and project rows: a head that is always visible and a
+One primitive serves layer rows, backing rows and project rows: a head that is always visible and a
 panel that expands on tap.
 
 - The head holds the row's controls; **each control absorbs its own clicks** so acting on one never also toggles the panel.
@@ -1107,7 +1107,7 @@ Reference: `playback-screen-mockup.html`.
 ```
 Header      project name · BPM · bars · time signature
             play · progress bar · position · master volume icon + slider
-Reference   drum loop · chord bed
+Backing     drum loop · chord bed
 Layers      seven rows
 Footer      gesture legend · Export
 ```
@@ -1156,7 +1156,7 @@ At 44.1 kHz with a 1024-frame buffer that's a value every ~23 ms — finer than 
 several per drawn line. **No allocation, no locks, no UIKit in the tap callback.** Drain on a
 `CADisplayLink`. `AVAudioRecorder` metering gives only a current level, not a history; use the tap.
 
-**Reference rows** use the same primitive: a Lucide `drum` or `keyboard-music` icon, the content
+**Backing rows** use the same primitive: a Lucide `drum` or `keyboard-music` icon, the content
 (drum part name; the four chords), a speaker, and a panel. The drum row shows no BPM — that's a
 project setting shown in the header. The chord row's scale and tone live in its panel.
 
@@ -1197,7 +1197,7 @@ defined state, derived from audio (§1.4), not a flag:
 For layers with more than one pass but still few, consider showing the range (`P2/4`) so the wrap is
 predictable.
 
-## 4.4 Chord progression reference
+## 4.4 Chord bed
 
 A generated chord bed that plays alongside the drum loop, enabled without recording anything, and
 available while recording every layer.
@@ -1272,7 +1272,7 @@ a reminder; the manual carries the reasoning.
 |---------|--------|
 | Editing | What `P2 / 5` means; the two axes; **reading the gradient** — the highest-value entry, because the swipe is discoverable by accident and the colour encoding is not; live editing and mid-bar splice; why the pass axis disappears after compressing |
 | Recording setup | The ideal wired setup; why Bluetooth output with the phone mic is impossible (A2DP vs HFP — explained as a constraint, so it reads as physics rather than a bug); why Bluetooth monitoring feels detached; what bleeds when using the speaker |
-| Everything else | Reference tracks; how scale plus four roots produces the chords; what compress discards and keeps; that bounce leaves the original untouched; that export matches what you hear |
+| Everything else | Backing tracks; how scale plus four roots produces the chords; what compress discards and keeps; that bounce leaves the original untouched; that export matches what you hear |
 
 **Tone**: short, plain, answering questions users will actually have ("why did that bar change
 colour?", "why does it sound late?"). Each entry readable in isolation, since users arrive by deep
@@ -1386,7 +1386,7 @@ touch-action: none;                         /* on gesture surfaces */
 | **1** | Session config, drum loop playback, single-layer recording, pass detection |
 | **2** | Seven layers, levels, mute, EQ and pan presets, project persistence |
 | **3** | Edit Layer grid, gestures, transport, splicing, live editing |
-| **4** | Project Library, compress, bounce, export, chord reference, manual |
+| **4** | Project Library, compress, bounce, export, chord bed, manual |
 
 ---
 

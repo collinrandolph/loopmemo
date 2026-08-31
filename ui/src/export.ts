@@ -1,4 +1,4 @@
-import type { ReferenceSource } from '../../src/domain/bounce.ts';
+import type { BackingTrack } from '../../src/domain/bounce.ts';
 import {
   DEFAULT_SELECTION,
   type ExportFormat,
@@ -32,7 +32,7 @@ import type { Engine } from './sim.ts';
 export function exportScreen(opts: {
   project: Project;
   engine: Engine;
-  references: readonly (ReferenceSource & { label: string })[];
+  backing: readonly (BackingTrack & { label: string })[];
   /** Leave without exporting. Distinct from `onShare` even where both land in the same place. */
   onCancel(): void;
   onShare(): void;
@@ -69,12 +69,12 @@ export function exportScreen(opts: {
     {
       key: 'fullLoop',
       title: 'Full loop',
-      detail: 'The mix exactly as you hear it — levels, effects, reference tracks and mutes.',
+      detail: 'The mix exactly as you hear it — levels, effects, backing tracks and mutes.',
     },
     {
       key: 'stems',
       title: 'Stems',
-      detail: 'One file per layer and reference track, dry: the edited loop with no effects.',
+      detail: 'One file per layer and backing track, dry: the edited loop with no effects.',
     },
     {
       key: 'stemsWithEffects',
@@ -197,7 +197,7 @@ export function exportScreen(opts: {
 
   // ----------------------------------------------------------------- paint --
   function paint() {
-    const references = opts.references;
+    const backing = opts.backing;
 
     for (const option of options) {
       const t = toggles.get(option.key)!;
@@ -209,7 +209,7 @@ export function exportScreen(opts: {
       const alone = exportPlan(
         project,
         { fullLoop: false, stems: false, stemsWithEffects: false, allPasses: false, [option.key]: true },
-        { format, mp3Bitrate: bitrate, references },
+        { format, mp3Bitrate: bitrate, backing },
       );
       const n = alone.files.length;
       t.count.innerHTML =
@@ -217,7 +217,7 @@ export function exportScreen(opts: {
         `<div class="export-size">${mb(alone.totalBytes)}</div>`;
     }
 
-    const plan = exportPlan(project, selection, { format, mp3Bitrate: bitrate, references });
+    const plan = exportPlan(project, selection, { format, mp3Bitrate: bitrate, backing });
     bitrateRow.style.display = format === 'mp3' ? '' : 'none';
     wavNote.style.display = format === 'wav' ? '' : 'none';
 

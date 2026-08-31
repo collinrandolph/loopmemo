@@ -124,7 +124,7 @@ drag, and `consume()` to say the release was not a tap.
 **A screen owns its screen; everything reusable is beside it.** `playback.ts` and
 `edit-layer.ts` are the two screens. `gesture.ts` (the press guard above), `controls.ts`
 (`swipeWheel`, `bindChips`), `icons.ts` (inline Lucide paths — take new ones from that set),
-`chords.ts`, `reference-rows.ts` (the drum and chord beds, which own their own state and talk to
+`chords.ts`, `backing-rows.ts` (the drum and chord beds, which own their own state and talk to
 no screen) and `help.ts` are shared. **There are no tests over `ui/`** — only `src/domain` is
 covered, so a change here is verified by driving the browser.
 
@@ -398,7 +398,7 @@ and the flag means recorded passes were discarded — a new project never had an
 last bar runs past the loop point; a bounce renders a fixed length, so it must wrap to the start
 or the seed has a seam the original never had.
 
-**Reference tracks are still not modelled.** §2.6's drum loop and chord bed have no
+**Backing tracks are still not modelled.** §2.6's drum loop and chord bed have no
 `originalBPM`, no playback ratio and no chord settings anywhere in `src/domain`.
 `bounce.ts` defines the *subset* it needs and marks it provisional — absorb it when §2.6 is
 built rather than leaving two definitions. `isAudibleInMixdown` is shared with export on
@@ -471,7 +471,7 @@ the rendered loop has a seam the live one never had. Not yet implemented — bou
 5. Gestures and transport — the fiddliest part; the mockup is the reference.
 6. Live editing: mid-bar splice.
 7. Project Library, compress, bounce.
-8. Chord reference, settings, manual.
+8. Chord bed, settings, manual.
 
 ## Tone and scope
 

@@ -1,4 +1,4 @@
-import { type ReferenceSource, isAudibleInMixdown } from '../../src/domain/bounce.ts';
+import { type BackingTrack, isAudibleInMixdown } from '../../src/domain/bounce.ts';
 import {
   ACCIDENTALS,
   type Chord,
@@ -16,7 +16,7 @@ import { LR, el } from './kit.ts';
  * The drum loop and the chord bed (§2.6, §4.4) — "the same kind of object: non-recorded backing
  * the user plays over".
  *
- * **None of this is domain state.** §2.6's reference tracks are unmodelled: there is no
+ * **None of this is domain state.** §2.6's backing tracks are unmodelled: there is no
  * `originalBPM`, no playback ratio and no chord settings anywhere in `src/domain`, so the
  * progression, the tone and the chosen loop live here and do not survive a reload. `bounce.ts`
  * defines the provisional subset it needs; when the real model arrives, this is what moves.
@@ -26,7 +26,7 @@ import { LR, el } from './kit.ts';
  * Editable working copy of the domain's shape — the fields are readonly there, as every domain
  * type is, so the screen owns a mutable mirror rather than reaching into one.
  */
-type RefRow = { -readonly [K in keyof ReferenceSource]: ReferenceSource[K] };
+type Row = { -readonly [K in keyof BackingTrack]: BackingTrack[K] };
 
 const TONES = ['Rhodes', 'Pad', 'Nylon', 'Organ'];
 
@@ -43,16 +43,16 @@ const DRUM_LOOPS = [
   'Four on the Floor',
 ].map((name) => ({ id: name, label: name }));
 
-export function referenceRows(): HTMLElement {
-  const refsEl = el('div', 'refs');
+export function backingRows(): HTMLElement {
+  const rowsEl = el('div', 'backing');
 
   /**
-   * The shared half of a reference row: icon, body, speaker, and a panel that opens on a tap
+   * The shared half of a backing row: icon, body, speaker, and a panel that opens on a tap
    * anywhere else in the head. The drum row is only this; the chord row adds to it.
    */
-  function referenceRow(ref: RefRow, icon: string, body: HTMLElement) {
+  function backingRow(ref: Row, icon: string, body: HTMLElement) {
     const row = el('div', 'lr-row');
-    const head = el('div', 'lr-row-head', `<svg class="ref-icon" viewBox="0 0 24 24">${icon}</svg>`);
+    const head = el('div', 'lr-row-head', `<svg class="backing-icon" viewBox="0 0 24 24">${icon}</svg>`);
     head.appendChild(body);
 
     const vol = LR.VolumeControl({
@@ -96,21 +96,21 @@ export function referenceRows(): HTMLElement {
       panel.style.maxHeight = row.classList.contains('is-open') ? `${panel.scrollHeight}px` : '0px';
     }
 
-    refsEl.appendChild(row);
+    rowsEl.appendChild(row);
     return { row, head, panel, inner, settings, syncPanelHeight };
   }
 
   drumRow();
   chordRow();
-  return refsEl;
+  return rowsEl;
 
   // ------------------------------------------------------------------- drums --
   function drumRow() {
-    const ref: RefRow = { id: 'drums', enabled: true, muted: false, level: 0.7 };
+    const ref: Row = { id: 'drums', muted: false, level: 0.7 };
     let loop = DRUM_LOOPS[0]!.id;
 
-    const detail = el('div', 'ref-detail', loop);
-    const parts = referenceRow(ref, DRUM_ICON, detail);
+    const detail = el('div', 'backing-detail', loop);
+    const parts = backingRow(ref, DRUM_ICON, detail);
 
     // The same wheel as the chord fields, and **always in the panel**. There is nothing to pick
     // first: a drum row has one loop where a chord row has four chords, so the picker has no
@@ -133,7 +133,7 @@ export function referenceRows(): HTMLElement {
 
   // ------------------------------------------------------------------ chords --
   function chordRow() {
-    const ref: RefRow = { id: 'chords', enabled: true, muted: false, level: 0.55 };
+    const ref: Row = { id: 'chords', muted: false, level: 0.55 };
     const progression: Chord[] = [defaultChord(), defaultChord(), defaultChord(), defaultChord()];
     let tone = TONES[0]!;
 
@@ -144,7 +144,7 @@ export function referenceRows(): HTMLElement {
       slots.appendChild(b);
       return b;
     });
-    const parts = referenceRow(ref, PIANO_ICON, slots);
+    const parts = backingRow(ref, PIANO_ICON, slots);
 
     /**
      * The panel has two shapes and one of them is per-chord, so which chord is being edited is

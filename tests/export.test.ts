@@ -60,10 +60,11 @@ const only = (key: keyof ExportSelection): ExportSelection => ({
   [key]: true,
 });
 
-const REFERENCES = [
-  { id: 'drums', enabled: true, muted: false, level: 1, label: 'Drums' },
-  { id: 'chords', enabled: true, muted: true, level: 1, label: 'Chords' },
-  { id: 'other', enabled: false, muted: false, level: 1, label: 'Other' },
+const BACKING = [
+  { id: 'drums', muted: false, level: 1, label: 'Drums' },
+  { id: 'chords', muted: false, level: 1, label: 'Chords' },
+  // Muted, so it is not part of the sketch and produces no stem — unlike a muted *layer*.
+  { id: 'shaker', muted: true, level: 1, label: 'Shaker' },
 ];
 
 describe('export selection', () => {
@@ -137,14 +138,33 @@ describe('stems', () => {
     assert.equal(exportPlan(recorded(project(), 2), only('stems'), wav).files.length, 2); // not seven
   });
 
-  it('adds one stem per enabled reference track, muted or not', () => {
-    // §2.6: the drum loop and chord bed are what every layer was played against. `enabled`,
-    // not audible — mute belongs to the mixdown.
-    const plan = exportPlan(recorded(project(), 1), only('stems'), { ...wav, references: REFERENCES });
+  it('adds a stem per audible backing track, and skips the muted one', () => {
+    // §2.6: the drum loop and chord bed are what every layer was played against, so a stem set
+    // without them is missing the thing the layers answer to. Muting one takes it out, which is
+    // the opposite of what muting a *layer* does two tests above — see the next test.
+    const plan = exportPlan(recorded(project(), 1), only('stems'), { ...wav, backing: BACKING });
     assert.deepEqual(
       plan.files.map((f) => f.name),
       ['Rooftop - L1 - stem.wav', 'Rooftop - Drums - stem.wav', 'Rooftop - Chords - stem.wav'],
     );
+  });
+
+  it('parts company with layers on what a mute means', () => {
+    // The whole reason the two rules differ, asserted side by side so neither can drift into
+    // the other: a muted layer is a performance you are not using right now and still ships as
+    // a stem; a muted backing track is a decision the sketch does not have one, and does not.
+    const p = recorded(project(), 1);
+    const mutedLayer = { ...p, layers: p.layers.map((l) => (l.index === 0 ? { ...l, muted: true } : l)) };
+    const names = (o: Parameters<typeof exportPlan>[2]) =>
+      exportPlan(mutedLayer, only('stems'), o).files.map((f) => f.name);
+
+    assert.deepEqual(names({ ...wav, backing: [{ id: 'd', muted: false, level: 1, label: 'Drums' }] }), [
+      'Rooftop - L1 - stem.wav',
+      'Rooftop - Drums - stem.wav',
+    ]);
+    assert.deepEqual(names({ ...wav, backing: [{ id: 'd', muted: true, level: 1, label: 'Drums' }] }), [
+      'Rooftop - L1 - stem.wav',
+    ]);
   });
 
   it('names an unnamed layer by its position', () => {
@@ -193,8 +213,8 @@ describe('stems with effects', () => {
 
   it('covers the same sources as the dry set', () => {
     const p = recorded(project(), 3);
-    const dry = exportPlan(p, only('stems'), { ...wav, references: REFERENCES });
-    const wet = exportPlan(p, only('stemsWithEffects'), { ...wav, references: REFERENCES });
+    const dry = exportPlan(p, only('stems'), { ...wav, backing: BACKING });
+    const wet = exportPlan(p, only('stemsWithEffects'), { ...wav, backing: BACKING });
     assert.equal(dry.files.length, wet.files.length);
   });
 });
@@ -286,7 +306,7 @@ describe('sizing', () => {
         for (const stemsWithEffects of [false, true]) {
           for (const allPasses of [false, true]) {
             const pick = { fullLoop, stems, stemsWithEffects, allPasses };
-            const names = exportPlan(p, pick, { ...wav, references: REFERENCES }).files.map((f) => f.name);
+            const names = exportPlan(p, pick, { ...wav, backing: BACKING }).files.map((f) => f.name);
             assert.equal(new Set(names).size, names.length, JSON.stringify(pick));
           }
         }

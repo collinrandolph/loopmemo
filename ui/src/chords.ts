@@ -11,7 +11,7 @@
  * dashed slot state goes with it. And a slot can no longer be wrong, so nothing has to default
  * an out-of-scale root to a major triad.
  *
- * Screen state, not domain state: §2.6's reference tracks are still unmodelled, so none of this
+ * Screen state, not domain state: §2.6's backing tracks are still unmodelled, so none of this
  * survives a reload. When they are built, this is what has to move.
  */
 export type Chord = {

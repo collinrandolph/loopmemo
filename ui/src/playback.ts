@@ -23,7 +23,7 @@ import { bindChips } from './controls.ts';
 import { helpControl } from './help.ts';
 import { type RecordState, type WaveNode, LR, el, motion, ramp, sizing } from './kit.ts';
 import { eqIconSvg, panIconSvg } from './preset-icons.ts';
-import { referenceRows } from './reference-rows.ts';
+import { backingRows } from './backing-rows.ts';
 import { type Engine, amp } from './sim.ts';
 
 const TARGET_LINES = 40; // lanes are an overview: the count follows the container
@@ -179,8 +179,8 @@ export function playbackScreen(opts: {
   }
 
   // The drum loop and the chord bed own their own state and talk to nothing here, so they are
-  // built whole rather than wired in (§2.6 is unmodelled, see `reference-rows.ts`).
-  const refsEl = referenceRows();
+  // built whole rather than wired in (§2.6 is unmodelled, see `backing-rows.ts`).
+  const backingEl = backingRows();
 
   // --------------------------------------------------------------- layer rows --
   const layersEl = el('div', 'lr-rows');
@@ -644,8 +644,8 @@ export function playbackScreen(opts: {
 
   root.append(
     header,
-    el('div', 'lr-section-label', 'Reference tracks'),
-    refsEl,
+    el('div', 'lr-section-label', 'Backing'),
+    backingEl,
     el('div', 'lr-section-label', 'Layers'),
     layersEl,
     footer,

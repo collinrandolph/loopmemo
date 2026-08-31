@@ -2,7 +2,7 @@
  * Inline icons, all from **Lucide** (ISC). Path data is inlined rather than depended on, since
  * this repo carries no runtime dependencies.
  *
- * Lucide's 24-unit box, 2px stroke and round caps are already what the shared `.ref-icon,
+ * Lucide's 24-unit box, 2px stroke and round caps are already what the shared `.backing-icon,
  * .lr-help svg` rule declares, so they drop straight in. **Take any new icon from the same set**
  * — that is the whole reason they look like each other.
  *
