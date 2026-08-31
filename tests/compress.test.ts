@@ -5,9 +5,14 @@ import { setSlot, setSlotMuted } from '../src/domain/arrangement.ts';
 import { barRef } from '../src/domain/bar-ref.ts';
 import {
   type Project,
+  clearLayer,
+  compressedLayer,
   compressedProject,
   createProject,
+  layerCompressionPlan,
+  layerCompressionSaving,
   layerHasRecording,
+  layerPassIndex,
   projectCompressionPlan,
   projectTiming,
   projectTotalPasses,
@@ -15,6 +20,7 @@ import {
   recordedLayerCount,
   sizeProjection,
 } from '../src/domain/project.ts';
+import { totalPasses } from '../src/domain/pass-index.ts';
 import { LOOP, session } from './fixtures.ts';
 
 function project(): Project {
@@ -96,6 +102,93 @@ describe('projectCompressionPlan', () => {
       ),
     };
     assert.ok(projectCompressionPlan(muted));
+  });
+});
+
+describe('one layer at a time (§4.3)', () => {
+  it('leaves that layer with one pass and every other layer untouched', () => {
+    const p = recorded(project(), 3, 4);
+    const t = projectTiming(p);
+    const target = p.layers[1]!;
+    const next = {
+      ...p,
+      layers: p.layers.map((l) =>
+        l.index === 1 ? compressedLayer(l, session(LOOP, 'c1'), p.barCount) : l,
+      ),
+    };
+    assert.equal(totalPasses(layerPassIndex(next.layers[1]!, t)), 1);
+    assert.equal(totalPasses(layerPassIndex(next.layers[0]!, t)), 4);
+    assert.equal(totalPasses(layerPassIndex(next.layers[2]!, t)), 4);
+    assert.equal(projectTotalPasses(next), 9);
+    // Four passes' worth of frames down to one loop. Session *count* is unchanged here — the
+    // fixture records four passes in a single take — so counting sessions would prove nothing.
+    assert.equal(target.sessions[0]!.recordedFrames, 4 * LOOP);
+    assert.equal(next.layers[1]!.sessions[0]!.recordedFrames, LOOP);
+  });
+
+  it('does not mark the project compressed', () => {
+    // §2.7's flag means the *project's* recorded passes were discarded. One layer of five is
+    // not that, and the Library label would over-claim. The size projection still moves, which
+    // is the honest part.
+    const p = recorded(project(), 3, 4);
+    const next = {
+      ...p,
+      layers: p.layers.map((l) => (l.index === 0 ? compressedLayer(l, session(LOOP), p.barCount) : l)),
+    };
+    assert.equal(next.isCompressed, false);
+    assert.ok(sizeProjection(next).uncompressedBytes < sizeProjection(p).uncompressedBytes);
+  });
+
+  it('states what it would discard before it is asked to', () => {
+    const p = recorded(project(), 1, 5);
+    const saving = layerCompressionSaving(p.layers[0]!, p);
+    assert.equal(saving.passes, 5);
+    assert.equal(saving.discarded, 4);
+    assert.ok(saving.bytes > 0);
+  });
+
+  it('offers nothing to save on a layer already holding one pass', () => {
+    const p = recorded(project(), 1, 1);
+    assert.deepEqual(layerCompressionSaving(p.layers[0]!, p), { passes: 1, discarded: 0, bytes: 0 });
+  });
+
+  it('refuses a layer whose audible slot points at audio that is gone', () => {
+    const p = recorded(project(), 1, 1);
+    const broken = {
+      ...p,
+      layers: p.layers.map((l) =>
+        l.index === 0 ? { ...l, barSources: setSlot(l.barSources, 3, barRef(9, 1)) } : l,
+      ),
+    };
+    assert.equal(layerCompressionPlan(broken.layers[0]!, projectTiming(p)), undefined);
+  });
+
+  it('has nothing to plan for a layer with no audio', () => {
+    assert.equal(layerCompressionPlan(project().layers[0]!, projectTiming(project())), undefined);
+  });
+
+  it('agrees with the project-level plan, layer for layer', () => {
+    // The project plan is this one over every recorded layer. Two derivations of "what compress
+    // keeps" is exactly the drift worth not having.
+    const p = recorded(project(), 3, 3);
+    const t = projectTiming(p);
+    const whole = projectCompressionPlan(p)!;
+    for (const entry of whole.layers) {
+      assert.deepEqual(entry.bars, layerCompressionPlan(p.layers[entry.layerIndex]!, t));
+    }
+  });
+
+  it('clears a layer without touching the others', () => {
+    const p = recorded(project(), 3, 2);
+    const next = {
+      ...p,
+      layers: p.layers.map((l) => (l.index === 1 ? clearLayer(l) : l)),
+    };
+    assert.equal(layerHasRecording(next.layers[1]!), false);
+    assert.deepEqual(next.layers[1]!.barSources, []);
+    assert.deepEqual(next.layers[1]!.mutedSlots, []);
+    assert.equal(layerHasRecording(next.layers[0]!), true);
+    assert.equal(projectTotalPasses(next), 4);
   });
 });
 

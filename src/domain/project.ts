@@ -328,15 +328,56 @@ export type CompressionPlan = {
   readonly projection: SizeProjection;
 };
 
+/**
+ * What compressing **one** layer keeps (§4.3). Undefined when an audible slot points at audio
+ * that is not there — baking that into the only surviving copy is unrecoverable.
+ *
+ * The project-level plan is this one over every recorded layer, so the two cannot disagree
+ * about what a compress keeps.
+ */
+export function layerCompressionPlan(layer: Layer, t: Timing): readonly RetainedBar[] | undefined {
+  if (!layerHasRecording(layer)) return undefined;
+  return compressionPlan(layer.barSources, layerPassIndex(layer, t), layer.mutedSlots)?.bars;
+}
+
+/**
+ * The passes this layer would discard, and the loops it would keep. The Edit Layer screen states
+ * both before asking (§4.1's rule, applied per layer).
+ */
+export function layerCompressionSaving(
+  layer: Layer,
+  project: Project,
+): { readonly passes: number; readonly discarded: number; readonly bytes: number } {
+  const t = projectTiming(project);
+  const passes = totalPasses(layerPassIndex(layer, t));
+  const discarded = Math.max(0, passes - 1);
+  const bytes = Math.round(discarded * loopSeconds(t) * bytesPerSecond(project.audioQuality));
+  return { passes, discarded, bytes };
+}
+
+/** One layer holding exactly one session of exactly one loop, so it is Pass 1 by construction. */
+export function compressedLayer(
+  layer: Layer,
+  session: RecordingSession,
+  barCount: number,
+): Layer {
+  return {
+    ...layer,
+    sessions: [session],
+    barSources: recordedOrder(barCount),
+    mutedSlots: NONE_MUTED,
+  };
+}
+
 export function projectCompressionPlan(project: Project): CompressionPlan | undefined {
   const t = projectTiming(project);
   const layers: { layerIndex: number; bars: readonly RetainedBar[] }[] = [];
 
   for (const layer of project.layers) {
     if (!layerHasRecording(layer)) continue;
-    const plan = compressionPlan(layer.barSources, layerPassIndex(layer, t), layer.mutedSlots);
-    if (!plan) return undefined;
-    layers.push({ layerIndex: layer.index, bars: plan.bars });
+    const bars = layerCompressionPlan(layer, t);
+    if (!bars) return undefined;
+    layers.push({ layerIndex: layer.index, bars });
   }
 
   return { layers, projection: sizeProjection(project) };
@@ -360,15 +401,11 @@ export function compressedProject(
   options: { now?: string } = {},
 ): Project {
   const now = options.now ?? new Date().toISOString();
-  const layers = project.layers.map((layer) => {
-    if (!layerHasRecording(layer)) return layer;
-    return {
-      ...layer,
-      sessions: [sessionFor(layer.index)],
-      barSources: recordedOrder(project.barCount),
-      mutedSlots: NONE_MUTED,
-    };
-  });
+  const layers = project.layers.map((layer) =>
+    layerHasRecording(layer)
+      ? compressedLayer(layer, sessionFor(layer.index), project.barCount)
+      : layer,
+  );
   return { ...project, layers, isCompressed: true, lastModified: now };
 }
 

@@ -300,6 +300,10 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
         transition: transform .2s; }
 .lr-row.is-open .chev { transform: rotate(90deg); }
 
+/* Centres the chevron against the label rather than letting it sit on the baseline. */
+.back-btn { display: inline-flex; align-items: center; gap: 4px; }
+.back-btn .chev { stroke: currentColor; }
+
 .library .lr-panel-inner { padding: 0 12px 12px; display: flex; gap: 8px; flex-wrap: wrap;
                            align-items: center; }
 .acts { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
@@ -369,6 +373,20 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
 .export-kind.is-stem { background: #7AA8FF; }
 .export-kind.is-stem-fx { background: #C69BFF; }
 .export-kind.is-pass { background: var(--lr-ink-faint); }
+
+/* --- Edit Layer: per-layer compress and clear (§4.3) ------------------------- */
+/* A drawer above the footer rather than buttons in it. Both actions are irreversible, so the
+   first tap only reveals them; the second chooses; the third confirms a sentence that states the
+   outcome. Collapsed to zero height, so it costs nothing until asked for. */
+.layer-ops {
+  max-height: 0; overflow: hidden;
+  transition: max-height .22s cubic-bezier(.22,.9,.3,1);
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  padding: 0 20px; background: rgba(0,0,0,.16);
+}
+.is-ops-open .layer-ops { max-height: 200px; padding: 12px 20px; }
+.layer-ops .hint { flex-basis: 100%; margin: 0; }
+.layer-ops.is-confirming .confirm-text { flex: 1; min-width: 200px; }
 
 /* ------------------------------------------------------------------- help -- */
 /* A question mark where a line of instructions used to run the width of the footer. Bare, like
@@ -479,5 +497,7 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
   .thumb { width: 56px; flex-basis: 56px; }
   .p-right { min-width: 52px; }
   .library .lr-panel-inner { padding: 0 10px 10px; }
+  .layer-ops { padding: 0 12px; }
+  .is-ops-open .layer-ops { padding: 10px 12px; }
   .new-btn { padding: 11px; }
 }

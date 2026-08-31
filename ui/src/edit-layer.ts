@@ -10,6 +10,10 @@ import { availablePasses, totalPasses } from '../../src/domain/pass-index.ts';
 import {
   type Layer,
   type Project,
+  clearLayer,
+  compressedLayer,
+  layerCompressionPlan,
+  layerCompressionSaving,
   layerPassIndex,
   projectTiming,
 } from '../../src/domain/project.ts';
@@ -27,8 +31,9 @@ import {
 import { SWIPE_THRESHOLD } from './controls.ts';
 import { trackDrag } from './gesture.ts';
 import { helpControl } from './help.ts';
+import { loopFrames } from '../../src/domain/timing.ts';
 import { type Rgb, type WaveNode, LR, clamp01, el, motion, ramp, sizing } from './kit.ts';
-import { type Engine, amp } from './sim.ts';
+import { type Engine, amp, simSession } from './sim.ts';
 
 const BARS_PER_ROW = 4;
 const LINES_PER_BAR = 16;
@@ -113,11 +118,101 @@ export function editLayerScreen(opts: {
     ],
   });
 
+  /**
+   * Compress and Clear, deliberately awkward to reach (§4.3).
+   *
+   * Both are irreversible and both live only here, on the screen for the one layer they act on —
+   * putting them on Playback would make discarding a take a mis-tap away from arming one. The
+   * friction is three deliberate steps: open the drawer, choose, then confirm a sentence that
+   * states the outcome in passes and megabytes (§4.1's rule for destructive actions).
+   *
+   * They are also the only two actions in the app that can leave a screen with nothing to show,
+   * so clearing returns to Playback rather than sitting on an empty grid.
+   */
+  const drawer = el('div', 'layer-ops');
+  const opsBtn = el('button', 'lr-btn', 'Layer…');
+  opsBtn.addEventListener('click', () => {
+    const open = root.classList.toggle('is-ops-open');
+    if (!open) drawer.classList.remove('is-confirming');
+    else paintOps();
+  });
+
+  function askOps(text: string, label: string, run: () => void) {
+    drawer.innerHTML =
+      `<div class="confirm-text">${text}</div>` +
+      `<button class="lr-btn lr-btn--danger" data-yes>${label}</button>` +
+      '<button class="lr-btn" data-no>Cancel</button>';
+    drawer.classList.add('is-confirming');
+    drawer.querySelector('[data-yes]')!.addEventListener('click', run);
+    drawer.querySelector('[data-no]')!.addEventListener('click', paintOps);
+  }
+
+  function paintOps() {
+    drawer.classList.remove('is-confirming');
+    const saving = layerCompressionSaving(layer, project);
+    const name = layer.name || `Layer ${layer.index + 1}`;
+    drawer.innerHTML = '';
+
+    const compressBtn = el('button', 'lr-btn', 'Compress layer') as HTMLButtonElement;
+    compressBtn.disabled = saving.discarded === 0;
+    compressBtn.addEventListener('click', () => {
+      if (!layerCompressionPlan(layer, t)) {
+        askOps(
+          `<b>${name}</b> has a bar pointing at audio that is no longer there. Fix that bar ` +
+            'before compressing, or the gap is baked into the only copy left.',
+          'Close',
+          paintOps,
+        );
+        return;
+      }
+      askOps(
+        `Compress <b>${name}</b>? ${saving.discarded} unused pass${saving.discarded === 1 ? '' : 'es'} ` +
+          `discarded, <b>${mb(saving.bytes)}</b> freed. The edited loop becomes Pass 1 and stays ` +
+          'editable; the other layers are untouched.',
+        'Compress',
+        () => {
+          layer = compressedLayer(layer, simSession(`${layer.id}-c`, loopFrames(t)), barCount);
+          opts.onChange(layer);
+          root.classList.remove('is-ops-open');
+          redrawAll();
+          refresh();
+        },
+      );
+    });
+
+    const clearBtn = el('button', 'lr-btn lr-btn--danger', 'Clear layer');
+    clearBtn.addEventListener('click', () => {
+      const passes = totalPasses(index());
+      askOps(
+        `Clear <b>${name}</b>? All ${passes} recorded pass${passes === 1 ? '' : 'es'} and this ` +
+          'arrangement go with it. The layer is left empty and ready to record. This cannot be undone.',
+        'Clear',
+        () => {
+          opts.onChange(clearLayer(layer));
+          opts.onDone(); // nothing left to edit
+        },
+      );
+    });
+
+    drawer.append(
+      compressBtn,
+      clearBtn,
+      el(
+        'div',
+        'hint',
+        saving.discarded === 0
+          ? 'Already one pass — nothing to compress. Both actions are permanent.'
+          : 'Both actions are permanent and affect only this layer.',
+      ),
+    );
+  }
+
   const footer = el('div', 'lr-footer');
   const doneBtn = el('button', 'lr-btn lr-btn--primary', 'Done');
   doneBtn.addEventListener('click', opts.onDone);
-  footer.append(help.node, doneBtn);
-  root.append(header, grid, footer);
+  opsBtn.style.marginLeft = 'auto';
+  footer.append(help.node, opsBtn, doneBtn);
+  root.append(header, grid, drawer, footer);
 
   const volume = LR.VolumeControl({
     large: true,
@@ -481,4 +576,8 @@ export function editLayerScreen(opts: {
       opts.engine.stop();
     },
   };
+}
+
+function mb(bytes: number): string {
+  return bytes < 1e6 ? `${Math.max(1, Math.round(bytes / 1e3))} KB` : `${(bytes / 1e6).toFixed(1)} MB`;
 }

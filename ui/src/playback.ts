@@ -624,7 +624,13 @@ export function playbackScreen(opts: {
 
   // Up to the Library, which is the app's entry point (§4.1) and the only place this screen was
   // reached from. Secondary, because leaving is not the thing the screen is for.
-  const backBtn = el('button', 'lr-btn', '‹ Projects');
+  const backBtn = el(
+    'button',
+    'lr-btn back-btn',
+    // The Library's chevron, mirrored — same 24-unit box, same 2px stroke, same 14px. A text
+    // "‹" is a different weight at every font size and sits on the baseline rather than centred.
+    '<svg class="chev" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg>Projects',
+  );
   backBtn.addEventListener('click', () => opts.onBack());
 
   const exportBtn = el('button', 'lr-btn lr-btn--primary', 'Export');
