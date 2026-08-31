@@ -80,6 +80,20 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
 /* EVEN height so the centreline lands on a whole pixel — `syncTileHeight` snaps it. */
 .tile .lr-wave { height: var(--tile-wave-h); justify-content: center; margin: auto 0; }
 
+/* --- compact tiles: the hint folds into the label ---------------------------
+   A shrunk tile cannot carry both a label and a hint strip — 40-odd pixels of type over a
+   waveform that is down to 26. So the two axis arrows move up beside the numbers they step:
+   `↕` next to the pass, `↔` next to the bar. That says more than "↕ pass  ↔ bar" did, because
+   it names what each gesture moves rather than just listing the two of them, and it hands the
+   whole saved row back to the waveform. Only below `TILE_TALL`, so a normal grid is untouched. */
+.ax { display: none; font-style: normal; color: var(--lr-hint); font-weight: 500; }
+.is-compact-tiles .ax { display: inline; font-size: 10px; }
+.is-compact-tiles .pass .ax { margin-right: 3px; }
+.is-compact-tiles .rel .ax { margin-left: 3px; }
+.is-compact-tiles .swipe-hint { display: none; }
+.is-compact-tiles .tile-label { padding: 6px 6px 0; font-size: 15px; }
+.is-compact-tiles .tile.is-selected .ax { color: var(--lr-hint-sel); }
+
 /* always visible: touch has no hover, so a hover-gated hint never appears on
    the platform the gesture is designed for */
 .swipe-hint {

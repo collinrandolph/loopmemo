@@ -46,15 +46,16 @@ const TILE_TALL = 120; // the mockup's tile, and the height nothing grows past
 const TILE_SHORT = 72;
 
 /**
- * What the tile spends on things that are **not** the waveform: the `P# / #` label and the swipe
- * hint, both of which are type at a fixed size and do not shrink with the tile.
+ * What the tile spends on things that are **not** the waveform, and the waveform gets the rest.
+ * A fixed *fraction* is right at 120 — 60% is the mockup's 72 — and wrong as soon as the tile
+ * shrinks, because the label and the hint are type at a fixed size and do not shrink with it.
  *
- * The waveform gets what is left, rather than a fixed fraction of the tile. A ratio works at 120
- * — 60% is the mockup's 72 — and fails as soon as the tile shrinks, because 60% of 73 is 44 and
- * the two fixed 40-odd pixels of chrome then have nowhere to go: the hint lands on top of the
- * waveform. Subtracting is the same answer at 120 and the right one everywhere else.
+ * Two values because a short tile stops carrying the separate hint strip and folds the two axis
+ * arrows into the label instead (`.is-compact-tiles`). That is a row of type saved, and it goes
+ * straight back into the waveform: at 74 the wave is 46 rather than 26.
  */
-const TILE_CHROME = 48;
+const TILE_CHROME_TALL = 48; // label + hint strip
+const TILE_CHROME_COMPACT = 28; // label alone, arrows folded in
 /** Peaks fill two thirds of the waveform box, which is the mockup's 48 in its 72. */
 const PEAK_RATIO = 2 / 3;
 const WAVE_MIN = 16;
@@ -108,7 +109,7 @@ export function editLayerScreen(opts: {
   let lineWidth = 3;
   let lastPhase = 0;
   let tileHeight = TILE_TALL;
-  let peakHeight = (TILE_TALL - TILE_CHROME) * PEAK_RATIO;
+  let peakHeight = (TILE_TALL - TILE_CHROME_TALL) * PEAK_RATIO;
 
   const spent = ramp.tokenRGB('--lr-spent');
   const spentSel = ramp.tokenRGB('--lr-spent-sel');
@@ -298,8 +299,13 @@ export function editLayerScreen(opts: {
     }
 
     const passes = availablePasses(index(), ref.relativeBar);
+    // The axis arrows sit beside the number each one steps, and CSS shows them only on a tile
+    // too short for the separate hint strip. Beside the numbers rather than in the middle
+    // because that says more than the strip does: `↕` next to the pass is what a vertical swipe
+    // changes, `↔` next to the bar is what a horizontal one changes.
     tile.label.innerHTML =
-      `<span class="pass">P${ref.pass}</span><span class="rel">${ref.relativeBar}</span>`;
+      `<span class="pass"><i class="ax">↕</i>P${ref.pass}</span>` +
+      `<span class="rel">${ref.relativeBar}<i class="ax">↔</i></span>`;
     tile.node.title = `slot ${slot + 1} · pass ${ref.pass}, bar ${ref.relativeBar} · available: ${passes.join(', ') || 'none'}`;
 
     // Colour indexes per LINE across the whole recording, so any length gets one continuous,
@@ -595,8 +601,11 @@ export function editLayerScreen(opts: {
   function apply(height: number) {
     if (height === tileHeight) return;
     tileHeight = height;
+    const compact = height < TILE_TALL;
+    root.classList.toggle('is-compact-tiles', compact);
     // Even, so the waveform's centreline still lands on a whole pixel (§3.3).
-    const wave = motion.snapEven(Math.max(WAVE_MIN, height - TILE_CHROME), 2);
+    const chrome = compact ? TILE_CHROME_COMPACT : TILE_CHROME_TALL;
+    const wave = motion.snapEven(Math.max(WAVE_MIN, height - chrome), 2);
     peakHeight = wave * PEAK_RATIO;
     root.style.setProperty('--tile-h', `${height}px`);
     root.style.setProperty('--tile-wave-h', `${wave}px`);
