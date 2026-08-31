@@ -24,6 +24,8 @@ import {
   playheadAt,
   stop,
 } from '../../src/domain/transport.ts';
+import { SWIPE_THRESHOLD } from './controls.ts';
+import { trackDrag } from './gesture.ts';
 import { helpControl } from './help.ts';
 import { type Rgb, type WaveNode, LR, clamp01, el, motion, ramp, sizing } from './kit.ts';
 import { type Engine, amp } from './sim.ts';
@@ -31,7 +33,6 @@ import { type Engine, amp } from './sim.ts';
 const BARS_PER_ROW = 4;
 const LINES_PER_BAR = 16;
 const MAX_WAVE = 48; // 40% of the 120px tile
-const SWIPE_THRESHOLD = 22;
 const HOLD_MS = 500;
 const HOLD_SLOP = 8;
 const DOUBLE_TAP_MS = 300;
@@ -207,101 +208,65 @@ export function editLayerScreen(opts: {
     opts.onChange(layer);
   }
 
+  /**
+   * The two swipe axes, the hold, and the tap. Press state and the release edges belong to
+   * `trackDrag` — including the reason it is not `hasPointerCapture`, which is written up there
+   * because this file and the chord wheel both used to answer it separately.
+   */
   function attachGestures(node: HTMLElement, slot: number) {
-    let x0 = 0;
-    let y0 = 0;
     let axis: 'pass' | 'bar' | null = null;
-    let fired = false;
-    let held = false;
     let holdTimer: number | null = null;
-    /**
-     * Whether a press is actually in progress.
-     *
-     * **Not `hasPointerCapture`.** `pointermove` fires on plain hover, and capture is only a
-     * routing hint — it survives a `pointerup` the page never receives, which happens whenever
-     * the button is released outside the window or the browser takes the gesture over. Hover
-     * then re-enters a tile still holding orphaned capture, the guard passes, and the move is
-     * measured against a `x0`/`y0` from minutes ago: an enormous delta that steps the slot
-     * without anyone pressing anything. Own the state instead of asking the platform for it.
-     */
-    let down = false;
 
-    function endGesture() {
-      down = false;
-      tiles[slot]!.swiping = false;
+    function clearHold() {
       if (holdTimer !== null) clearTimeout(holdTimer);
       holdTimer = null;
-      axis = null;
     }
 
-    node.addEventListener('pointerdown', (e) => {
-      x0 = e.clientX;
-      y0 = e.clientY;
-      axis = null;
-      fired = false;
-      held = false;
-      down = true;
-      node.setPointerCapture(e.pointerId);
-      holdTimer = window.setTimeout(() => {
-        held = true;
-        layer = { ...layer, mutedSlots: toggleSlotMute(layer.mutedSlots, slot) };
-        redraw(slot);
-        opts.onChange(layer);
-      }, HOLD_MS);
-    });
+    trackDrag(node, {
+      onStart(_e, drag) {
+        axis = null;
+        holdTimer = window.setTimeout(() => {
+          drag.consume(); // a hold that fired is not also a tap
+          layer = { ...layer, mutedSlots: toggleSlotMute(layer.mutedSlots, slot) };
+          redraw(slot);
+          opts.onChange(layer);
+        }, HOLD_MS);
+      },
 
-    // Capture can be lost without a pointerup — treat that as the gesture ending.
-    node.addEventListener('lostpointercapture', endGesture);
+      onMove(_e, drag) {
+        const { dx, dy } = drag;
 
-    node.addEventListener('pointermove', (e) => {
-      if (!down) return;
-      // A move with no button held is a release we never saw. Mouse and touch both report
-      // `buttons === 0` once up, so this catches the case that leaves capture stranded.
-      if (e.buttons === 0) {
-        endGesture();
-        return;
-      }
-      const dx = e.clientX - x0;
-      const dy = e.clientY - y0;
+        // A hold requires stillness, so hold and swipe can never both fire.
+        if (holdTimer !== null && Math.max(Math.abs(dx), Math.abs(dy)) > HOLD_SLOP) clearHold();
+        // The lock is domain code (§3.7) so the gesture cannot drift from any other route.
+        if (!canSwipeSlot(layer.mutedSlots, slot)) return;
 
-      // A hold requires stillness, so hold and swipe can never both fire.
-      if (holdTimer !== null && Math.max(Math.abs(dx), Math.abs(dy)) > HOLD_SLOP) {
-        clearTimeout(holdTimer);
-        holdTimer = null;
-      }
-      // The lock is domain code (§3.7) so the gesture cannot drift from any other route.
-      if (!canSwipeSlot(layer.mutedSlots, slot)) return;
+        if (!axis && Math.max(Math.abs(dx), Math.abs(dy)) > SWIPE_THRESHOLD) {
+          axis = Math.abs(dx) > Math.abs(dy) ? 'bar' : 'pass';
+          tiles[slot]!.swiping = true;
+        }
+        if (!axis) return;
 
-      if (!axis && Math.max(Math.abs(dx), Math.abs(dy)) > SWIPE_THRESHOLD) {
-        axis = Math.abs(dx) > Math.abs(dy) ? 'bar' : 'pass';
-        tiles[slot]!.swiping = true;
-      }
-      if (!axis) return;
-
-      const travel = axis === 'bar' ? dx : dy;
-      if (Math.abs(travel) > SWIPE_THRESHOLD) {
+        const travel = axis === 'bar' ? dx : dy;
+        if (Math.abs(travel) <= SWIPE_THRESHOLD) return;
         // Both axes are inverted relative to travel, and it is the same rule on each: the
         // material moves under the finger, so the next one is pulled in from the side you are
         // dragging toward. Dragging LEFT pulls the next bar in from the right (§3.7, which
         // states this axis); dragging UP pulls the next pass in from below. §3.7 leaves the
         // vertical direction unspecified — this is the filmstrip applied to it.
-        const dir = travel > 0 ? -1 : 1;
-        step(slot, axis, dir);
-        x0 = e.clientX;
-        y0 = e.clientY; // allow repeats within one drag
-        fired = true;
-      }
-    });
+        step(slot, axis, travel > 0 ? -1 : 1);
+        drag.rebase(); // allow repeats within one drag
+        drag.consume();
+      },
 
-    node.addEventListener('pointerup', (e) => {
-      if (node.hasPointerCapture(e.pointerId)) node.releasePointerCapture(e.pointerId);
-      // Only a press that this tile actually saw begin can become a tap.
-      const wasDown = down;
-      endGesture();
-      if (wasDown && !fired && !held) tap(slot);
-    });
+      onTap: () => tap(slot),
 
-    node.addEventListener('pointercancel', endGesture);
+      onEnd() {
+        tiles[slot]!.swiping = false;
+        clearHold();
+        axis = null;
+      },
+    });
   }
 
   // --------------------------------------------------------------- transport --

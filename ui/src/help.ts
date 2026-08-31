@@ -1,14 +1,5 @@
+import { HELP_ICON } from './icons.ts';
 import { el } from './kit.ts';
-
-/**
- * Lucide `circle-question-mark`, ISC — the same set the reference-track icons come from, so the
- * 24-unit box, the 2px stroke and the round caps match without being matched by hand. It shares
- * their CSS rule outright (see `.ref-icon, .lr-help svg`), which is what keeps them the same
- * weight when one of them changes.
- */
-const HELP_ICON =
-  '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/>' +
-  '<path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>';
 
 /**
  * The help affordance §4.7 asks for, holding what the footer used to say out loud.

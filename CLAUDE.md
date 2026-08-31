@@ -110,13 +110,23 @@ not.** The mockup increments a pass counter at each loop point; here the badge i
 one continuous recording is one session however many passes it spans (§1.4). Stop inside the
 first bar and no pass appears, which is visible in the UI.
 
-**Gate pointer gestures on your own `down` flag, never on `hasPointerCapture`.** `pointermove`
-fires on plain hover, and capture is only a routing hint: it survives a `pointerup` the page
-never receives — released outside the window, focus lost, the browser taking the gesture over.
-Hover then re-enters a tile holding orphaned capture, the guard passes, and the move is measured
-against an ancient `x0`/`y0`, so slots step with nothing pressed. **The mockup guards this way,
-so copying it reintroduces the bug.** Also bail when `e.buttons === 0`, which catches the missed
-release itself.
+**Every pointer gesture goes through `ui/src/gesture.ts`. Do not write a second one.**
+`pointermove` fires on plain hover, and capture is only a routing hint: it survives a `pointerup`
+the page never receives — released outside the window, focus lost, the browser taking the gesture
+over. Hover then re-enters a tile holding orphaned capture, a `hasPointerCapture` guard passes,
+and the move is measured against an ancient `x0`/`y0`, so slots step with nothing pressed.
+**The mockup guards this way, so copying it reintroduces the bug** — and it was then written a
+second time, in the chord wheel, which is why there is now one copy of the answer. `trackDrag`
+owns the `down` flag, the `e.buttons === 0` bail that catches the missed release itself, and
+`lostpointercapture` / `pointercancel`; callers get `dx`/`dy`, `rebase()` to repeat within one
+drag, and `consume()` to say the release was not a tap.
+
+**A screen owns its screen; everything reusable is beside it.** `playback.ts` and
+`edit-layer.ts` are the two screens. `gesture.ts` (the press guard above), `controls.ts`
+(`swipeWheel`, `bindChips`), `icons.ts` (inline Lucide paths — take new ones from that set),
+`chords.ts`, `reference-rows.ts` (the drum and chord beds, which own their own state and talk to
+no screen) and `help.ts` are shared. **There are no tests over `ui/`** — only `src/domain` is
+covered, so a change here is verified by driving the browser.
 
 **`ui/src/sim.ts` is the only fake part, and that is the test.** It provides a frame counter
 and synthetic waveform peaks — exactly what a real engine provides. If a screen ever needs
