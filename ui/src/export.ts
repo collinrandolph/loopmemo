@@ -11,7 +11,6 @@ import {
 import { type Project, projectTiming } from '../../src/domain/project.ts';
 import { loopSeconds } from '../../src/domain/timing.ts';
 import { bindChips } from './controls.ts';
-import { helpControl } from './help.ts';
 import { LR, el } from './kit.ts';
 import type { Engine } from './sim.ts';
 
@@ -34,7 +33,9 @@ export function exportScreen(opts: {
   project: Project;
   engine: Engine;
   references: readonly (ReferenceSource & { label: string })[];
-  onDone(): void;
+  /** Leave without exporting. Distinct from `onShare` even where both land in the same place. */
+  onCancel(): void;
+  onShare(): void;
 }): { node: HTMLElement; destroy(): void } {
   const project = opts.project;
   const seconds = loopSeconds(projectTiming(project));
@@ -174,19 +175,23 @@ export function exportScreen(opts: {
     manifest,
   );
 
-  const help = helpControl({
-    title: 'Export',
-    content: () => [
-      'the full loop is the mix as you hear it · stems are one file per layer, dry or with that ' +
-        'layer’s effects · all recorded passes is every take, unedited · a muted layer is silent ' +
-        'in the loop but still gets a stem · muting happens on the playback screen, not here',
-    ],
-  });
+  // No help control here. Every option states what it produces on its own row, and a question
+  // mark holding a paraphrase of what is already on screen is worse than nothing.
+  const cancelBtn = el('button', 'lr-btn', 'Cancel');
+  cancelBtn.addEventListener('click', opts.onCancel);
 
   const shareBtn = el('button', 'lr-btn lr-btn--primary', 'Share') as HTMLButtonElement;
-  shareBtn.addEventListener('click', opts.onDone);
+  shareBtn.addEventListener('click', opts.onShare);
+
   const footer = el('div', 'lr-footer');
-  footer.append(help.node, shareBtn);
+  footer.append(cancelBtn, shareBtn);
+
+  // Escape leaves too. Nothing here is destructive and nothing is half-finished, so it needs no
+  // confirmation — the screen is a set of choices that have not been acted on yet.
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') opts.onCancel();
+  };
+  document.addEventListener('keydown', onKey);
 
   root.append(header, body, footer);
 
@@ -254,7 +259,7 @@ export function exportScreen(opts: {
     node: root,
     destroy() {
       alive = false;
-      help.destroy();
+      document.removeEventListener('keydown', onKey);
       opts.engine.stop();
     },
   };

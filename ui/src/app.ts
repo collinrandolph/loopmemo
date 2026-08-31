@@ -48,6 +48,11 @@ function replaceLayer(layer: Layer) {
   });
 }
 
+function toLibrary() {
+  route = { screen: 'library' };
+  render();
+}
+
 function render() {
   const project = open();
   // One engine per mount, at the open project’s capture rate, so frame arithmetic on the
@@ -136,10 +141,8 @@ function render() {
                 { id: 'drums', enabled: true, muted: false, level: 0.7, label: 'Drums' },
                 { id: 'chords', enabled: true, muted: false, level: 0.55, label: 'Chords' },
               ],
-              onDone() {
-                route = { screen: 'library' };
-                render();
-              },
+              onCancel: toLibrary,
+              onShare: toLibrary,
             });
 
   current = screen;
