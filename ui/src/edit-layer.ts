@@ -299,11 +299,11 @@ export function editLayerScreen(opts: {
     }
 
     const passes = availablePasses(index(), ref.relativeBar);
-    // Both axis arrows together at the left, ahead of the label. CSS shows them only on a tile
-    // too short to carry the separate hint strip.
+    // Each axis arrow to the left of the label it steps: `↕` ahead of the pass, `↔` ahead of the
+    // bar. CSS shows them only on a tile too short to carry the separate hint strip.
     tile.label.innerHTML =
-      `<span class="pass"><i class="ax">↕↔</i>P${ref.pass}</span>` +
-      `<span class="rel">${ref.relativeBar}</span>`;
+      `<span class="pass"><i class="ax">↕</i>P${ref.pass}</span>` +
+      `<span class="rel"><i class="ax">↔</i>${ref.relativeBar}</span>`;
     tile.node.title = `slot ${slot + 1} · pass ${ref.pass}, bar ${ref.relativeBar} · available: ${passes.join(', ') || 'none'}`;
 
     // Colour indexes per LINE across the whole recording, so any length gets one continuous,

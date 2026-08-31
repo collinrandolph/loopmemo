@@ -135,7 +135,45 @@ export function demoLibrary(): Project[] {
 
   // Deliberately unsorted here: the screen sorts, and handing it a sorted list would let a
   // broken sort look correct.
-  return [built[2]!, demoProject(), built[0]!, built[3]!, built[1]!];
+  return [built[2]!, demoProject(), built[0]!, built[3]!, richLayer(built[1]!)];
+}
+
+/**
+ * The same states `demoProject` carries, at 32 bars — the longest project, and so the only one
+ * whose Edit Layer grid has to shrink its tiles to fit.
+ *
+ * Without this its first layer is one clean pass in recorded order: every tile reads `P1`,
+ * nothing is muted and the colour runs straight through. That says nothing about whether a
+ * shrunk tile can still show a two-digit pass number, a colour jump or a muted bar, which is
+ * the whole reason to look at it.
+ */
+function richLayer(project: Project): Project {
+  const t = projectTiming(project);
+  const loop = loopFrames(t);
+  const bar = framesPerBar(t);
+  const bars = project.barCount;
+
+  const first = project.layers[0]!;
+  // §1.4's shape: a long take that stops half way through its third traversal, then a second
+  // take. Passes 1, 2 and 5 cover every bar; pass 3 covers only the first half, so the back half
+  // of the grid has a real gap in its available set.
+  let l = recordSession({ ...first, sessions: [] }, simSession('sun-a', 2 * loop + bars / 2 * bar), t);
+  l = recordSession(l, simSession('sun-b', 2 * loop), t);
+
+  let sources = l.barSources;
+  sources = setSlot(sources, 4, barRef(4, 21)); // a jump early in the grid
+  sources = setSlot(sources, 5, barRef(4, 22));
+  sources = setSlot(sources, 18, barRef(2, 7)); // and another in the second half
+  sources = setSlot(sources, 29, barRef(5, 3)); // two digits either side, in the last row
+
+  return {
+    ...project,
+    layers: project.layers.map((layer, i) =>
+      i === 0
+        ? { ...l, name: 'Keys', barSources: sources, mutedSlots: setSlotMuted(l.mutedSlots, 11, true) }
+        : layer,
+    ),
+  };
 }
 
 /**

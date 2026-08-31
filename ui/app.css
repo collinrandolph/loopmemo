@@ -89,11 +89,12 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
 .ax { display: none; font-style: normal; color: var(--lr-hint); font-weight: 500; }
 .is-compact-tiles .swipe-hint { display: none; }
 .is-compact-tiles .tile-label { padding: 6px 6px 0; font-size: 15px; align-items: center; }
-/* `inline-flex` with `align-items: center` rather than a vertical-align nudge: the arrows are
-   10px against 15px type, and centring the two boxes is exact where `middle` is an approximation
-   off the parent's x-height. */
-.is-compact-tiles .pass { display: inline-flex; align-items: center; gap: 4px; }
-.is-compact-tiles .ax { display: block; font-size: 11px; line-height: 1; letter-spacing: -1px; }
+/* `inline-flex` with `align-items: center` rather than a vertical-align nudge: an 11px glyph
+   against 12px and 15px type, and centring the two boxes is exact where `middle` is an
+   approximation off the parent's x-height. */
+.is-compact-tiles .pass,
+.is-compact-tiles .rel { display: inline-flex; align-items: center; gap: 4px; }
+.is-compact-tiles .ax { display: block; font-size: 11px; line-height: 1; }
 .is-compact-tiles .tile.is-selected .ax { color: var(--lr-hint-sel); }
 
 /* always visible: touch has no hover, so a hover-gated hint never appears on
