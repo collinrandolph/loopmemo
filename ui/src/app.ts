@@ -23,7 +23,9 @@ type Route =
   | { screen: 'library' }
   | { screen: 'playback' }
   | { screen: 'edit'; layerIndex: number }
-  | { screen: 'export' };
+  // Export is reachable from two places, and cancelling has to put you back where you were —
+  // an escape that lands somewhere you did not come from is a second navigation, not an escape.
+  | { screen: 'export'; from: 'library' | 'playback' };
 let route: Route = { screen: 'library' };
 
 const nav = el('div', 'app-nav');
@@ -48,8 +50,8 @@ function replaceLayer(layer: Layer) {
   });
 }
 
-function toLibrary() {
-  route = { screen: 'library' };
+function go(next: Route) {
+  route = next;
   render();
 }
 
@@ -91,6 +93,8 @@ function render() {
   current = undefined;
   host.innerHTML = '';
 
+  const back = route.screen === 'export' ? route.from : 'library';
+
   const screen =
     route.screen === 'library'
       ? libraryScreen({
@@ -98,13 +102,11 @@ function render() {
           engine,
           onOpen(id) {
             openId = id;
-            route = { screen: 'playback' };
-            render();
+            go({ screen: 'playback' });
           },
           onExport(id) {
             openId = id;
-            route = { screen: 'export' };
-            render();
+            go({ screen: 'export', from: 'library' });
           },
           onChange(next) {
             projects = next;
@@ -116,10 +118,9 @@ function render() {
             project,
             engine,
             onChange: replaceLayer,
-            onEdit(layerIndex) {
-              route = { screen: 'edit', layerIndex };
-              render();
-            },
+            onEdit: (layerIndex) => go({ screen: 'edit', layerIndex }),
+            onBack: () => go({ screen: 'library' }),
+            onExport: () => go({ screen: 'export', from: 'playback' }),
           })
         : route.screen === 'edit'
           ? editLayerScreen({
@@ -127,10 +128,7 @@ function render() {
               layerIndex: route.layerIndex,
               engine,
               onChange: replaceLayer,
-              onDone() {
-                route = { screen: 'playback' };
-                render();
-              },
+              onDone: () => go({ screen: 'playback' }),
             })
           : exportScreen({
               project,
@@ -141,8 +139,9 @@ function render() {
                 { id: 'drums', enabled: true, muted: false, level: 0.7, label: 'Drums' },
                 { id: 'chords', enabled: true, muted: false, level: 0.55, label: 'Chords' },
               ],
-              onCancel: toLibrary,
-              onShare: toLibrary,
+              // Back where you came from, not always the Library.
+              onCancel: () => go({ screen: back }),
+              onShare: () => go({ screen: back }),
             });
 
   current = screen;

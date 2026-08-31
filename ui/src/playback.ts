@@ -75,6 +75,9 @@ export function playbackScreen(opts: {
   engine: Engine;
   onChange(layer: Layer): void;
   onEdit(layerIndex: number): void;
+  /** Up to the Library. Also what Escape does once nothing is armed or recording. */
+  onBack(): void;
+  onExport(): void;
 }): { node: HTMLElement; destroy(): void } {
   const project = opts.project;
   const t = projectTiming(project);
@@ -593,11 +596,22 @@ export function playbackScreen(opts: {
     position.textContent = `Bar ${bar} · ${LR.fmtTime(progress * seconds)} / ${LR.fmtTime(seconds)}`;
   });
 
-  // Escape disarms; it cannot stop a pass in progress (§3.5).
+  /**
+   * Escape unwinds one level at a time, innermost first.
+   *
+   * Disarming keeps it (§3.5), and **a pass in progress owns the input** — Escape cannot stop a
+   * recording and must not leave the screen out from under one. With neither in the way it is
+   * the keyboard's version of the Projects button.
+   */
   const onKey = (e: KeyboardEvent) => {
     if (e.key !== 'Escape') return;
     const armed = rows.findIndex((r) => r.rec === 'armed');
-    if (armed >= 0) setRec(armed, 'unarmed');
+    if (armed >= 0) {
+      setRec(armed, 'unarmed');
+      return;
+    }
+    if (capturingIndex() >= 0) return;
+    opts.onBack();
   };
   document.addEventListener('keydown', onKey);
 
@@ -608,8 +622,19 @@ export function playbackScreen(opts: {
     ],
   });
 
+  // Up to the Library, which is the app's entry point (§4.1) and the only place this screen was
+  // reached from. Secondary, because leaving is not the thing the screen is for.
+  const backBtn = el('button', 'lr-btn', '‹ Projects');
+  backBtn.addEventListener('click', () => opts.onBack());
+
+  const exportBtn = el('button', 'lr-btn lr-btn--primary', 'Export');
+  exportBtn.addEventListener('click', () => opts.onExport());
+
+  // Three items in a `space-between` footer: help at the left edge, then the two actions, with
+  // the pair kept together by an auto margin rather than spread across the width.
+  backBtn.style.marginLeft = 'auto';
   const footer = el('div', 'lr-footer');
-  footer.append(help.node, el('button', 'lr-btn lr-btn--primary', 'Export'));
+  footer.append(help.node, backBtn, exportBtn);
 
   root.append(
     header,
