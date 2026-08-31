@@ -119,8 +119,6 @@ export function editLayerScreen(opts: {
   project: Project;
   layerIndex: number;
   engine: Engine;
-  /** Size tiles to the viewport instead of letting the grid scroll. See `syncTileHeight`. */
-  fitGrid: boolean;
   onChange(layer: Layer): void;
   onDone(): void;
 }): { node: HTMLElement; destroy(): void } {
@@ -587,38 +585,34 @@ export function editLayerScreen(opts: {
    * calls reading the gradient the manual's highest-value entry, and a gradient you have to
    * scroll through is not one you can read.
    *
-   * Below `TILE_SHORT` it gives up and lets the page scroll, which is the honest fallback on a
-   * landscape phone. Above `TILE_TALL` it stops growing, so a desktop window does not produce a
-   * grid of enormous tiles.
+   * Above `TILE_TALL` it stops growing, so a desktop window does not produce a grid of enormous
+   * tiles. Below `TILE_SHORT` it gives up and lets the page scroll — **which no phone reaches**:
+   * swept at 375×812, 375×667 and 320×568, every valid bar count fits, 32 bars landing at 72, 54
+   * and 50. The scrolling branch is the honest floor rather than a state anyone stands in.
    */
   function syncTileHeight() {
     const rows = Math.ceil(barCount / BARS_PER_ROW);
-    let height = TILE_TALL;
+    const box = grid.getBoundingClientRect();
+    const style = getComputedStyle(grid);
+    const padding = Number.parseFloat(style.paddingTop) + Number.parseFloat(style.paddingBottom);
+    // Document-relative, so the measurement does not change with how far the page is scrolled.
+    const top = box.top + window.scrollY;
+    // `documentElement.clientHeight`, **not** `window.innerHeight`. The first is the layout
+    // viewport, which is what CSS lays out against; the second is the visual viewport, and the
+    // two are different numbers whenever the browser is scaling — and on a phone, whenever the
+    // address bar is part-collapsed. Measured 1213 against 812 on the same screen, which is
+    // the difference between a 120px tile and a 72px one, so the grid simply did not fit.
+    const available = viewportHeight() - top - footer.getBoundingClientRect().height - padding;
+    const perRow = Math.floor((available - (rows - 1) * SEAM) / rows);
 
-    if (opts.fitGrid) {
-      const box = grid.getBoundingClientRect();
-      const style = getComputedStyle(grid);
-      const padding = Number.parseFloat(style.paddingTop) + Number.parseFloat(style.paddingBottom);
-      // Document-relative, so the measurement does not change with how far the page is scrolled.
-      const top = box.top + window.scrollY;
-      // `documentElement.clientHeight`, **not** `window.innerHeight`. The first is the layout
-      // viewport, which is what CSS lays out against; the second is the visual viewport, and the
-      // two are different numbers whenever the browser is scaling — and on a phone, whenever the
-      // address bar is part-collapsed. Measured 1213 against 812 on the same screen, which is
-      // the difference between a 120px tile and a 72px one, so the grid simply did not fit.
-      const available = viewportHeight() - top - footer.getBoundingClientRect().height - padding;
-      const perRow = Math.floor((available - (rows - 1) * SEAM) / rows);
-      height = Math.min(TILE_TALL, Math.max(TILE_SHORT, perRow));
-    }
-
-    apply(height);
+    apply(Math.min(TILE_TALL, Math.max(TILE_SHORT, perRow)));
 
     // Then correct against the result rather than trusting the model. Predicting the height of
     // everything around the grid means knowing about the drawer, the footer's border, the shell
     // above it and whatever comes next — miss any of them and the grid overflows by a little,
     // which is exactly the state this exists to prevent. Measuring what actually happened costs
     // one reflow and cannot be wrong about it.
-    for (let pass = 0; pass < 3 && opts.fitGrid; pass++) {
+    for (let pass = 0; pass < 3; pass++) {
       // How far past the bottom of the screen the footer has been pushed — **not**
       // `documentElement.scrollHeight`, which is stretched to the visual viewport regardless of
       // what the page contains and reported 401px of overflow on a page whose footer sat exactly

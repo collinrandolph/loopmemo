@@ -29,7 +29,6 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
   background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.24);
   color: #fff; font-weight: 500; font-family: inherit;
 }
-.app-nav .nav-toggle { margin-left: auto; background: rgba(0,0,0,.22); border-style: dashed; }
 .app-nav button.is-active { background: rgba(255,255,255,.94); color: var(--lr-ink-on-light); border-color: transparent; }
 
 .grid { padding: 20px; }
@@ -39,9 +38,9 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
            column-gap: var(--lr-seam); row-gap: var(--lr-seam); }
 .bar-row + .bar-row { margin-top: var(--lr-seam); }
 
-/* Set by `syncTileHeight`: the grid fits the viewport rather than scrolling, because a tile
-   owns its vertical drags and so cannot be scrolled past. 120 is the mockup's height and the
-   value both fall back to. */
+/* Set by `syncTileHeight`: the grid fits the viewport rather than scrolling, because a tile owns
+   its vertical drags and so cannot be scrolled past. These are the mockup's values, and what the
+   screen shows for the frame before the first measurement lands. */
 .lr-screen { --tile-h: 120px; --tile-wave-h: 72px; }
 .tile {
   height: var(--tile-h); padding: 1px 5px; background: var(--lr-tile);
@@ -85,7 +84,8 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
    waveform that is down to 26. So the two axis arrows move up beside the numbers they step:
    `↕` next to the pass, `↔` next to the bar. That says more than "↕ pass  ↔ bar" did, because
    it names what each gesture moves rather than just listing the two of them, and it hands the
-   whole saved row back to the waveform. Only below `TILE_TALL`, so a normal grid is untouched. */
+   whole saved row back to the waveform. Only below `TILE_HINT_MIN`, which is where the strip
+   stops fitting, so a grid at full size is untouched. */
 .ax { display: none; font-style: normal; color: var(--lr-hint); font-weight: 500; }
 .is-compact-tiles .swipe-hint { display: none; }
 .is-compact-tiles .tile-label { padding: 6px 6px 0; font-size: 15px; align-items: center; }
