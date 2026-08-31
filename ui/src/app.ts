@@ -1,6 +1,7 @@
 import type { Layer, Project } from '../../src/domain/project.ts';
 import { QUALITY_SPEC } from '../../src/domain/project.ts';
 import { editLayerScreen } from './edit-layer.ts';
+import { exportScreen } from './export.ts';
 import { el } from './kit.ts';
 import { libraryScreen } from './library.ts';
 import { playbackScreen } from './playback.ts';
@@ -126,20 +127,23 @@ function render() {
                 render();
               },
             })
-          : exportPlaceholder();
+          : exportScreen({
+              project,
+              engine,
+              // §2.6 is still unmodelled, so the two reference tracks are named here rather
+              // than read off the project. `reference-rows.ts` owns the live ones.
+              references: [
+                { id: 'drums', enabled: true, muted: false, level: 0.7, label: 'Drums' },
+                { id: 'chords', enabled: true, muted: false, level: 0.55, label: 'Chords' },
+              ],
+              onDone() {
+                route = { screen: 'library' };
+                render();
+              },
+            });
 
   current = screen;
   host.appendChild(screen.node);
-}
-
-/** The Export screen is next; this keeps the route reachable in the meantime. */
-function exportPlaceholder(): { node: HTMLElement; destroy(): void } {
-  const node = el('div', 'lr-screen');
-  node.append(
-    el('div', 'lr-header', '<div class="lr-title-row"><div class="lr-title">Export</div></div>'),
-    el('div', 'grid', '<div class="lr-note">Not built yet.</div>'),
-  );
-  return { node, destroy() {} };
 }
 
 render();
