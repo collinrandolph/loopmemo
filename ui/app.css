@@ -29,6 +29,7 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
   background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.24);
   color: #fff; font-weight: 500; font-family: inherit;
 }
+.app-nav .nav-toggle { margin-left: auto; background: rgba(0,0,0,.22); border-style: dashed; }
 .app-nav button.is-active { background: rgba(255,255,255,.94); color: var(--lr-ink-on-light); border-color: transparent; }
 
 .grid { padding: 20px; }
@@ -38,15 +39,26 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
            column-gap: var(--lr-seam); row-gap: var(--lr-seam); }
 .bar-row + .bar-row { margin-top: var(--lr-seam); }
 
+/* Set by `syncTileHeight`: the grid fits the viewport rather than scrolling, because a tile
+   owns its vertical drags and so cannot be scrolled past. 120 is the mockup's height and the
+   value both fall back to. */
+.lr-screen { --tile-h: 120px; --tile-wave-h: 72px; }
 .tile {
-  height: 120px; padding: 1px 5px; background: var(--lr-tile);
+  height: var(--tile-h); padding: 1px 5px; background: var(--lr-tile);
   border-radius: 0;                 /* square interiors: rounding every corner
                                        produced a Hermann grid at the seams */
   cursor: pointer; position: relative; display: flex; flex-direction: column;
   transition: background .15s;
   touch-action: none; user-select: none; -webkit-user-select: none;
   -webkit-tap-highlight-color: transparent;
+  /* A grid item defaults to `min-width: auto`, so it refuses to shrink below its content — and
+     its content is a waveform whose line width `syncSizing` derives *from the tile's width*.
+     One measurement taken while the row is briefly too wide then locks it there: wide tile,
+     wide lines, wide min-content, wide tile. Releasing the floor breaks the loop. */
+  min-width: 0;
 }
+/* Same reason: the line strip must not be able to push its tile wider than its column. */
+.tile .lr-wave { overflow: hidden; }
 .bar-row .tile:first-child { border-radius: var(--lr-radius) 0 0 var(--lr-radius); }
 .bar-row .tile:last-child  { border-radius: 0 var(--lr-radius) var(--lr-radius) 0; }
 .tile:hover        { background: var(--lr-tile-hover); }
@@ -65,8 +77,8 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
 .tile.is-selected .tile-label .pass { color: var(--lr-hint-sel); }
 .tile.is-muted .tile-label { opacity: .55; }
 
-/* fixed EVEN height so the centreline lands on a whole pixel */
-.tile .lr-wave { height: 72px; justify-content: center; margin: auto 0; }
+/* EVEN height so the centreline lands on a whole pixel — `syncTileHeight` snaps it. */
+.tile .lr-wave { height: var(--tile-wave-h); justify-content: center; margin: auto 0; }
 
 /* always visible: touch has no hover, so a hover-gated hint never appears on
    the platform the gesture is designed for */

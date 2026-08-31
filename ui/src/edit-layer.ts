@@ -37,7 +37,28 @@ import { type Engine, amp, simSession } from './sim.ts';
 
 const BARS_PER_ROW = 4;
 const LINES_PER_BAR = 16;
-const MAX_WAVE = 48; // 40% of the 120px tile
+
+const TILE_TALL = 120; // the mockup's tile, and the height nothing grows past
+/**
+ * Below this a tile stops being readable, so the grid scrolls instead of shrinking further.
+ * Reached only on a short viewport — 32 bars at 375×812 lands around 81.
+ */
+const TILE_SHORT = 72;
+
+/**
+ * What the tile spends on things that are **not** the waveform: the `P# / #` label and the swipe
+ * hint, both of which are type at a fixed size and do not shrink with the tile.
+ *
+ * The waveform gets what is left, rather than a fixed fraction of the tile. A ratio works at 120
+ * — 60% is the mockup's 72 — and fails as soon as the tile shrinks, because 60% of 73 is 44 and
+ * the two fixed 40-odd pixels of chrome then have nowhere to go: the hint lands on top of the
+ * waveform. Subtracting is the same answer at 120 and the right one everywhere else.
+ */
+const TILE_CHROME = 48;
+/** Peaks fill two thirds of the waveform box, which is the mockup's 48 in its 72. */
+const PEAK_RATIO = 2 / 3;
+const WAVE_MIN = 16;
+const SEAM = 2;
 const HOLD_MS = 500;
 const HOLD_SLOP = 8;
 const DOUBLE_TAP_MS = 300;
@@ -72,6 +93,8 @@ export function editLayerScreen(opts: {
   project: Project;
   layerIndex: number;
   engine: Engine;
+  /** Size tiles to the viewport instead of letting the grid scroll. See `syncTileHeight`. */
+  fitGrid: boolean;
   onChange(layer: Layer): void;
   onDone(): void;
 }): { node: HTMLElement; destroy(): void } {
@@ -84,6 +107,8 @@ export function editLayerScreen(opts: {
   let selected = -1;
   let lineWidth = 3;
   let lastPhase = 0;
+  let tileHeight = TILE_TALL;
+  let peakHeight = (TILE_TALL - TILE_CHROME) * PEAK_RATIO;
 
   const spent = ramp.tokenRGB('--lr-spent');
   const spentSel = ramp.tokenRGB('--lr-spent-sel');
@@ -282,7 +307,7 @@ export function editLayerScreen(opts: {
     const src = toAbsolute(ref, barCount) - 1;
     const totalLines = recordedBars() * LINES_PER_BAR;
     tile.wave.build(LINES_PER_BAR, (i) => ({
-      height: motion.snapEven(amp(layer.index, src, i, LINES_PER_BAR) * MAX_WAVE, lineWidth),
+      height: motion.snapEven(amp(layer.index, src, i, LINES_PER_BAR) * peakHeight, lineWidth),
       rgb: ramp.rgb((src * LINES_PER_BAR + i) / (totalLines - 1)),
     }));
   }
@@ -520,6 +545,64 @@ export function editLayerScreen(opts: {
   });
 
   // ------------------------------------------------------------------ sizing --
+  /**
+   * **Fit the grid to the screen rather than scrolling it.**
+   *
+   * `.tile` sets `touch-action: none`, which it must — that is what stops the browser eating a
+   * vertical drag before it can step the pass axis (§3.7). The consequence is that a grid taller
+   * than the viewport cannot be scrolled by dragging it, because every drag is already a gesture.
+   * At 375×812 five rows fit, so 4 through 20 bars are fine and 24, 28 and 32 are not.
+   *
+   * Sizing the tile to the space available removes the conflict instead of arbitrating it, and
+   * keeps the whole arrangement on screen — which is what the colour signature is *for*: §4.7
+   * calls reading the gradient the manual's highest-value entry, and a gradient you have to
+   * scroll through is not one you can read.
+   *
+   * Below `TILE_SHORT` it gives up and lets the page scroll, which is the honest fallback on a
+   * landscape phone. Above `TILE_TALL` it stops growing, so a desktop window does not produce a
+   * grid of enormous tiles.
+   */
+  function syncTileHeight() {
+    const rows = Math.ceil(barCount / BARS_PER_ROW);
+    let height = TILE_TALL;
+
+    if (opts.fitGrid) {
+      const box = grid.getBoundingClientRect();
+      const style = getComputedStyle(grid);
+      const padding = Number.parseFloat(style.paddingTop) + Number.parseFloat(style.paddingBottom);
+      // Document-relative, so the measurement does not change with how far the page is scrolled.
+      const top = box.top + window.scrollY;
+      const available =
+        window.innerHeight - top - footer.getBoundingClientRect().height - padding;
+      const perRow = Math.floor((available - (rows - 1) * SEAM) / rows);
+      height = Math.min(TILE_TALL, Math.max(TILE_SHORT, perRow));
+    }
+
+    apply(height);
+
+    // Then correct against the result rather than trusting the model. Predicting the height of
+    // everything around the grid means knowing about the drawer, the footer's border, the shell
+    // above it and whatever comes next — miss any of them and the grid overflows by a little,
+    // which is exactly the state this exists to prevent. Measuring what actually happened costs
+    // one reflow and cannot be wrong about it.
+    for (let pass = 0; pass < 3 && opts.fitGrid; pass++) {
+      const over = document.documentElement.scrollHeight - window.innerHeight;
+      if (over <= 0 || tileHeight <= TILE_SHORT) break;
+      apply(Math.max(TILE_SHORT, tileHeight - Math.ceil(over / rows)));
+    }
+  }
+
+  function apply(height: number) {
+    if (height === tileHeight) return;
+    tileHeight = height;
+    // Even, so the waveform's centreline still lands on a whole pixel (§3.3).
+    const wave = motion.snapEven(Math.max(WAVE_MIN, height - TILE_CHROME), 2);
+    peakHeight = wave * PEAK_RATIO;
+    root.style.setProperty('--tile-h', `${height}px`);
+    root.style.setProperty('--tile-wave-h', `${wave}px`);
+    redrawAll();
+  }
+
   function syncSizing() {
     const first = tiles[0]?.node;
     if (!first?.clientWidth) return;
@@ -554,11 +637,24 @@ export function editLayerScreen(opts: {
     redrawAll();
   }
 
+  // Height first: it changes the tile's width-independent geometry, and `syncSizing` measures
+  // the tile to pick a line width. The other order fits lines to a box that is about to move.
+  const onResize = () => {
+    syncTileHeight();
+    syncSizing();
+  };
+  window.addEventListener('resize', onResize);
+
   let observer: ResizeObserver | undefined;
   requestAnimationFrame(() => {
     if (!alive) return;
-    syncSizing();
+    // `refresh` first: it fills the header, and until it does the header is 28px rather than 72.
+    // Measuring the grid's available height against an empty header hands it 44 phantom pixels,
+    // which is a whole row's worth of tile at 32 bars — the grid then overflows the screen the
+    // fit is meant to prevent.
     refresh();
+    syncTileHeight();
+    syncSizing();
     volume.update();
     if (tiles[0]) {
       observer = new ResizeObserver(syncSizing);
@@ -570,6 +666,7 @@ export function editLayerScreen(opts: {
     node: root,
     destroy() {
       alive = false;
+      window.removeEventListener('resize', onResize);
       observer?.disconnect();
       document.removeEventListener('keydown', onKey);
       help.destroy();

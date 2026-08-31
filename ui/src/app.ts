@@ -28,6 +28,9 @@ type Route =
   | { screen: 'export'; from: 'library' | 'playback' };
 let route: Route = { screen: 'library' };
 
+/** Temporary: option 1 of the scroll-versus-swipe problem, toggleable for comparison. */
+let fitGrid = true;
+
 const nav = el('div', 'app-nav');
 const host = el('div', 'app-host');
 document.body.append(nav, host);
@@ -73,6 +76,14 @@ function render() {
       })),
   ];
 
+  // Temporary, and in the dev nav rather than in a screen because it is not a feature: a way to
+  // compare the fitted grid against the scrolling one at 24, 28 and 32 bars before choosing.
+  const fitToggle = el('button', 'nav-toggle', `Grid: ${fitGrid ? 'fit' : 'scroll'}`);
+  fitToggle.addEventListener('click', () => {
+    fitGrid = !fitGrid;
+    render();
+  });
+
   for (const tab of tabs) {
     const active =
       tab.route.screen === route.screen &&
@@ -85,6 +96,7 @@ function render() {
     });
     nav.appendChild(button);
   }
+  nav.appendChild(fitToggle);
 
   // Screens own a render loop and document-level listeners, so the outgoing one is torn down
   // before the next is built. Without it every navigation leaves a pass running over nodes
@@ -127,6 +139,7 @@ function render() {
               project,
               layerIndex: route.layerIndex,
               engine,
+              fitGrid,
               onChange: replaceLayer,
               onDone: () => go({ screen: 'playback' }),
             })
