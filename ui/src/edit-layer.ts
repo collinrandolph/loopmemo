@@ -40,10 +40,16 @@ const LINES_PER_BAR = 16;
 
 const TILE_TALL = 120; // the mockup's tile, and the height nothing grows past
 /**
- * Below this a tile stops being readable, so the grid scrolls instead of shrinking further.
- * Reached only on a short viewport — 32 bars at 375×812 lands around 81.
+ * Below this a tile stops being readable, so the grid scrolls instead of shrinking further —
+ * and scrolling is the state with the gesture conflict, so the floor is what decides whether
+ * that conflict can be reached at all.
+ *
+ * 50, not the 72 it was. 72 was chosen while the tile still carried a separate hint strip and
+ * 48px of chrome; folding the arrows into the label dropped that to 28, so a 50px tile now has
+ * more waveform than a 74px one did then. Left at 72 the floor would have been the thing
+ * *causing* a fallback rather than the thing preventing one.
  */
-const TILE_SHORT = 72;
+const TILE_SHORT = 50;
 
 /**
  * What the tile spends on things that are **not** the waveform, and the waveform gets the rest.
