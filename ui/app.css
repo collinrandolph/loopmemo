@@ -360,12 +360,15 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
 .export-file { display: flex; align-items: center; gap: 8px; font-size: 11px; }
 .export-name { flex: 1; min-width: 0; color: var(--lr-ink);
                overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.export-bytes { color: var(--lr-ink-faint); font-variant-numeric: tabular-nums; }
+.export-bytes { color: var(--lr-ink-faint); font-variant-numeric: tabular-nums; min-width: 46px; text-align: right; }
+/* Not uniform any more: a stem with effects is stereo or mono depending on its layer. */
+.export-ch { color: var(--lr-hint); font-size: 10px; flex: 0 0 auto; }
 /* One dot per kind, so a long list stays scannable without a label on every row. */
 .export-kind { width: 6px; height: 6px; flex: 0 0 6px; border-radius: 50%; }
 .export-kind.is-loop { background: #7CE08E; }
 .export-kind.is-stem { background: #7AA8FF; }
-.export-kind.is-raw  { background: var(--lr-ink-faint); }
+.export-kind.is-stem-fx { background: #C69BFF; }
+.export-kind.is-pass { background: var(--lr-ink-faint); }
 
 /* ------------------------------------------------------------------- help -- */
 /* A question mark where a line of instructions used to run the width of the footer. Bare, like

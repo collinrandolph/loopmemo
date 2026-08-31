@@ -179,6 +179,20 @@ export const PAN_PRESETS: readonly PanPreset[] = [
   },
 ];
 
+/**
+ * Whether this preset makes two channels out of the mono capture.
+ *
+ * Only Center does not: equal-power at 0° puts identical signal in both channels, which is the
+ * mono source twice over. Every other preset either sits the dry signal off-centre or adds the
+ * delayed copy opposite it, and both of those are a stereo image that cannot be folded back.
+ *
+ * Used by export to decide a stem's channel count, so a centred layer does not pay double for a
+ * second channel carrying the same samples.
+ */
+export function isStereoPreset(preset: PanPreset): boolean {
+  return preset.angle !== 0 || preset.haas !== undefined;
+}
+
 export function panPreset(id: PanPresetId): PanPreset {
   const found = PAN_PRESETS.find((p) => p.id === id);
   if (!found) throw new RangeError(`unknown pan preset ${id}`);

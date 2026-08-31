@@ -19,9 +19,10 @@ import type { Engine } from './sim.ts';
  * Export (§4.5, extended).
  *
  * §4.5 gives format, quality, preview and share, and one deliverable — "it exports the project
- * exactly as it currently sounds". That is the Full Loop, and it stays on by default. Stems and
- * the raw recording are opt-in additions, and what each one contains is decided in
- * `src/domain/export.ts` rather than here, so the file list and the sizes cannot drift from it.
+ * exactly as it currently sounds". That is the Full Loop, and it stays on by default. The two
+ * stem sets and the recorded passes are opt-in additions, and what each one contains is decided
+ * in `src/domain/export.ts` rather than here, so the file list and the sizes cannot drift from
+ * it — including which files are stereo, which is now a per-file fact rather than a per-kind one.
  *
  * **No mute controls** (§4.5). Muting happens on the Playback screen, where the result is
  * audible. What this screen decides is which *kinds* of file come out, not what is in them.
@@ -75,9 +76,15 @@ export function exportScreen(opts: {
       detail: 'One file per layer and reference track, dry: the edited loop with no effects.',
     },
     {
-      key: 'raw',
-      title: 'Raw recording',
-      detail: 'Every pass on every layer, exactly as captured. Always WAV.',
+      key: 'stemsWithEffects',
+      title: 'Stems + effects',
+      detail: 'The same set with each layer’s level, EQ and pan applied. Panned layers come ' +
+        'out stereo; centred ones stay mono.',
+    },
+    {
+      key: 'allPasses',
+      title: 'All recorded passes',
+      detail: 'Every take on every layer, unedited — including passes the arrangement does not use.',
     },
   ];
 
@@ -170,8 +177,9 @@ export function exportScreen(opts: {
   const help = helpControl({
     title: 'Export',
     content: () => [
-      'the full loop is the mix as you hear it · stems are one dry file per layer · raw is every ' +
-        'pass exactly as captured · muting happens on the playback screen, not here',
+      'the full loop is the mix as you hear it · stems are one file per layer, dry or with that ' +
+        'layer’s effects · all recorded passes is every take, unedited · a muted layer is silent ' +
+        'in the loop but still gets a stem · muting happens on the playback screen, not here',
     ],
   });
 
@@ -195,7 +203,7 @@ export function exportScreen(opts: {
       // the number anyone is deciding with.
       const alone = exportPlan(
         project,
-        { fullLoop: false, stems: false, raw: false, [option.key]: true },
+        { fullLoop: false, stems: false, stemsWithEffects: false, allPasses: false, [option.key]: true },
         { format, mp3Bitrate: bitrate, references },
       );
       const n = alone.files.length;
@@ -205,7 +213,6 @@ export function exportScreen(opts: {
     }
 
     const plan = exportPlan(project, selection, { format, mp3Bitrate: bitrate, references });
-    formatRow.classList.toggle('is-inert', !selection.fullLoop && !selection.stems);
     bitrateRow.style.display = format === 'mp3' ? '' : 'none';
     wavNote.style.display = format === 'wav' ? '' : 'none';
 
@@ -215,6 +222,10 @@ export function exportScreen(opts: {
             (f) =>
               `<div class="export-file"><span class="export-kind is-${f.kind}"></span>` +
               `<span class="export-name">${f.name}</span>` +
+              // Shown because it is not uniform any more: a stem with effects is stereo or mono
+              // depending on how its layer is panned, and that is also why two of them can
+              // differ in size.
+              `<span class="export-ch">${f.channels === 2 ? 'stereo' : 'mono'}</span>` +
               `<span class="export-bytes">${mb(f.bytes)}</span></div>`,
           )
           .join('')
