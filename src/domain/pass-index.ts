@@ -125,8 +125,33 @@ export function availablePasses(index: PassIndex, relativeBar: number): number[]
  *
  * Returns undefined when that bar was never recorded — a gap in the available set, or a
  * pass number past the end of the layer.
+ *
+ * ## `offsetFrames` — the recording offset (§2.3)
+ *
+ * The player hears the backing late, plays in time with what they heard, and their sound reaches
+ * the capture late again. The correction is to read this bar from **further into** the take:
+ * everything the performer did lands `offsetFrames` earlier than it arrived, which is the
+ * direction that puts it back on the beat.
+ *
+ * **It is applied here and nowhere else**, for the same reason session-local frame offsets are
+ * computed here and nowhere else. This function is already the single conversion from a `BarRef`
+ * to a session and a frame range, and a second place that adds frames to a read position is
+ * precisely the drift that once asked for frame 5,292,000 of a 3,528,000-frame file.
+ *
+ * It deliberately does **not** touch `barExists` above. Whether a bar was reached is a fact about
+ * the recording, decided by the transport at capture, and it has to give the same answer at every
+ * offset — otherwise moving the control would renumber passes and change the pass count of a take
+ * that is already on disk. The offset moves where the audio is *read from*, never what exists.
+ *
+ * The clamp below absorbs the consequence: the last bar of a session runs `offsetFrames` short,
+ * because there genuinely is no audio past the end of the take. That is at most 250 ms of a bar
+ * and it is the honest answer — the alternative is padding silence and calling it a performance.
  */
-export function regionFor(index: PassIndex, ref: BarRef): SourceRegion | undefined {
+export function regionFor(
+  index: PassIndex,
+  ref: BarRef,
+  offsetFrames = 0,
+): SourceRegion | undefined {
   const located = locate(index, ref.pass);
   if (!located) return undefined;
 
@@ -135,7 +160,9 @@ export function regionFor(index: PassIndex, ref: BarRef): SourceRegion | undefin
   if (!barExists(t, located.localPass, ref.relativeBar, frames)) return undefined;
 
   const startFrame =
-    (located.localPass - 1) * loopFrames(t) + frameOffsetInLoop(t, ref.relativeBar);
+    (located.localPass - 1) * loopFrames(t) +
+    frameOffsetInLoop(t, ref.relativeBar) +
+    Math.max(0, offsetFrames);
 
   // Clamp to what is actually on disk. This is load-bearing, not defensive: `barExists`
   // admits a bar the recording only reached partway into, and this is what makes such a bar

@@ -42,6 +42,8 @@ export function segments(
   fromSlot: number,
   count: number,
   muted: MutedSlots,
+  /** The recording offset in frames (§2.3); passed straight to `regionFor`. */
+  offsetFrames = 0,
 ): ScheduledSegment[] {
   if (arrangement.length === 0 || count <= 0) return [];
 
@@ -58,7 +60,7 @@ export function segments(
     if (isSlotMuted(muted, wrapped)) continue;
 
     const source = arrangement[wrapped]!;
-    const region = regionFor(index, source);
+    const region = regionFor(index, source, offsetFrames);
     if (!region) continue;
     out.push({ slot: wrapped, source, region, startFrame: absolute * perBar });
   }
@@ -82,12 +84,14 @@ export function splice(
   index: PassIndex,
   offsetInBar: number,
   crossfadeFrames: number,
+  /** The recording offset (§2.3). A splice reads the same shifted audio the bar would have. */
+  latencyFrames = 0,
 ): SourceRegion | undefined {
   const perBar = framesPerBar(index.timing);
   if (offsetInBar < 0 || offsetInBar >= perBar) return undefined;
   if (perBar - offsetInBar <= crossfadeFrames) return undefined;
 
-  const region = regionFor(index, source);
+  const region = regionFor(index, source, latencyFrames);
   if (!region) return undefined;
 
   const remaining = region.frameCount - offsetInBar;

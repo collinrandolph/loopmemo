@@ -97,8 +97,50 @@ export type Project = {
    * so `isConfigurationLocked` deliberately does not cover this field.
    */
   readonly backing: BackingTracks;
+  /**
+   * The recording offset (§2.3): how far *earlier* recorded audio plays than it arrived.
+   *
+   * **Seconds, not frames.** Latency is a physical duration — the same milliseconds whatever the
+   * sample rate — so a stored frame count would silently mean different compensation at 44.1 and
+   * 48 kHz. Same argument as `TOLERANCE_SECONDS` and `HAAS_MAX_SECONDS`; frames appear only at
+   * the conversion, `latencyOffsetFrames`.
+   *
+   * **Applied when audio is scheduled, never when it is captured**, which is what makes it
+   * retroactive and what keeps it out of the pass count. See §2.3 and `regionFor`.
+   *
+   * Not covered by `isConfigurationLocked`: unlike tempo, nothing recorded depends on it and
+   * changing it rewrites nothing, so it stays editable for the life of the project.
+   */
+  readonly latencyOffsetSeconds: number;
   readonly layers: readonly Layer[];
 };
+
+/**
+ * The offset's ceiling. Round trips run 20–50 ms wired and 150–200 ms over Bluetooth (§2.3), so
+ * 250 covers the range with room, and a bound keeps a slip of the control from shifting a take
+ * most of a bar.
+ *
+ * **No negative half.** Negative compensation would mean the performance reached the microphone
+ * before the cue was heard. A push/pull "feel" control either side of zero is a different feature
+ * and belongs to a DAW (§5.2).
+ */
+export const LATENCY_OFFSET_MAX_SECONDS = 0.25;
+
+export function clampLatencyOffset(seconds: number): number {
+  if (!Number.isFinite(seconds)) return 0;
+  return Math.min(LATENCY_OFFSET_MAX_SECONDS, Math.max(0, seconds));
+}
+
+/**
+ * The offset in frames at a project's rate — the one place the conversion happens.
+ *
+ * Rounded rather than truncated: at 44.1 kHz a millisecond is 44.1 frames, so truncating biases
+ * every offset low by up to a frame. Not audible on its own, and there is no reason to carry a
+ * bias that costs nothing to avoid.
+ */
+export function latencyOffsetFrames(t: Timing, seconds: number): number {
+  return Math.round(clampLatencyOffset(seconds) * t.sampleRate);
+}
 
 /**
  * `eq` and `pan` default to the neutral preset of each. §5.3 makes "which preset a new layer
@@ -133,6 +175,12 @@ export function createProject(options: {
   now?: string;
   /** Setup picks a starting groove (§4.5); omitted, the project starts on the defaults. */
   backing?: BackingTracks;
+  /**
+   * The recording offset a new project starts on (§2.3). The caller passes the last value the
+   * user set, so it is chosen once and inherited thereafter; omitted, the project starts
+   * uncompensated, which is honest rather than a guess.
+   */
+  latencyOffsetSeconds?: number;
 }): Project {
   const { id, name, bpm, barCount, quality } = options;
   if (!Number.isInteger(bpm) || bpm < BPM_MIN || bpm > BPM_MAX) {
@@ -153,6 +201,7 @@ export function createProject(options: {
     audioQuality: quality,
     isCompressed: false,
     backing: options.backing ?? defaultBacking(),
+    latencyOffsetSeconds: clampLatencyOffset(options.latencyOffsetSeconds ?? 0),
     layers: Array.from({ length: LAYER_COUNT }, (_, i) => emptyLayer(i)),
   };
 }
