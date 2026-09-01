@@ -52,6 +52,27 @@ export type ScheduledVoice = {
  * hand-off continuous. Cancelling outright would snap it back to whatever was last set
  * explicitly, which is a click at the exact moment the splice is trying not to make one.
  */
+/**
+ * Drop a segment that has not started yet — the queued half of a re-plan.
+ *
+ * No fade, because there is nothing to fade: it is silent until its start time, so cancelling it
+ * outright is inaudible. Only ever call it on a voice whose `at` is still in the future;
+ * `retire` is what a *sounding* segment needs.
+ */
+export function cancel(voice: ScheduledVoice): void {
+  try {
+    voice.source.stop();
+  } catch {
+    /* already stopped */
+  }
+  try {
+    voice.source.disconnect();
+    voice.gain.disconnect();
+  } catch {
+    /* already disconnected */
+  }
+}
+
 export function retire(voice: ScheduledVoice, at: number, fadeSeconds: number): void {
   voice.gain.gain.cancelAndHoldAtTime(at);
   voice.gain.gain.setValueCurveAtTime(FADE_OUT, at, fadeSeconds);

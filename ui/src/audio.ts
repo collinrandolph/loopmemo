@@ -18,7 +18,13 @@ import { segments, splice } from '../../src/domain/schedule-plan.ts';
 import { type Timing, framesPerBar } from '../../src/domain/timing.ts';
 import { isSlotMuted } from '../../src/domain/arrangement.ts';
 import { type LayerChain, createLayerChain } from './effects-chain.ts';
-import { type ScheduledVoice, type SessionBuffers, retire, scheduleSegments } from './layer-audio.ts';
+import {
+  type ScheduledVoice,
+  type SessionBuffers,
+  cancel,
+  retire,
+  scheduleSegments,
+} from './layer-audio.ts';
 import { type Capture, MUSIC_CONSTRAINTS, type Recorder, createRecorder } from './recorder.ts';
 import type { TakeStore } from './takes.ts';
 import { type Transport, playLoopFrom, playheadAt, slotAt } from '../../src/domain/transport.ts';
@@ -276,6 +282,22 @@ export function audioEngine(sampleRate: number, latencyFrames = 0): BackingEngin
     for (const v of voices) silence(v.nodes);
     voices = [];
     lastHat = undefined;
+
+    // **And the layers.** They are not in `voices` — they are held per layer so a splice can
+    // reach them — so nothing here reached them, and `stop()` left up to `AHEAD_SECONDS` of
+    // layer audio still running. The next `start()` then laid a fresh plan on top of it, which
+    // is how tapping a playing slot and immediately tapping again produced three copies at once.
+    //
+    // Sounding segments fade over the crossfade rather than cutting: this is what a stop button
+    // does, and the drums having always cut is not a reason for the layers to.
+    const now = ctx?.currentTime ?? 0;
+    for (const voice of layerVoices) {
+      for (const v of voice.scheduled) {
+        if (v.at <= now) retire(v, now, CROSSFADE_SECONDS);
+        else cancel(v);
+      }
+      voice.scheduled = [];
+    }
   }
 
   /**
@@ -300,6 +322,20 @@ export function audioEngine(sampleRate: number, latencyFrames = 0): BackingEngin
       return false;
     });
     lastHat = undefined; // it may well have been one of those
+
+    // **And the layers, which are not in `voices`.** Backing voices are tracked by `track()`;
+    // layer segments are held per layer so a splice can find them, and dropping only the first
+    // list left every queued bar of the old plan in place while `topUp` scheduled the new one
+    // beside it. Two copies of the layer, a bar apart in content, until both ran out — which is
+    // what a swipe late in a bar and a double tap out of bar mode both produced.
+    for (const voice of layerVoices) {
+      voice.scheduled = voice.scheduled.filter((v) => {
+        if (v.at <= now) return true; // sounding: `spliceCurrentBar` decides its fate, not this
+        cancel(v);
+        return false;
+      });
+    }
+
     nextBar = Math.floor(Math.max(originFrame, engine.frame()) / framesPerBar(timing));
     topUp();
   }

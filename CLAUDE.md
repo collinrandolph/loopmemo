@@ -537,6 +537,15 @@ instead of 2.5. **It is invisible until a layer has audio to play**, which is th
 closing the record-to-playback loop early rather than building recording and playback separately
 and meeting in the middle.
 
+**Layer segments are not in `voices`, so every teardown path has to handle them separately —
+and two of the three forgot.** Backing voices are registered by `track()`; layer segments are
+held per layer in `LayerVoice.scheduled`, because a splice has to be able to find and retire
+them. `rescheduleFuture` pruned only the first list, leaving every queued bar of the old plan
+running while `topUp` scheduled the new one beside it. `killAll` did the same, so `stop()` left
+up to `AHEAD_SECONDS` of layer audio playing and the next `start()` laid a fresh plan on top —
+tapping a playing slot and tapping again gave three copies at once. Both now walk both lists:
+`cancel` for a segment that has not started, `retire` for one that has.
+
 **A bar already under way is never re-scheduled from its downbeat.** `start` treats a past time
 as "now", so handing it the bar's own start frame restarts that bar from the beginning on top of
 the copy already playing. `scheduleBar` filters those out and `spliceCurrentBar` handles the
