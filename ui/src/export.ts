@@ -1,4 +1,4 @@
-import type { BackingMixSource } from '../../src/domain/backing.ts';
+import type { BackingMixSource, BackingTracks } from '../../src/domain/backing.ts';
 import {
   DEFAULT_SELECTION,
   type ExportFormat,
@@ -13,6 +13,9 @@ import { loopSeconds } from '../../src/domain/timing.ts';
 import { bindChips } from './controls.ts';
 import { LR, el } from './kit.ts';
 import type { Engine } from './sim.ts';
+import { renderExport } from './export-files.ts';
+import { save, zip } from './save.ts';
+import type { TakeStore } from './takes.ts';
 
 /**
  * Export (§4.5, extended).
@@ -33,6 +36,10 @@ export function exportScreen(opts: {
   project: Project;
   engine: Engine;
   backing: readonly BackingMixSource[];
+  /** The live backing, for rendering; `backing` above is the flattened list the plan reads. */
+  tracks: BackingTracks;
+  /** Captured audio, so a stem or a pass has something to render from. */
+  takes: TakeStore;
   /** Leave without exporting. Distinct from `onShare` even where both land in the same place. */
   onCancel(): void;
   onShare(): void;
@@ -43,6 +50,18 @@ export function exportScreen(opts: {
   let selection: ExportSelection = { ...DEFAULT_SELECTION };
   let format: ExportFormat = 'wav';
   let bitrate: Mp3Bitrate = 192;
+
+  /**
+   * **The browser cannot encode MP3.** `AudioEncoder` reports it unsupported while offering AAC
+   * and Opus, and this repo carries no runtime dependencies, so a LAME-class encoder is not on
+   * the table either. §2.7's format list stays as it is — a native platform has MP3 available —
+   * and the refusal lives here, in the build that cannot honour it.
+   *
+   * Shown as an unavailable choice rather than removed: the option existing and being greyed
+   * says "not here", where a missing option says "never", and only one of those is true. What is
+   * not acceptable is offering it and writing a WAV with an `.mp3` name.
+   */
+  const MP3_AVAILABLE = false;
 
   const root = el('div', 'lr-screen export');
 
@@ -113,11 +132,20 @@ export function exportScreen(opts: {
   const formatRow = el('div', 'lr-panel-row', '<span class="lr-panel-label">Format</span>');
   const formatChips = el('div', 'lr-chips');
   for (const id of ['wav', 'mp3'] as const) {
-    const chip = el('span', `lr-chip${id === format ? ' is-active' : ''}`, id.toUpperCase());
-    chip.addEventListener('click', () => {
-      format = id;
-      paint();
-    });
+    const available = id === 'wav' || MP3_AVAILABLE;
+    const chip = el(
+      'span',
+      `lr-chip${id === format ? ' is-active' : ''}${available ? '' : ' is-unavailable'}`,
+      id.toUpperCase(),
+    );
+    if (available) {
+      chip.addEventListener('click', () => {
+        format = id;
+        paint();
+      });
+    } else {
+      chip.title = 'Not available in the browser build';
+    }
     formatChips.appendChild(chip);
   }
   formatRow.appendChild(formatChips);
@@ -136,8 +164,14 @@ export function exportScreen(opts: {
   bitrateRow.appendChild(bitrateChips);
   bindChips(bitrateRow);
 
-  // Only meaningful for MP3: WAV's quality is the project's capture setting, snapshotted at
-  // creation and immutable (§2.7), so there is nothing to choose.
+  const formatNote = el(
+    'div',
+    'export-note',
+    'MP3 is not available in the browser build — it has no MP3 encoder. Native builds keep it.',
+  );
+
+  // The bitrate row above is only meaningful for MP3: WAV's quality is the project's capture
+  // setting, snapshotted at creation and immutable (§2.7), so there is nothing to choose.
   const wavNote = el(
     'div',
     'export-note',
@@ -167,6 +201,7 @@ export function exportScreen(opts: {
     // labelled FORMAT reads as a mistake.
     el('div', 'export-gap'),
     formatRow,
+    formatNote,
     bitrateRow,
     wavNote,
     el('div', 'lr-section-label', 'Preview'),
@@ -181,7 +216,50 @@ export function exportScreen(opts: {
   cancelBtn.addEventListener('click', opts.onCancel);
 
   const shareBtn = el('button', 'lr-btn lr-btn--primary', 'Share') as HTMLButtonElement;
-  shareBtn.addEventListener('click', opts.onShare);
+
+  /**
+   * Render, then hand the result over.
+   *
+   * One file is saved as itself; several are zipped, because a browser has no good way to give
+   * someone a handful of files at once — a loop of download clicks trips Chrome's
+   * multiple-download prompt and arrives as an unordered pile.
+   *
+   * The button counts rather than spins. A full loop is a few hundred milliseconds, but a project
+   * with every pass selected is a couple of dozen renders, and a count says which one is running.
+   *
+   * `onShare` fires only when a file was actually written. Cancelling the save dialog is a
+   * decision, not a failure, and leaving the screen on it would discard the selection for nothing.
+   */
+  let exporting = false;
+  shareBtn.addEventListener('click', async () => {
+    if (exporting) return;
+    exporting = true;
+    shareBtn.disabled = true;
+    try {
+      const plan = exportPlan(project, selection, {
+        format,
+        mp3Bitrate: bitrate,
+        backing: opts.backing,
+      });
+      const files = await renderExport(
+        plan,
+        { project, backing: opts.tracks, takes: opts.takes },
+        (done, total) => {
+          shareBtn.textContent = `Rendering ${done} / ${total}…`;
+        },
+      );
+      if (files.length === 0) return;
+      shareBtn.textContent = files.length > 1 ? 'Packing…' : 'Saving…';
+      const single = files.length === 1 ? files[0] : undefined;
+      const blob = single ? single.blob : await zip(files);
+      const name = single ? single.name : `${project.name}.zip`;
+      if (await save(blob, name)) opts.onShare();
+    } finally {
+      exporting = false;
+      shareBtn.disabled = false;
+      paint();
+    }
+  });
 
   const footer = el('div', 'lr-footer');
   footer.append(cancelBtn, shareBtn);

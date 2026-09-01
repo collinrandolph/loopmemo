@@ -225,6 +225,8 @@ function render() {
               // the export. These used to be hardcoded here — which meant the export always wrote
               // both stems no matter what the user had muted.
               backing: backingMixSources(project.backing),
+              tracks: project.backing,
+              takes,
               // Back where you came from, not always the Library.
               onCancel: () => go(back),
               onShare: () => go(back),

@@ -93,6 +93,8 @@ API implementation for React Native, native C++ underneath. It maps onto the spe
 | Wurly reed saturation (§2.6) | `WaveShaperNode`, `oversample` | ✅ documented |
 | Tremolo on Rhodes and Wurly (§2.6) | oscillator connected **into a `GainNode.gain`** | ⚠️ see below |
 | The backing bus (§2.6) | `DynamicsCompressorNode` | ❌ see below |
+| Export to WAV (§2.7) | written by hand — a 44-byte header and PCM | ✅ |
+| Export to MP3 (§2.7) | — | ❌ **not in a browser** — see below |
 | Latency compensation (§2.3) | — | ❌ see §5 |
 
 `start(when, offset, duration)` is the important one. It is effectively `scheduleSegment`,
@@ -130,6 +132,19 @@ Expo Go would have been the one no-account route onto an iPhone, and this librar
 
 **Maturity risk:** v0.13.3 as of 2026-08-29, published the previous day. Very actively
 developed by a serious team, but pre-1.0. Pin the version; expect API churn.
+
+**MP3 export is the one place the browser build cannot follow the spec.** Measured rather than
+assumed: `AudioEncoder.isConfigSupported` reports `mp3` unsupported in Chrome while offering AAC
+(`mp4a.40.2`) and Opus, and this repo carries no runtime dependencies, so a LAME-class encoder is
+not available either. §2.7's format list is unchanged — a native platform has MP3, and
+`react-native-audio-api`'s recorder writes M4A among others — and `ui/` refuses the format in the
+build that cannot honour it, showing it struck through rather than removing it. **The one thing
+never to do is write a WAV with an `.mp3` name.**
+
+Two capabilities the browser has that are worth recording, because both removed a dependency:
+`CompressionStream('deflate-raw')` is exactly the codec ZIP wants, so a multi-file export needs
+no archive library, and `showSaveFilePicker` gives a real Save dialog with a fallback to an
+`<a download>` click.
 
 ## 4a. The port is no longer hypothetical
 

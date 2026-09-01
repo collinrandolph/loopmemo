@@ -116,6 +116,19 @@ export type BackingEngine = Engine & {
    * 0 when nothing is capturing, which draws as silence rather than as invention.
    */
   inputPeak(): number;
+  /**
+   * Schedule `bars` bars from frame 0 in one go, for an offline render (§2.7's export).
+   *
+   * The live scheduler tops up against a clock that is running; an `OfflineAudioContext` does not
+   * advance until `startRendering` is called, so a lookahead loop would schedule the first
+   * horizon and then wait forever. This lays the whole thing down at once instead.
+   *
+   * **It is the same engine, which is the reason to do it this way.** An export rendered by a
+   * second code path is a second set of decisions about crossfades, splices, pan law, the
+   * compressor and which bar carries which chord — and every one of them is a chance for the
+   * file to disagree with what the user heard.
+   */
+  prerender(bars: number): void;
   /** Begin capturing. Opens the input first if arming did not. */
   startCapture(): Promise<boolean>;
   stopCapture(): Promise<Capture | undefined>;
@@ -131,8 +144,15 @@ type Voice = { nodes: AudioNode[]; startsAt: number; endsAt: number };
  * to 0 — uncompensated and honest — because the number belongs to a calibration this build has
  * not run yet, and a plausible-looking constant would be indistinguishable from a measurement.
  */
-export function audioEngine(sampleRate: number, latencyFrames = 0): BackingEngine {
-  let ctx: AudioContext | undefined;
+export function audioEngine(
+  sampleRate: number,
+  latencyFrames = 0,
+  context?: BaseAudioContext,
+): BackingEngine {
+  // Typed as the base class because an export renders through this same engine into an
+  // `OfflineAudioContext`. `owned` is the live one, and the only one to resume or close.
+  let ctx: BaseAudioContext | undefined;
+  let owned: AudioContext | undefined;
   let bus: DynamicsCompressorNode | undefined;
   let drumGain: GainNode | undefined;
   let chordGain: GainNode | undefined;
@@ -175,7 +195,7 @@ export function audioEngine(sampleRate: number, latencyFrames = 0): BackingEngin
   let timer: number | undefined;
 
   // ------------------------------------------------------------------ graph --
-  function ensure(): AudioContext {
+  function ensure(): BaseAudioContext {
     if (!ctx) {
       /**
        * **At the project's rate, not the device's.** Omitting this takes the hardware default —
@@ -187,7 +207,7 @@ export function audioEngine(sampleRate: number, latencyFrames = 0): BackingEngin
        * It was invisible until layers had audio to play, which is the whole reason to close the
        * record-to-playback loop early. One rate, named once, and every conversion agrees.
        */
-      ctx = new AudioContext({ sampleRate });
+      ctx = context ?? (owned = new AudioContext({ sampleRate }));
       // A chord is three or four notes, some tones use three oscillators each, and tails overlap
       // — a dense pattern easily has a dozen oscillators sounding at once. Summed straight into
       // `destination` that clips, and hard digital clipping is exactly a harsh arrhythmic screech,
@@ -226,7 +246,7 @@ export function audioEngine(sampleRate: number, latencyFrames = 0): BackingEngin
       drumGain.connect(comp);
       chordGain.connect(comp);
     }
-    if (ctx.state === 'suspended') void ctx.resume();
+    if (owned?.state === 'suspended') void owned.resume();
     return ctx;
   }
 
@@ -341,7 +361,7 @@ export function audioEngine(sampleRate: number, latencyFrames = 0): BackingEngin
   }
 
   // ----------------------------------------------------------- drum voices --
-  function noise(c: AudioContext, seconds: number): AudioBuffer {
+  function noise(c: BaseAudioContext, seconds: number): AudioBuffer {
     const length = Math.max(1, Math.floor(c.sampleRate * seconds));
     const buffer = c.createBuffer(1, length, c.sampleRate);
     const data = buffer.getChannelData(0);
@@ -350,7 +370,7 @@ export function audioEngine(sampleRate: number, latencyFrames = 0): BackingEngin
   }
 
   /** Pitch-swept sine plus a very short click. The sweep alone reads as boomy, not as a hit. */
-  function kick(c: AudioContext, dest: AudioNode, at: number, k: DrumKit['kick']) {
+  function kick(c: BaseAudioContext, dest: AudioNode, at: number, k: DrumKit['kick']) {
     const osc = c.createOscillator();
     osc.type = 'sine';
     const gain = c.createGain();
@@ -380,7 +400,7 @@ export function audioEngine(sampleRate: number, latencyFrames = 0): BackingEngin
   }
 
   /** Two detuned tonal oscillators (the shell) plus a highpassed noise burst (the buzz). */
-  function snare(c: AudioContext, dest: AudioNode, at: number, s: DrumKit['snare']) {
+  function snare(c: BaseAudioContext, dest: AudioNode, at: number, s: DrumKit['snare']) {
     const body = c.createGain();
     const o1 = c.createOscillator();
     o1.type = 'triangle';
@@ -429,7 +449,7 @@ export function audioEngine(sampleRate: number, latencyFrames = 0): BackingEngin
    * ringing. Scheduling always proceeds in ascending time, so "most recently scheduled" and
    * "immediately preceding in playback" are the same hat even though we run ahead of the playhead.
    */
-  function hat(c: AudioContext, dest: AudioNode, at: number, h: DrumKit['hat'], open: boolean) {
+  function hat(c: BaseAudioContext, dest: AudioNode, at: number, h: DrumKit['hat'], open: boolean) {
     const seconds = open ? h.openSeconds : h.closedSeconds;
     const src = c.createBufferSource();
     src.buffer = noise(c, seconds + 0.05);
@@ -485,7 +505,7 @@ export function audioEngine(sampleRate: number, latencyFrames = 0): BackingEngin
    * decayed, so it dwarfs the signal exactly as it fades and reads as a stutter rather than
    * tremolo. In series it scales down with the note.
    */
-  function tremolo(c: AudioContext, rate: number, depth: number) {
+  function tremolo(c: BaseAudioContext, rate: number, depth: number) {
     const stage = c.createGain();
     stage.gain.value = 1;
     const osc = c.createOscillator();
@@ -499,7 +519,7 @@ export function audioEngine(sampleRate: number, latencyFrames = 0): BackingEngin
   }
 
   type ToneBuilder = (
-    c: AudioContext,
+    c: BaseAudioContext,
     dest: AudioNode,
     freq: number,
     at: number,
@@ -715,7 +735,7 @@ export function audioEngine(sampleRate: number, latencyFrames = 0): BackingEngin
       const at = frameToTime(frame);
       // And this one went past while we were running: `rescheduleFuture` rewinds into the bar in
       // progress to recover its remaining beats, so its earlier ones have to be dropped here.
-      if (at <= c.currentTime) continue;
+      if (at < c.currentTime) continue;
       if (onset.voice === 'kick') kick(c, drumGain!, at, kit.kick);
       else if (onset.voice === 'snare') snare(c, drumGain!, at, kit.snare);
       else hat(c, drumGain!, at, kit.hat, onset.voice === 'hatOpen');
@@ -734,7 +754,7 @@ export function audioEngine(sampleRate: number, latencyFrames = 0): BackingEngin
         // time as "now", so this would restart the bar from its beginning on top of the copy
         // already playing — which is what a re-plan mid-bar used to do. Entering an in-progress
         // bar is a splice, and `spliceCurrentBar` is where that happens.
-        .filter((s) => frameToTime(s.startFrame) > c.currentTime);
+        .filter((s) => frameToTime(s.startFrame) >= c.currentTime);
       // `frameToTime(0)` as the anchor, because `scheduleSegments` adds a frame count to it and
       // the engine's own anchor is offset by wherever playback started.
       voice.scheduled.push(
@@ -747,7 +767,7 @@ export function audioEngine(sampleRate: number, latencyFrames = 0): BackingEngin
       const frame = barStartFrame + onset.frameOffset;
       if (frame < originFrame) return;
       const at = frameToTime(frame);
-      if (at <= c.currentTime) return;
+      if (at < c.currentTime) return;
       const nominal = onset.nominalFrames / t.sampleRate;
       const seconds = Math.min(nominal, chordCaps[i] ?? nominal);
       for (const freq of bar.frequencies) {
@@ -852,7 +872,7 @@ export function audioEngine(sampleRate: number, latencyFrames = 0): BackingEngin
 
     running: () => anchorTime !== undefined,
 
-    ready: () => ctx?.state === 'running',
+    ready: () => (context ? true : owned?.state === 'running'),
 
     start(atFrame) {
       const c = ensure();
@@ -900,7 +920,11 @@ export function audioEngine(sampleRate: number, latencyFrames = 0): BackingEngin
     },
 
     async openInput() {
-      const c = ensure();
+      ensure();
+      // Capture needs the live context specifically. An offline render has no input to open, and
+      // asking for one would be a category error rather than a failure to report.
+      const c = owned;
+      if (!c) return false;
       try {
         if (!stream) {
           stream = await navigator.mediaDevices.getUserMedia({ audio: MUSIC_CONSTRAINTS });
@@ -925,6 +949,19 @@ export function audioEngine(sampleRate: number, latencyFrames = 0): BackingEngin
     inputError: () => inputError,
 
     inputPeak: () => (recorder?.recording() ? recorder.peak() : 0),
+
+    prerender(bars) {
+      ensure();
+      killAll();
+      // Anchored at exactly 0, not at `LEAD_SECONDS`: there is no clock to race offline, and a
+      // lead would put silence at the head of every exported file.
+      originFrame = 0;
+      anchorTime = 0;
+      nextBar = 0;
+      applyLevels();
+      for (let bar = 0; bar < bars; bar++) scheduleBar(bar);
+      nextBar = bars;
+    },
 
     async startCapture() {
       // Opening here too, for a caller that never armed. It is a no-op once open, so the normal
@@ -1014,7 +1051,7 @@ export function audioEngine(sampleRate: number, latencyFrames = 0): BackingEngin
 
     destroy() {
       engine.stop();
-      void ctx?.close();
+      void owned?.close();
       ctx = undefined;
       bus = undefined;
     },

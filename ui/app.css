@@ -551,6 +551,13 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
   box-shadow: none;
 }
 
+/* A choice this build cannot honour. Visibly present and visibly not selectable — removing it
+   would say "never", and the format is fine on a native platform. */
+.lr-chip.is-unavailable {
+  opacity: .38; cursor: default; text-decoration: line-through;
+}
+.lr-chip.is-unavailable:hover { background: rgba(255,255,255,.1); }
+
 /* The kit frames the app as a card floating on a page: `body` padding 20, a rounded
    `.lr-screen` centred at max 900, and 20 either side inside every section. That is
    right for previewing on a desktop and wrong on the device the app is for — it
