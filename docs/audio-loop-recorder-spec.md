@@ -454,6 +454,50 @@ values **after** the session is active and the route has settled — they are ro
 | Wired / built-in | 20–50 ms |
 | Bluetooth | 150–200 ms |
 
+### The offset is a control, not a measurement
+
+**A single per-project *Recording offset*, adjustable at any time, is the mechanism.** Where a
+platform reports its own latency it *seeds* that offset; it never overrides it. Loopback
+calibration — play a click, record it, correlate — is a convenience that can improve the seed, not
+a prerequisite for recording.
+
+Three reasons the number cannot come from measurement alone:
+
+- **A microphone cannot hear headphones**, and §2.2 makes headphones the correct setup. Calibrating
+  through the speaker measures an output route the user is not going to record against, so the
+  answer is wrong for the case that matters. Holding an earcup to the mic works and is fiddly
+  enough to be done badly.
+- Platform figures are typical, not exact, and a Bluetooth route's own reported latency drifts.
+- Every serious recording tool ships a manual offset regardless, because automatic detection is
+  unreliable often enough to need a way out.
+
+**The offset is applied when recorded audio is scheduled for playback, never when it is captured.**
+This is the decision the feature stands or falls on, and it has four consequences:
+
+- **It is retroactive.** Moving it shifts everything already recorded, together. Baking it into the
+  capture would fix only future takes and leave every earlier one permanently wrong.
+- **It cannot change the pass count.** `recordedFrames` comes from the transport at capture and is
+  untouched, so §1.4's "a bar exists once the recording reaches into it" gives the same answer at
+  every offset. Shifting the capture instead would move a take's *end*, silently renumbering
+  passes as the control moved.
+- **It can be judged while the loop plays**, which is the only way anyone can set it. "What is your
+  round-trip latency in milliseconds" is unanswerable; "nudge until your playing sits on the drums"
+  is not.
+- **It applies to recorded layers only.** The backing is generated on the shared anchor (§0.4) and
+  is already on time; offsetting it too would move the reference the user is correcting against.
+
+**Range 0–250 ms, and it does not go negative.** Negative compensation would mean the performance
+reached the microphone before the cue was heard, which is not a thing that happens. A push/pull
+"feel" control either side of zero is a different feature, belongs to a DAW, and is not this
+(§5.2).
+
+**It is stored per project and a new project inherits the last value used.** The offset is a
+property of the audio route rather than of the music, so one number is right for every project on
+the same hardware — but a project recorded against one offset has to keep it, or reopening it later
+on other equipment silently shifts the takes. Inheriting the last value means it is set once in
+practice and stays correct per project. It is *not* a second entry in §4.6: that would be two
+editors for one piece of state, and the inherited value is a default rather than a setting.
+
 ### Route changes
 
 Subscribe to `AVAudioSession.routeChangeNotification`. A route change alters latency, which
@@ -1416,6 +1460,17 @@ itself, looping **one bar** of drums — hearing what 96 against 132 actually fe
 thing a BPM number cannot tell you. Bar count is deliberately not part of it: the drum pattern is
 one bar and repeats identically, so a longer loop would sound the same while taking longer to come
 round, and changing the length would disturb a preview it has nothing to do with.
+
+**Recording offset lives here** (§2.3): one slider, 0–250 ms, adjustable for the life of the
+project and never locked by a recording the way tempo is. A new project inherits the last value
+used, so in practice it is set once.
+
+**Its preview plays the loop, not a bar of drums.** The tempo preview above it exists to answer
+"what does 96 feel like", which one bar can do. The offset can only be judged by hearing a recorded
+layer land against the backing, so this row previews the arrangement and the slider applies live
+while it runs — drag until the playing sits on the beat. A control that cannot be judged where it
+is presented is worse than one that is hard to find. If it turns out not to be judgeable here, the
+fallback is to move it to the Playback screen rather than to add a second copy.
 
 **Export**: format (WAV / MP3), quality, preview, share. **No mute controls** — it exports the
 project exactly as it currently sounds, and muting happens on the Playback screen where the result

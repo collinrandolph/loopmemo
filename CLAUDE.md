@@ -433,7 +433,7 @@ lines, `recorder.ts` and `effects-chain.ts` not much more.
 - **An unconditional 7 ms equal-power crossfade**, which cuts the worst join step by 393×.
 - **PCM capture** on the audio thread, stamped with the worklet scope's own `currentFrame`.
   72,000 frames of noise back bit-identically. `verify-capture.ts`.
-- **Latency compensation applied**, with its *sign* asserted by a test.
+- **PCM capture verified end to end**, including that the take committed is the one that arrived.
 - **EQ, pan and the Haas delay**, built once per layer and changed only by ramping gains.
 
 **Two alternating players per layer is an AVFoundation problem, not a requirement.** A player
@@ -442,15 +442,38 @@ gets its own and overlap is free. It returns on a platform without that property
 
 Still owed:
 
-- **The latency number.** The mechanism is in place and `latencyFrames` defaults to 0 —
-  uncompensated and honest. Measuring it is loopback calibration (§5 of the platform doc) and
-  needs a real microphone and output.
+- **Latency compensation, which is not built.** `recorder.ts` computes `Capture.startFrame` and
+  **nothing reads it** — only its own sign test does — so setting `latencyFrames` to any value
+  changes nothing audible. This is exactly the "computed and then discarded" trap
+  `docs/platform-decision.md` records from the first attempt at this app, and it was described here
+  as done when it was half done. See below for what replaces it.
 - **Beat-sized segments**, so the committed horizon stays short and a splice is never far
   behind the gesture. Currently one bar at a time.
 - **Mid-bar splice.** `splice()` exists and nothing calls it.
 - **Nothing on the render thread** — no allocation, no locks, no file I/O. The worklet holds
   to this; the scheduler runs on the main thread and allocates per bar, which a browser
   tolerates and a phone may not.
+
+**The recording offset is applied at scheduling, never at capture — and that is the whole design**
+(§2.3). It is a user control rather than a measurement, because a microphone cannot hear
+headphones and §2.2 makes headphones the correct setup, so a loopback calibration measures an
+output route nobody records against.
+
+Applying it at capture looks equivalent and is not, in three ways. It would fix only *future*
+takes, leaving every earlier one permanently wrong. It would move a take's *end*, so §1.4's "a bar
+exists once the recording reaches into it" would give a different answer at different offsets and
+the control would silently renumber passes. And it could not be judged, because judging it means
+dragging while the loop plays and hearing the take land — which only works if the change is
+retroactive.
+
+**It offsets `regionFor`'s read position, not the transport and not the backing.** Reading a
+recorded region from `startFrame + offset` pulls the audio *earlier* in time, which is the
+direction that corrects a late arrival. It belongs in `pass-index.ts` because that is already the
+single place a `BarRef` becomes a session and a frame range, and a second place frame offsets are
+computed is the one thing that file exists to prevent. The backing is generated on the shared
+anchor and is already on time; offsetting it too would move the reference being corrected against.
+**Seconds in the domain, frames at the boundary** — latency is a physical duration, so the same
+argument as `TOLERANCE_SECONDS` and `HAAS_MAX_SECONDS` applies.
 
 **The effects graph is fixed-shape on purpose.** `effects.ts` is explicit that every pan preset
 reports the same `delayFrames` and the five without a delay silence it with gain, so a preset
