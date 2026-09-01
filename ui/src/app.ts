@@ -53,6 +53,16 @@ let currentEngine: BackingEngine | undefined;
  */
 const takes = takeStore();
 
+/**
+ * The recording offset a new project starts on (§2.3).
+ *
+ * Latency is a property of the audio route rather than of the music, so the number that was
+ * right for the last project is right for the next one on the same hardware. It is remembered
+ * rather than made a global *setting*: a setting would be a second editor for one piece of
+ * state, and what this is is a default.
+ */
+let lastLatencyOffsetSeconds = 0;
+
 function open(): Project {
   return projects.find((p) => p.id === openId) ?? projects[0]!;
 }
@@ -176,10 +186,19 @@ function render() {
             ? projectSettingsScreen({
                 // For `new` this is only a source of defaults — the tempo, length and beats per
                 // bar a fresh project starts on. Nothing about the open project is written to.
-                project,
+                //
+                // The recording offset is overridden with the last value the user set rather
+                // than inherited from whichever project happened to be open, because it is a
+                // property of the audio route and not of the music (§2.3).
+                project:
+                  route.mode === 'new'
+                    ? { ...project, latencyOffsetSeconds: lastLatencyOffsetSeconds }
+                    : project,
                 mode: route.mode,
                 engine,
+                takes,
                 onCommit(next) {
+                  lastLatencyOffsetSeconds = next.latencyOffsetSeconds;
                   if (route.screen === 'settings' && route.mode === 'new') {
                     projects = [...projects, next];
                     openId = next.id;

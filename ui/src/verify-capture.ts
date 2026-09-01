@@ -50,7 +50,7 @@ export async function verifyCapture() {
 
   // Into the recorder only — never to the destination. The point is to capture it, and routing
   // a full-scale noise burst to the speakers as a side effect of a test is unkind.
-  const recorder = await createRecorder(ctx, source, 0);
+  const recorder = await createRecorder(ctx, source);
 
   recorder.start();
   const startedAt = ctx.currentTime;
@@ -94,43 +94,5 @@ export async function verifyCapture() {
     armedAtFrameByMainThread: Math.round(startedAt * RATE),
     anchorErrorFrames: Math.abs(capture.arrivedAtFrame - Math.round(startedAt * RATE)),
     pass: worst < 1e-6 && missing <= 0 && compared > length * 0.9,
-  };
-}
-
-/**
- * The one thing an argument cannot settle: does compensation move the take the right way?
- *
- * A round trip is subtracted, never added, so a capture that arrived at frame F is anchored at
- * F − latency. Asserted rather than described because the sign is the whole of §2.3, and getting
- * it backwards doubles the error instead of removing it — which sounds like a worse take rather
- * than a broken app, so nothing would ever point at it.
- */
-export async function verifyCompensationSign() {
-  const ctx = new AudioContext({ sampleRate: RATE });
-  const silent = ctx.createConstantSource();
-  silent.offset.value = 0;
-  silent.start();
-
-  const latency = 2400; // 50 ms at 48 kHz, a plausible round trip
-  const plain = await createRecorder(ctx, silent, 0);
-  const compensated = await createRecorder(ctx, silent, latency);
-
-  plain.start();
-  compensated.start();
-  await new Promise((r) => setTimeout(r, 200));
-  const a = await plain.stop();
-  const b = await compensated.stop();
-
-  plain.destroy();
-  compensated.destroy();
-  await ctx.close();
-
-  return {
-    latencyFrames: latency,
-    uncompensatedStart: a.startFrame,
-    compensatedStart: b.startFrame,
-    shift: a.startFrame - b.startFrame,
-    // Both armed at the same moment, so the only difference should be the round trip, earlier.
-    pass: b.startFrame < a.startFrame && Math.abs(a.startFrame - b.startFrame - latency) <= 128,
   };
 }

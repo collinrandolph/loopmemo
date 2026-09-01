@@ -11,6 +11,7 @@ import {
   bytesPerSecond,
   compressedProject,
   createProject,
+  LATENCY_OFFSET_MAX_SECONDS,
   isConfigurationLocked,
   projectCompressionPlan,
   projectTiming,
@@ -23,6 +24,7 @@ import { helpControl } from './help.ts';
 import { LR, el } from './kit.ts';
 import type { BackingEngine } from './audio.ts';
 import { simSession } from './sim.ts';
+import type { TakeStore } from './takes.ts';
 
 /**
  * Project setup and project settings (§4.5) — **one screen**, because they are one screen.
@@ -49,6 +51,8 @@ export function projectSettingsScreen(opts: {
   project: Project;
   mode: 'new' | 'edit';
   engine: BackingEngine;
+  /** Captured audio, so the recording-offset preview has layers to sound against the backing. */
+  takes: TakeStore;
   onCommit(project: Project): void;
   onCancel(): void;
   /** The project actions, moved here from the Library's per-row panel. Edit mode only. */
@@ -230,6 +234,85 @@ export function projectSettingsScreen(opts: {
     return row;
   }
 
+  // ------------------------------------------------------- recording offset --
+  /**
+   * The recording offset (§2.3): how far earlier a take plays than it arrived.
+   *
+   * **It is a control rather than a measurement**, because a microphone cannot hear headphones
+   * and §2.2 makes headphones the correct setup — so a loopback calibration measures an output
+   * route nobody records against. What it can be is *judged*, and that is what this row is for.
+   *
+   * **Its preview plays the loop, not a bar of drums**, unlike the tempo preview above it. A
+   * tempo can be judged from one bar; an offset can only be judged by hearing a recorded layer
+   * land against the backing. A control that cannot be judged where it is presented is worse
+   * than one that is hard to find.
+   *
+   * **Never locked.** `isConfigurationLocked` covers tempo and bar count because recorded frames
+   * are laid out against them. Nothing recorded depends on this, and changing it rewrites
+   * nothing — it is exactly the setting a user needs *after* the first take, when they can
+   * finally hear that it is wrong.
+   */
+  let latencyMs = Math.round(opts.project.latencyOffsetSeconds * 1000);
+
+  function previewProject(): Project {
+    return { ...opts.project, latencyOffsetSeconds: latencyMs / 1000 };
+  }
+
+  let latencyPlaying = false;
+  const latencyPlayBtn = LR.PlayButton(() => {
+    latencyPlaying = !latencyPlaying;
+    latencyPlayBtn.setPlaying(latencyPlaying);
+    if (latencyPlaying) {
+      playing = false;
+      playBtn.setPlaying(false);
+      opts.engine.setBacking(opts.project.backing, projectTiming(opts.project));
+      opts.engine.setLayers(previewProject(), opts.takes);
+      opts.engine.start(0);
+    } else {
+      opts.engine.stop();
+    }
+  });
+
+  const latencyValue = el('div', 'setting-figure');
+  const latencySlider = el('input', 'setting-slider') as HTMLInputElement;
+  latencySlider.type = 'range';
+  latencySlider.min = '0';
+  latencySlider.max = String(Math.round(LATENCY_OFFSET_MAX_SECONDS * 1000));
+  latencySlider.value = String(latencyMs);
+
+  /**
+   * Applied a beat after the drag stops, not on every pixel.
+   *
+   * The offset is baked into each scheduled buffer's read position, so changing it re-plans the
+   * lookahead — cheap once, wasteful sixty times a second, and re-creating a segment that was
+   * about to start is a way to make a click out of a control that exists to remove one. The
+   * number on screen still follows the drag; only the audio waits, and it waits less than the
+   * 1.2 s horizon it is about to be heard through anyway.
+   */
+  let applyLatencyTimer: number | undefined;
+  latencySlider.addEventListener('input', () => {
+    latencyMs = Number(latencySlider.value);
+    paint();
+    window.clearTimeout(applyLatencyTimer);
+    applyLatencyTimer = window.setTimeout(() => {
+      if (latencyPlaying) opts.engine.setLayers(previewProject(), opts.takes);
+    }, 90);
+  });
+
+  const latencyRow = el(
+    'div',
+    'lr-panel-row',
+    '<span class="lr-panel-label">Rec offset</span>',
+  );
+  latencyRow.append(latencySlider, latencyValue, latencyPlayBtn);
+
+  const latencyNote = el(
+    'div',
+    'setting-note',
+    'How far earlier your recording plays than it arrived, to cancel the delay through your ' +
+      'headphones and microphone. Play the loop and slide until your playing sits on the beat.',
+  );
+
   // ---------------------------------------------------------------- actions --
   /**
    * Export, bounce, compress and delete — the whole of what used to be a per-row panel on the
@@ -397,6 +480,9 @@ export function projectSettingsScreen(opts: {
     qualityRow,
     annotate(qualityFigure),
     el('div', 'setting-gap'),
+    latencyRow,
+    annotate(latencyNote),
+    el('div', 'setting-gap'),
     annotate(lockNote),
     ...(creating ? [] : [el('div', 'setting-gap'), actionsBlock]),
   );
@@ -448,7 +534,14 @@ export function projectSettingsScreen(opts: {
       };
     }
     // Quality is never re-chosen here, so it is copied rather than read from the form.
-    return { ...opts.project, name: finalName, bpm, barCount, lastModified: new Date().toISOString() };
+    return {
+      ...opts.project,
+      name: finalName,
+      bpm,
+      barCount,
+      latencyOffsetSeconds: latencyMs / 1000,
+      lastModified: new Date().toISOString(),
+    };
   }
 
   function leave() {
@@ -470,6 +563,8 @@ export function projectSettingsScreen(opts: {
     const t = timing(bpm, barCount, QUALITY_SPEC[quality].sampleRate, opts.project.beatsPerBar);
     const seconds = loopSeconds(t);
     bpmValue.textContent = `${bpm} BPM`;
+    // "Off" rather than "0 ms": zero is a real state — uncompensated — and naming it says so.
+    latencyValue.textContent = latencyMs === 0 ? 'Off' : `${latencyMs} ms`;
     summary.textContent = `${bpm} BPM · ${barCount} bars · ${LR.fmtTime(seconds)} per pass`;
 
     for (const [i, chip] of [...barsChips.children].entries()) {

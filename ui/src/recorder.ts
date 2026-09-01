@@ -12,32 +12,26 @@
  * for sample, which is how `verify-capture.ts` checks this without a microphone, a permission
  * prompt, or a human.
  *
- * ## Latency compensation is applied here, not computed here
+ * ## Latency compensation is NOT applied here, deliberately
  *
- * §2.3 makes compensation mandatory, and `docs/platform-decision.md` records that the first
- * attempt at this app computed a latency and then discarded it — which is worse than not
- * measuring, because it looks done.
+ * This used to subtract a `latencyFrames` round trip from the capture's anchor, and **nothing
+ * ever read the result** — the compensated `startFrame` was consumed only by its own test, so
+ * the setting had no audible effect at any value. That is the "computed and then discarded"
+ * failure `docs/platform-decision.md` records from this app's first attempt, repeated.
  *
- * The correction is one line, and its direction is the part worth stating. The player hears the
- * backing late by the output latency, plays in time with what they heard, and their sound
- * reaches the capture buffer late again by the input latency. So audio arriving at engine frame
- * F was *performed* at frame F − roundTrip. The captured session is therefore anchored earlier
- * than it arrived, never later.
+ * It is not fixed here, because here is the wrong place. §2.3 makes the offset a control applied
+ * when audio is **scheduled**: that is what lets it be changed after the fact, keeps it out of
+ * the pass count, and makes it judgeable by ear against a loop that is playing. Compensating at
+ * capture as well would apply the same correction twice.
  *
- * `latencyFrames` is an argument because measuring it is a separate job with its own answer per
- * route (§5 of the platform doc: loopback calibration). Passing 0 is honest — uncompensated —
- * rather than a default that pretends.
+ * So a capture is exactly what arrived, stamped with when it arrived, and `regionFor` decides
+ * where to read it from.
  */
 
 export type Capture = {
   readonly buffer: AudioBuffer;
-  /**
-   * Engine frame the first captured sample was *performed* at — arrival, less the round trip.
-   * This is what a `RecordingSession`'s frame 0 means (§1.4).
-   */
-  readonly startFrame: number;
   readonly frames: number;
-  /** What arrived, before compensation. Kept so a calibration can be checked after the fact. */
+  /** Engine frame the first captured sample arrived on. Uncompensated: see the note above. */
   readonly arrivedAtFrame: number;
 };
 
@@ -71,7 +65,6 @@ const loaded = new WeakSet<BaseAudioContext>();
 export async function createRecorder(
   ctx: BaseAudioContext,
   input: AudioNode,
-  latencyFrames = 0,
 ): Promise<Recorder> {
   if (!loaded.has(ctx)) {
     await ctx.audioWorklet.addModule(WORKLET_URL);
@@ -147,7 +140,7 @@ export async function createRecorder(
         if (at >= 0 && at + chunk.samples.length <= channel.length) channel.set(chunk.samples, at);
       }
 
-      return { buffer, frames, arrivedAtFrame, startFrame: arrivedAtFrame - latencyFrames };
+      return { buffer, frames, arrivedAtFrame };
     },
 
     destroy() {

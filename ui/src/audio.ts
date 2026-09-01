@@ -11,6 +11,7 @@ import {
   type Layer,
   type Project,
   isLayerAudible,
+  latencyOffsetFrames,
   layerPassIndex,
   projectTiming,
 } from '../../src/domain/project.ts';
@@ -139,16 +140,7 @@ export type BackingEngine = Engine & {
 
 type Voice = { nodes: AudioNode[]; startsAt: number; endsAt: number };
 
-/**
- * `latencyFrames` is the measured round trip to subtract from every capture (§2.3). It defaults
- * to 0 — uncompensated and honest — because the number belongs to a calibration this build has
- * not run yet, and a plausible-looking constant would be indistinguishable from a measurement.
- */
-export function audioEngine(
-  sampleRate: number,
-  latencyFrames = 0,
-  context?: BaseAudioContext,
-): BackingEngine {
+export function audioEngine(sampleRate: number, context?: BaseAudioContext): BackingEngine {
   // Typed as the base class because an export renders through this same engine into an
   // `OfflineAudioContext`. `owned` is the live one, and the only one to resume or close.
   let ctx: BaseAudioContext | undefined;
@@ -181,6 +173,14 @@ export function audioEngine(
     scheduled: ScheduledVoice[];
   };
   let layerVoices: LayerVoice[] = [];
+  /**
+   * The recording offset in frames (§2.3), read off the project on every `setLayers`.
+   *
+   * It shifts where recorded layers are *read from* and nothing else — not the transport, and
+   * not the backing, which is generated on the shared anchor and already on time. Offsetting
+   * the backing too would move the reference the user is correcting against.
+   */
+  let latencyFrames = 0;
 
   let stream: MediaStream | undefined;
   let inputError: string | undefined;
@@ -748,7 +748,14 @@ export function audioEngine(
     const crossfade = Math.round(CROSSFADE_SECONDS * t.sampleRate);
     for (const voice of layerVoices) {
       const slotIndex = head ? slotAt(head) : absoluteBar % Math.max(1, t.barCount);
-      const segs = segments(voice.layer.barSources, voice.index, slotIndex, 1, voice.layer.mutedSlots)
+      const segs = segments(
+        voice.layer.barSources,
+        voice.index,
+        slotIndex,
+        1,
+        voice.layer.mutedSlots,
+        latencyFrames,
+      )
         .map((s) => ({ ...s, startFrame: barStartFrame }))
         // A bar already under way is never re-scheduled from its downbeat. `start` treats a past
         // time as "now", so this would restart the bar from its beginning on top of the copy
@@ -826,7 +833,9 @@ export function audioEngine(
     }
     if (!ref || muted) return;
 
-    const region = splice(ref, voice.index, offsetInBar, crossfade);
+    // The offset goes here too: a mid-bar entry has to read the same shifted audio the bar it
+    // replaces would have, or a splice would land at a different place in the take than a join.
+    const region = splice(ref, voice.index, offsetInBar, crossfade, latencyFrames);
     if (!region) return;
 
     voice.scheduled.push(
@@ -933,7 +942,7 @@ export function audioEngine(
         // input route, and the route is what a latency calibration is measured against (§2.3) —
         // a new one per take would invalidate the number every time.
         if (!recorder) {
-          recorder = await createRecorder(c, c.createMediaStreamSource(stream), latencyFrames);
+          recorder = await createRecorder(c, c.createMediaStreamSource(stream));
         }
         inputError = undefined;
         return true;
@@ -988,6 +997,15 @@ export function audioEngine(
       const wasLayer = new Map(layerVoices.map((v) => [v.layer.index, v.layer]));
       const replaced = new Map(wasLayer);
 
+      // The recording offset is baked into every scheduled buffer's read position, so a change
+      // to it has to reach the horizon the same way an arrangement edit does. It is caught here
+      // rather than by the identity checks below, which compare *layers* — an offset change
+      // touches none of them, so without this the slider would move and nothing would be heard
+      // until some other edit happened to force a re-plan.
+      const wasLatency = latencyFrames;
+      latencyFrames = latencyOffsetFrames(t, project.latencyOffsetSeconds);
+      let replan = latencyFrames !== wasLatency;
+
       /**
        * Did anything change that is baked into *already scheduled* audio?
        *
@@ -1000,9 +1018,11 @@ export function audioEngine(
        * produces a new `barSources` array, while dragging the level slider leaves it the same
        * reference. That matters — a slider emits an event per pixel, and rescheduling on each
        * one would tear down and rebuild the horizon dozens of times a second.
+       *
+       * The recording offset is the exception, and it is handled above: it *is* baked into the
+       * scheduled buffers, but it lives on the project rather than on any layer, so no identity
+       * check here would ever see it move.
        */
-      let replan = false;
-
       layerVoices = project.layers
         .filter((layer) => layer.sessions.length > 0)
         .filter((layer) => isLayerAudible(layer, recordingIntoLayerIndex))

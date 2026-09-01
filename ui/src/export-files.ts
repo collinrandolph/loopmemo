@@ -86,7 +86,7 @@ async function renderThroughEngine(
 ): Promise<AudioBuffer> {
   const t = projectTiming(project);
   const offline = new OfflineAudioContext(2, frames, t.sampleRate);
-  const engine = audioEngine(t.sampleRate, 0, offline);
+  const engine = audioEngine(t.sampleRate, offline);
   engine.setBacking(backing, t);
   engine.setLayers(project, ctx.takes);
   engine.prerender(t.barCount);

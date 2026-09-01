@@ -669,6 +669,8 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
 .setting-annotation + .setting-annotation { margin-top: -6px; }
 .setting-annotation > :not(.lr-panel-label) { flex: 1; min-width: 0; }
 .setting-figures { font-size: 11px; color: var(--lr-hint); }
+/* Says what the control above it is for. Longer than a figure, so it wraps and is not nowrap. */
+.setting-note { font-size: 11px; color: var(--lr-hint); line-height: 1.5; }
 /* Bar count: a fixed four-column grid rather than a wrapping chip row, so both rows are the same
    shape and each button is a target rather than a token. */
 .setting-bars {
