@@ -39,7 +39,28 @@ export type ScheduledVoice = {
   readonly gain: GainNode;
   /** Context time the segment's own frame 0 lands on. */
   readonly at: number;
+  /** Context time it stops, tail included. Kept so a splice knows what is still sounding. */
+  readonly endsAt: number;
 };
+
+/**
+ * Take a sounding segment down over one crossfade and stop it — the outgoing half of a mid-bar
+ * splice (§2.5).
+ *
+ * `cancelAndHoldAtTime` rather than `cancelScheduledValues`: the voice may be part-way through
+ * its own fade in or out, and holding the value it has reached at `at` is what makes the
+ * hand-off continuous. Cancelling outright would snap it back to whatever was last set
+ * explicitly, which is a click at the exact moment the splice is trying not to make one.
+ */
+export function retire(voice: ScheduledVoice, at: number, fadeSeconds: number): void {
+  voice.gain.gain.cancelAndHoldAtTime(at);
+  voice.gain.gain.setValueCurveAtTime(FADE_OUT, at, fadeSeconds);
+  try {
+    voice.source.stop(at + fadeSeconds);
+  } catch {
+    /* already stopped */
+  }
+}
 
 /**
  * Equal-power fade curves.
@@ -177,7 +198,7 @@ export function scheduleSegments(
     }
 
     source.start(from, (segment.region.startFrame - lead) / rate, frames / rate);
-    out.push({ segment, source, gain, at });
+    out.push({ segment, source, gain, at, endsAt: from + frames / rate });
   }
 
   return out;

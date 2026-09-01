@@ -537,6 +537,20 @@ instead of 2.5. **It is invisible until a layer has audio to play**, which is th
 closing the record-to-playback loop early rather than building recording and playback separately
 and meeting in the middle.
 
+**A bar already under way is never re-scheduled from its downbeat.** `start` treats a past time
+as "now", so handing it the bar's own start frame restarts that bar from the beginning on top of
+the copy already playing. `scheduleBar` filters those out and `spliceCurrentBar` handles the
+in-progress bar instead — entering the new source at the offset the playhead has reached
+(§2.5), one crossfade ahead of the playhead so nothing is scheduled in the past, with the
+outgoing segment retired over exactly that window. `splice()` declines the two cases that are
+not worth it — no audio, or a playhead inside the tail guard — and both fall through to the
+natural boundary, which is a bar away at most.
+
+**`retire` uses `cancelAndHoldAtTime`, not `cancelScheduledValues`.** The outgoing voice may be
+part-way through its own fade, and holding the value it has reached is what makes the hand-off
+continuous; cancelling outright snaps it back to whatever was last set explicitly, which is a
+click at the exact moment the splice exists to avoid one.
+
 **The engine holds a snapshot, so every screen that edits must push it — this has been got
 wrong three times.** `setLayers` copies each `Layer` into a `LayerVoice`, and nothing re-reads
 project state on its own. The backing rows forgot it and a kit swap was silent; the EQ and pan

@@ -14,10 +14,11 @@ import {
   layerPassIndex,
   projectTiming,
 } from '../../src/domain/project.ts';
-import { segments } from '../../src/domain/schedule-plan.ts';
+import { segments, splice } from '../../src/domain/schedule-plan.ts';
 import { type Timing, framesPerBar } from '../../src/domain/timing.ts';
+import { isSlotMuted } from '../../src/domain/arrangement.ts';
 import { type LayerChain, createLayerChain } from './effects-chain.ts';
-import { type SessionBuffers, scheduleSegments } from './layer-audio.ts';
+import { type ScheduledVoice, type SessionBuffers, retire, scheduleSegments } from './layer-audio.ts';
 import { type Capture, MUSIC_CONSTRAINTS, type Recorder, createRecorder } from './recorder.ts';
 import type { TakeStore } from './takes.ts';
 import { type Transport, playLoopFrom, playheadAt, slotAt } from '../../src/domain/transport.ts';
@@ -150,6 +151,8 @@ export function audioEngine(sampleRate: number, latencyFrames = 0): BackingEngin
     index: PassIndex;
     buffers: SessionBuffers;
     chain: LayerChain;
+    /** What this layer currently has handed to the graph, so a splice can retire it. */
+    scheduled: ScheduledVoice[];
   };
   let layerVoices: LayerVoice[] = [];
 
@@ -690,10 +693,17 @@ export function audioEngine(sampleRate: number, latencyFrames = 0): BackingEngin
     for (const voice of layerVoices) {
       const slotIndex = head ? slotAt(head) : absoluteBar % Math.max(1, t.barCount);
       const segs = segments(voice.layer.barSources, voice.index, slotIndex, 1, voice.layer.mutedSlots)
-        .map((s) => ({ ...s, startFrame: barStartFrame }));
-      // `frameToTime` less the origin, because `scheduleSegments` adds a frame count to the
-      // anchor it is handed and the engine's own anchor is offset by where playback started.
-      scheduleSegments(c, voice.chain.input, segs, voice.buffers, frameToTime(0), crossfade);
+        .map((s) => ({ ...s, startFrame: barStartFrame }))
+        // A bar already under way is never re-scheduled from its downbeat. `start` treats a past
+        // time as "now", so this would restart the bar from its beginning on top of the copy
+        // already playing — which is what a re-plan mid-bar used to do. Entering an in-progress
+        // bar is a splice, and `spliceCurrentBar` is where that happens.
+        .filter((s) => frameToTime(s.startFrame) > c.currentTime);
+      // `frameToTime(0)` as the anchor, because `scheduleSegments` adds a frame count to it and
+      // the engine's own anchor is offset by wherever playback started.
+      voice.scheduled.push(
+        ...scheduleSegments(c, voice.chain.input, segs, voice.buffers, frameToTime(0), crossfade),
+      );
     }
 
     if (!build) return;
@@ -708,6 +718,71 @@ export function audioEngine(sampleRate: number, latencyFrames = 0): BackingEngin
         build(c, chordGain!, freq, at, onset.articulation === 'chunk', seconds);
       }
     });
+  }
+
+  /**
+   * Enter a slot's new source part-way through the bar it is already playing (§2.5).
+   *
+   * **This is what makes hunting viable.** Committing at the boundary would force the user to
+   * wait out the rest of every bar before hearing a comparison, and the whole Edit Layer screen
+   * is a comparison being made repeatedly. Swiping the bar that IS playing has to be heard on
+   * that bar.
+   *
+   * The entry point is one crossfade ahead of the playhead — never `now`, which would be in the
+   * past by the time the graph acted on it — and the outgoing segment is taken down over exactly
+   * that window, so the two are a crossfade rather than a cut plus a gap.
+   *
+   * `splice()` decides whether it is worth doing at all, and returns undefined for the two cases
+   * that are not: a bar with no audio, and a playhead inside the tail guard where the remaining
+   * region would be shorter than the crossfade. Both then fall through to the natural boundary,
+   * which is a bar away at most.
+   */
+  function spliceCurrentBar(voice: LayerVoice, was: Layer) {
+    if (anchorTime === undefined || !ctx || !timing) return;
+    const t = timing;
+    const c = ctx;
+    const fpb = framesPerBar(t);
+    const crossfade = Math.round(CROSSFADE_SECONDS * t.sampleRate);
+
+    const now = engine.frame();
+    const head = playheadAt(transport, now, t);
+    if (!head) return;
+    const slot = slotAt(head);
+
+    // Only the slot under the playhead splices. Every other edit is ahead of the horizon and
+    // `rescheduleFuture` has already dealt with it.
+    const ref = voice.layer.barSources[slot];
+    const before = was.barSources[slot];
+    const muted = isSlotMuted(voice.layer.mutedSlots, slot);
+    const wasMuted = isSlotMuted(was.mutedSlots, slot);
+    const sameSource =
+      ref && before && ref.pass === before.pass && ref.relativeBar === before.relativeBar;
+    if (sameSource && muted === wasMuted) return;
+
+    const enterFrame = now + crossfade;
+    const offsetInBar = enterFrame - Math.floor(now / fpb) * fpb;
+    const at = frameToTime(enterFrame);
+
+    // Whatever this layer has sounding gives way, muted or not — a slot muted mid-bar goes quiet
+    // on that bar rather than finishing it, which is what tap-and-hold looks like it should do.
+    for (const sounding of voice.scheduled) {
+      if (sounding.at <= at && sounding.endsAt > at) retire(sounding, at, crossfade / t.sampleRate);
+    }
+    if (!ref || muted) return;
+
+    const region = splice(ref, voice.index, offsetInBar, crossfade);
+    if (!region) return;
+
+    voice.scheduled.push(
+      ...scheduleSegments(
+        c,
+        voice.chain.input,
+        [{ slot, source: ref, region, startFrame: enterFrame }],
+        voice.buffers,
+        frameToTime(0),
+        crossfade,
+      ),
+    );
   }
 
   function topUp() {
@@ -834,8 +909,11 @@ export function audioEngine(sampleRate: number, latencyFrames = 0): BackingEngin
       // Gains are kept across calls, keyed by layer index, so changing a level does not rebuild
       // a node underneath audio that is already sounding — the same reason the pan presets ramp
       // a wet gain rather than rebuilding the delay.
-      const previous = new Map(layerVoices.map((v) => [v.layer.index, v.chain]));
+      // The whole voice is carried across, not just its chain: what it has already handed to the
+      // graph is what a splice has to be able to retire.
+      const previous = new Map(layerVoices.map((v) => [v.layer.index, v]));
       const wasLayer = new Map(layerVoices.map((v) => [v.layer.index, v.layer]));
+      const replaced = new Map(wasLayer);
 
       /**
        * Did anything change that is baked into *already scheduled* audio?
@@ -858,7 +936,8 @@ export function audioEngine(sampleRate: number, latencyFrames = 0): BackingEngin
         .map((layer) => {
           // Reused where it exists, so a level or preset change ramps a running graph instead of
           // rebuilding one under audio that is already sounding (§2.8).
-          const chain = previous.get(layer.index) ?? createLayerChain(c, bus!, t);
+          const kept = previous.get(layer.index);
+          const chain = kept?.chain ?? createLayerChain(c, bus!, t);
           const was = wasLayer.get(layer.index);
           if (
             !was ||
@@ -873,13 +952,28 @@ export function audioEngine(sampleRate: number, latencyFrames = 0): BackingEngin
           chain.setEq(layer.eq);
           chain.setPan(layer.pan);
           chain.setLevel(layer.level);
-          return { layer, index: layerPassIndex(layer, t), buffers: takes.buffersFor(layer), chain };
+          return {
+            layer,
+            index: layerPassIndex(layer, t),
+            buffers: takes.buffersFor(layer),
+            chain,
+            scheduled: kept?.scheduled ?? [],
+          };
         });
       // Whatever is left was audible and is not any more. Disconnected rather than silenced, so a
       // muted layer costs nothing per bar.
-      for (const chain of previous.values()) chain.disconnect();
+      for (const gone of previous.values()) gone.chain.disconnect();
       if (wasLayer.size > 0) replan = true; // a layer went silent; its bars must stop
-      if (replan) rescheduleFuture();
+      if (!replan) return;
+
+      // Order matters. Dropping the future first means the bar under the playhead is the only
+      // thing still sounding, so the splice has one clear thing to hand over from — and the
+      // rebuilt horizon it leaves behind already carries the new arrangement.
+      rescheduleFuture();
+      for (const voice of layerVoices) {
+        const was = replaced.get(voice.layer.index);
+        if (was) spliceCurrentBar(voice, was);
+      }
     },
 
     destroy() {
