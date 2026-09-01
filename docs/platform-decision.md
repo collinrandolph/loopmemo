@@ -225,9 +225,30 @@ used Android costs less than one year of Apple's fee.
 
 In rough priority order. The first two decide whether the architecture holds at all.
 
-1. **Sample-accurate joins.** Two `AudioBufferSourceNode`s scheduled back to back against
-   `currentTime` — do they join without a gap or a click? If not, §2.4 does not survive and
-   everything downstream changes.
+1. ~~**Sample-accurate joins.**~~ **Answered 2026-08-31, on this machine, with no device.**
+   `OfflineAudioContext` renders the same graph faster than real time into a buffer that can be
+   read sample by sample, so this became a measurement rather than a listening test.
+   `ui/src/verify-joins.ts` is the harness; run it from the browser console.
+
+   Rendering `segments()` through `AudioBufferSourceNode.start(when, offset, duration)` against
+   one anchor reproduces the source **bit-identically** — worst absolute difference 0, not
+   "small", both for an arrangement in recorded order and for one that jumps between passes and
+   bars. A muted slot renders as exactly one bar of silence with the bars after it unmoved.
+   §2.4 survives, and so does §1.1's whole premise that a slot can carry any source.
+
+   The 7 ms equal-power crossfade cuts the worst single-sample step at a join by **393×**, from
+   2.0 to 0.005 on a full-scale ramp. It also surfaced a real defect that only a measurement
+   would have caught: **an outgoing segment has no tail to fade when its bar is the last in its
+   recording**, so the first implementation cut it dead at the boundary. The fix is to move that
+   join's crossfade *before* the boundary and start the incoming segment early on its pre-roll,
+   which preserves timing because the offset moves with the start. Where neither exists — a
+   recording's last bar into a recording's first — there is no material to fade against at all;
+   level through that join measures 0.74 against 1.0 elsewhere, a short dip rather than a click,
+   and that is a limit of the material rather than of the API.
+
+   What this does not answer is the real-time half: an offline render has no output device, no
+   underruns and no jitter. That still needs hardware, and it is a much smaller question than
+   whether the design works.
 2. **Loopback calibration accuracy.** Can round-trip latency be measured reliably enough, and
    is it stable across a session?
 3. **Simultaneous playback and recording** without the output route collapsing (the failure
