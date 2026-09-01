@@ -1,4 +1,4 @@
-import { type EqPresetId, EQ_PRESETS, eqPreset } from '../../src/domain/eq.ts';
+import { type BiquadKind, type EqPresetId, EQ_PRESETS, eqPreset } from '../../src/domain/eq.ts';
 import { type PanPresetId, panPlan, panPreset } from '../../src/domain/effects.ts';
 import type { Timing } from '../../src/domain/timing.ts';
 
@@ -36,6 +36,25 @@ const EQ_SLOTS = Math.max(...EQ_PRESETS.map((p) => p.bands.length));
 
 /** Preset changes ramp rather than jump, over a time short enough to feel immediate. */
 const RAMP_SECONDS = 0.02;
+
+/**
+ * `BiquadFilterNode.Q` is **in decibels for `lowpass` and `highpass`**, and a plain linear Q for
+ * `peaking`. The spec converts the first two with `10^(Q/20)` before using them, so handing it
+ * the domain's Butterworth 0.7071 asks for an effective Q of 1.085 — a filter with a resonant
+ * bump, which is exactly the colour `BUTTERWORTH_Q` was chosen to avoid.
+ *
+ * It is not a subtle error and it does not announce itself. At the corner a Butterworth is
+ * −3.01 dB; the browser gave **+0.71 dB**, a 3.7 dB disagreement, and shallower slopes for two
+ * of the five presets. Reported as "EQ is either not working or too subtle to hear" — it was
+ * working, and it had been quietly softened.
+ *
+ * Caught by asking the browser's own `getFrequencyResponse` what it thought the filters did and
+ * comparing that against `responseDb`. Neither side could have found it alone: the domain's
+ * transfer function was right all along, and the graph was faithfully building the wrong filter.
+ */
+function webAudioQ(kind: BiquadKind, q: number): number {
+  return kind === 'peaking' ? q : 20 * Math.log10(q);
+}
 
 export type LayerChain = {
   /** Where segments are scheduled. Everything downstream is this layer's own. */
@@ -103,7 +122,7 @@ export function createLayerChain(
         if (band) {
           filter.type = band.kind;
           filter.frequency.value = band.frequency;
-          filter.Q.value = band.q;
+          filter.Q.value = webAudioQ(band.kind, band.q);
           filter.gain.value = band.gainDb;
         } else {
           // Unity, exactly: a peaking filter at 0 dB passes its input unchanged, so a spare slot

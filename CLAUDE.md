@@ -582,6 +582,25 @@ passband and wrong near Nyquist, where a digital biquad's response is frequency-
 falls away faster. High Cut is 28.8 dB down at 18 kHz, not the 14 the analogue prototype
 predicts. **Do not hand-estimate a digital filter's stopband — run `responseDb`.**
 
+**Web Audio's `Q` is in DECIBELS for `lowpass` and `highpass`, and linear for `peaking`.** The
+spec converts the first two with `10^(Q/20)` before use, so handing a `BiquadFilterNode` the
+domain's Butterworth 0.7071 asks for an effective Q of 1.085 — a resonant bump, which is the
+exact colour `BUTTERWORTH_Q` exists to avoid. `effects-chain.ts`'s `webAudioQ` converts.
+
+Reported as "EQ is either not working or too subtle to hear", and it was neither: it worked and
+had been quietly softened, by 3.7 dB at the corner. **Neither side could have found it alone** —
+`responseDb` was right, `tests/eq.test.ts` passed, and the graph faithfully built the wrong
+filter. It took asking the browser's own `getFrequencyResponse` what it thought those filters
+did and diffing that against the domain. `ui/src/verify-eq.ts` is that comparison, now run end
+to end through rendered audio; it reports a worst error of 0 dB across five presets and nine
+frequencies, and it is the guard against this coming back.
+
+**Measure a sine's amplitude with RMS, not peak.** The first version of that check used
+peak-of-samples, which is biased low whenever there are few samples per cycle: at 12 kHz there
+are 3.7, so the nearest sample can sit 49° off the crest and read 3.7 dB down. It reported a
+disagreement the same size as the real one and would have sent the next reader after the wrong
+thing.
+
 **Q is 0.707, not 1.** Sources suggest Q = 1 on a high-pass, which puts a resonant peak at the
 corner — a colour for a known source, not a default for arbitrary material. 24 dB/octave would
 be two cascaded biquads, not a Q change.
