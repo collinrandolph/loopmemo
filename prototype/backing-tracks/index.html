@@ -1,0 +1,643 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Backing tracks — selection prototype</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #16121f;
+    --panel: #1f1a2e;
+    --panel-hover: #271f3d;
+    --border: #33294f;
+    --text: #ece7f6;
+    --dim: #9a8fb8;
+    --accent: #8b5cf6;
+    --kick: #f97066;
+    --snare: #fbbf24;
+    --hat: #60a5fa;
+    --hatOpen: #34d399;
+    --strike: #8b5cf6;
+    --chunk: #c4b5fd;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    padding: 24px;
+  }
+  h1 {
+    font-size: 15px;
+    font-weight: 600;
+    margin: 0 0 4px;
+  }
+  .subtitle {
+    color: var(--dim);
+    font-size: 12px;
+    margin: 0 0 24px;
+  }
+  .layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    max-width: 980px;
+  }
+  @media (max-width: 760px) {
+    .layout { grid-template-columns: 1fr; }
+  }
+  section.track {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+  }
+  .track-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .track-head .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+  }
+  .track-head h2 {
+    font-size: 13px;
+    font-weight: 600;
+    margin: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .pattern-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 16px;
+  }
+  .pattern-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 8px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    border: 1px solid transparent;
+  }
+  .pattern-item:hover { background: var(--panel-hover); }
+  .pattern-item.is-active {
+    background: var(--panel-hover);
+    border-color: var(--accent);
+  }
+  .pattern-item .name { font-weight: 500; }
+  .pattern-item .meta {
+    color: var(--dim);
+    font-size: 11px;
+  }
+  .grid-wrap {
+    border-top: 1px solid var(--border);
+    padding-top: 12px;
+  }
+  .grid-title {
+    font-size: 11px;
+    color: var(--dim);
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+  }
+  .beat-row {
+    display: grid;
+    grid-template-columns: 56px repeat(8, 1fr);
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 4px;
+  }
+  .beat-row .voice-label {
+    font-size: 11px;
+    color: var(--dim);
+    text-align: right;
+    padding-right: 6px;
+  }
+  .beat-row .cell {
+    height: 22px;
+    border-radius: 4px;
+    background: #2a2340;
+  }
+  .beat-row .cell.on { }
+  .beat-row .cell.downbeat { outline: 1px solid #3d3260; outline-offset: -1px; }
+  .beat-ruler {
+    display: grid;
+    grid-template-columns: 56px repeat(8, 1fr);
+    gap: 4px;
+    margin-bottom: 6px;
+  }
+  .beat-ruler span {
+    font-size: 10px;
+    color: var(--dim);
+    text-align: center;
+  }
+  .chip-row {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
+  .chip {
+    padding: 5px 12px;
+    border-radius: 999px;
+    background: var(--panel-hover);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .chip.is-active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  .octave-wheel {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .octave-wheel button {
+    width: 26px;
+    height: 26px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--panel-hover);
+    color: var(--text);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+  }
+  .octave-wheel .value {
+    min-width: 64px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+  .legend {
+    display: flex;
+    gap: 12px;
+    font-size: 11px;
+    color: var(--dim);
+    margin-top: 10px;
+  }
+  .legend .swatch {
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    border-radius: 2px;
+    margin-right: 4px;
+    vertical-align: middle;
+  }
+  .global-transport {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 20px;
+    padding: 12px 16px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    max-width: 980px;
+  }
+  .transport-note {
+    color: var(--dim);
+    font-size: 11px;
+  }
+  .mute-chip {
+    margin-left: auto;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: var(--panel-hover);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-size: 11px;
+    cursor: pointer;
+  }
+  .mute-chip.is-muted {
+    background: transparent;
+    border-color: var(--border);
+    color: var(--dim);
+    text-decoration: line-through;
+  }
+  .kit-description {
+    font-size: 11px;
+    color: var(--dim);
+  }
+  .play-btn {
+    padding: 7px 16px;
+    border-radius: 8px;
+    border: 1px solid var(--accent);
+    background: var(--accent);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .play-btn.is-playing {
+    background: var(--panel-hover);
+    color: var(--accent);
+  }
+  .bpm-field {
+    font-size: 11px;
+    color: var(--dim);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .bpm-field input {
+    width: 56px;
+    padding: 5px 6px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--panel-hover);
+    color: var(--text);
+    font-size: 12px;
+  }
+  footer {
+    max-width: 980px;
+    margin-top: 20px;
+    color: var(--dim);
+    font-size: 11px;
+    border-top: 1px solid var(--border);
+    padding-top: 12px;
+  }
+</style>
+</head>
+<body>
+
+<h1>Backing tracks — selection prototype</h1>
+<p class="subtitle">Standalone. One bar, looped. Both tracks are synthesized live — nothing here is
+a sample, and spec §2.6 no longer describes sampling.</p>
+
+<div class="global-transport">
+  <button class="play-btn" id="backing-play">▶ Play</button>
+  <label class="bpm-field">BPM
+    <input type="number" id="bpm-input" min="60" max="240" value="96" />
+  </label>
+  <span class="transport-note">one shared clock — drums and chords play in sync, mute either to isolate it</span>
+</div>
+
+<div class="layout">
+
+  <section class="track" id="drum-track">
+    <div class="track-head">
+      <span class="dot" style="background: var(--kick)"></span>
+      <h2>Drum pattern</h2>
+      <button class="mute-chip" id="drum-mute">On</button>
+    </div>
+
+    <!-- Kit and tone descriptions stay in patterns.js for reference, but are deliberately not
+         shown: the name is the control, and a sentence of prose under a chip row is a caption
+         nobody reads while listening. -->
+    <div class="grid-title" style="margin-bottom:6px;">Kit</div>
+    <div class="chip-row" id="kit-chips" style="margin-bottom:16px;"></div>
+
+    <div class="grid-title" style="margin-bottom:6px;">Pattern</div>
+    <div class="pattern-list" id="drum-list"></div>
+    <div class="grid-wrap">
+      <div class="grid-title">
+        <span id="drum-grid-title">—</span>
+        <span id="drum-kit-label"></span>
+      </div>
+      <div class="beat-ruler" id="drum-ruler"></div>
+      <div id="drum-grid"></div>
+      <div class="legend">
+        <span><span class="swatch" style="background: var(--kick)"></span>Kick</span>
+        <span><span class="swatch" style="background: var(--snare)"></span>Snare</span>
+        <span><span class="swatch" style="background: var(--hat)"></span>Hat</span>
+        <span><span class="swatch" style="background: var(--hatOpen)"></span>Open hat</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="track" id="chord-track">
+    <div class="track-head">
+      <span class="dot" style="background: var(--strike)"></span>
+      <h2>Chord backing</h2>
+      <button class="mute-chip" id="chord-mute">On</button>
+    </div>
+
+    <div class="grid-title" style="margin-bottom:6px;">Chord</div>
+    <div class="chip-row" id="note-chips"></div>
+    <div class="chip-row" id="accidental-chips"></div>
+    <div class="chip-row" id="quality-chips" style="margin-bottom:16px;"></div>
+
+    <div class="grid-title" style="margin-bottom:6px;">Tone</div>
+    <div class="chip-row" id="tone-chips"></div>
+
+    <div class="grid-title" style="margin-bottom:6px;">Octave</div>
+    <div class="octave-wheel" style="margin-bottom:16px;">
+      <button id="octave-down" aria-label="Octave down">−</button>
+      <span class="value" id="octave-value">0</span>
+      <button id="octave-up" aria-label="Octave up">+</button>
+    </div>
+
+    <div class="grid-title" style="margin-bottom:6px;">Strum pattern</div>
+    <div class="pattern-list" id="chord-list"></div>
+    <div class="grid-wrap">
+      <div class="grid-title">
+        <span id="chord-grid-title">—</span>
+      </div>
+      <div class="beat-ruler" id="chord-ruler"></div>
+      <div id="chord-grid"></div>
+      <div class="legend">
+        <span><span class="swatch" style="background: var(--strike)"></span>Strike</span>
+        <span><span class="swatch" style="background: var(--chunk)"></span>Chunk</span>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<footer>
+  6 drum patterns · 4 drum kits · 7 chord strum patterns · octave Low/Default/High (±1) · kit
+  and pattern are independent for drums, same as tone and pattern are for chords · both tracks
+  synthesized live, sharing one clock · strum pattern is per project, not per chord slot
+</footer>
+
+<script src="patterns.js"></script>
+<script src="audio.js"></script>
+<script>
+  // ---- shared beat-grid rendering -----------------------------------------
+  // 8 columns: 1, &, 2, &, 3, &, 4, & — the full straight-8th resolution every
+  // pattern in the baseline set fits inside.
+  const COLUMNS = [1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5];
+  const COLUMN_LABELS = ['1', '&', '2', '&', '3', '&', '4', '&'];
+
+  function renderRuler(el) {
+    el.innerHTML = '<span></span>' + COLUMN_LABELS.map((l) => `<span>${l}</span>`).join('');
+  }
+
+  function renderVoiceRow(container, label, onsets, colorVar) {
+    const row = document.createElement('div');
+    row.className = 'beat-row';
+    const labelEl = document.createElement('span');
+    labelEl.className = 'voice-label';
+    labelEl.textContent = label;
+    row.appendChild(labelEl);
+    for (const [i, beat] of COLUMNS.entries()) {
+      const cell = document.createElement('div');
+      cell.className = 'cell' + (beat % 1 === 0 ? ' downbeat' : '');
+      if (onsets.includes(beat)) {
+        cell.classList.add('on');
+        cell.style.background = `var(${colorVar})`;
+      }
+      row.appendChild(cell);
+    }
+    container.appendChild(row);
+  }
+
+  // ---- drum track -----------------------------------------------------------
+  const VOICE_LABELS = { kick: 'Kick', snare: 'Snare', hat: 'Hat', hatOpen: 'Open hat' };
+  const VOICE_COLORS = { kick: '--kick', snare: '--snare', hat: '--hat', hatOpen: '--hatOpen' };
+  const VOICE_ORDER = ['kick', 'snare', 'hat', 'hatOpen'];
+
+  let drumPatternId = DRUM_PATTERNS[0].id;
+  let drumKitId = DRUM_KITS[0].id;
+
+  function renderKitChips() {
+    const wrap = document.getElementById('kit-chips');
+    wrap.innerHTML = '';
+    for (const k of DRUM_KITS) {
+      const chip = document.createElement('span');
+      chip.className = 'chip' + (k.id === drumKitId ? ' is-active' : '');
+      chip.textContent = k.name;
+      chip.addEventListener('click', () => {
+        drumKitId = k.id;
+        renderKitChips();
+        renderDrumGrid();
+        onControlChange();
+      });
+      wrap.appendChild(chip);
+    }
+  }
+
+  function renderDrumList() {
+    const list = document.getElementById('drum-list');
+    list.innerHTML = '';
+    for (const p of DRUM_PATTERNS) {
+      const item = document.createElement('div');
+      item.className = 'pattern-item' + (p.id === drumPatternId ? ' is-active' : '');
+      item.innerHTML = `<span class="name">${p.name}</span><span class="meta">${p.feel}</span>`;
+      item.addEventListener('click', () => {
+        drumPatternId = p.id;
+        renderDrumList();
+        renderDrumGrid();
+        onControlChange();
+      });
+      list.appendChild(item);
+    }
+  }
+
+  function renderDrumGrid() {
+    const pattern = DRUM_PATTERNS.find((p) => p.id === drumPatternId);
+    document.getElementById('drum-grid-title').textContent = pattern.name;
+    document.getElementById('drum-kit-label').textContent =
+      DRUM_KITS.find((k) => k.id === drumKitId).name + ' kit';
+    renderRuler(document.getElementById('drum-ruler'));
+    const grid = document.getElementById('drum-grid');
+    grid.innerHTML = '';
+    for (const voice of VOICE_ORDER) {
+      if (!pattern.voices[voice]) continue;
+      renderVoiceRow(grid, VOICE_LABELS[voice], pattern.voices[voice], VOICE_COLORS[voice]);
+    }
+  }
+
+  // ---- chord track ------------------------------------------------------------
+  let chordPatternId = CHORD_PATTERNS[0].id;
+  let tone = CHORD_TONES[0];
+  let octave = OCTAVE_DEFAULT;
+
+  function renderToneChips() {
+    const wrap = document.getElementById('tone-chips');
+    wrap.innerHTML = '';
+    for (const t of CHORD_TONES) {
+      const chip = document.createElement('span');
+      chip.className = 'chip' + (t === tone ? ' is-active' : '');
+      chip.textContent = t;
+      chip.addEventListener('click', () => {
+        tone = t;
+        renderToneChips();
+        onControlChange();
+      });
+      wrap.appendChild(chip);
+    }
+  }
+
+  function renderOctave() {
+    document.getElementById('octave-value').textContent = OCTAVE_LABELS[String(octave)];
+  }
+
+  document.getElementById('octave-down').addEventListener('click', () => {
+    octave = Math.max(OCTAVE_RANGE[0], octave - 1);
+    renderOctave();
+    onControlChange();
+  });
+  document.getElementById('octave-up').addEventListener('click', () => {
+    octave = Math.min(OCTAVE_RANGE[OCTAVE_RANGE.length - 1], octave + 1);
+    renderOctave();
+    onControlChange();
+  });
+
+  function renderChordList() {
+    const list = document.getElementById('chord-list');
+    list.innerHTML = '';
+    for (const p of CHORD_PATTERNS) {
+      const item = document.createElement('div');
+      item.className = 'pattern-item' + (p.id === chordPatternId ? ' is-active' : '');
+      item.innerHTML = `<span class="name">${p.name}</span><span class="meta">${p.feel}</span>`;
+      item.addEventListener('click', () => {
+        chordPatternId = p.id;
+        renderChordList();
+        renderChordGrid();
+        onControlChange();
+      });
+      list.appendChild(item);
+    }
+  }
+
+  function renderChordGrid() {
+    const pattern = CHORD_PATTERNS.find((p) => p.id === chordPatternId);
+    document.getElementById('chord-grid-title').textContent = pattern.name;
+    renderRuler(document.getElementById('chord-ruler'));
+    const grid = document.getElementById('chord-grid');
+    grid.innerHTML = '';
+    renderVoiceRow(grid, 'Strike', pattern.strikes, '--strike');
+    renderVoiceRow(grid, 'Chunk', pattern.chunks, '--chunk');
+  }
+
+  // ---- chord root + quality --------------------------------------------------
+  // Defaults match ui/src/chords.ts's defaultChord(): C natural major.
+  let chordLetter = 'C';
+  let chordAccidental = 'natural';
+  let chordQuality = 'major';
+
+  function renderNoteChips() {
+    const wrap = document.getElementById('note-chips');
+    wrap.innerHTML = '';
+    for (const letter of NOTE_LETTERS) {
+      const chip = document.createElement('span');
+      chip.className = 'chip' + (letter === chordLetter ? ' is-active' : '');
+      chip.textContent = letter;
+      chip.addEventListener('click', () => {
+        chordLetter = letter;
+        renderNoteChips();
+        onControlChange();
+      });
+      wrap.appendChild(chip);
+    }
+  }
+
+  function renderAccidentalChips() {
+    const wrap = document.getElementById('accidental-chips');
+    wrap.innerHTML = '';
+    for (const a of ACCIDENTALS) {
+      const chip = document.createElement('span');
+      chip.className = 'chip' + (a.id === chordAccidental ? ' is-active' : '');
+      chip.textContent = a.label;
+      chip.addEventListener('click', () => {
+        chordAccidental = a.id;
+        renderAccidentalChips();
+        onControlChange();
+      });
+      wrap.appendChild(chip);
+    }
+  }
+
+  function renderQualityChips() {
+    const wrap = document.getElementById('quality-chips');
+    wrap.innerHTML = '';
+    for (const q of QUALITIES) {
+      const chip = document.createElement('span');
+      chip.className = 'chip' + (q.id === chordQuality ? ' is-active' : '');
+      chip.textContent = q.label;
+      chip.addEventListener('click', () => {
+        chordQuality = q.id;
+        renderQualityChips();
+        onControlChange();
+      });
+      wrap.appendChild(chip);
+    }
+  }
+
+  // ---- transport ---------------------------------------------------------------
+  // One shared Play/Stop and BPM drive both tracks off a single time anchor (see audio.js) —
+  // two independently-clicked transports would drift against each other on every replay.
+  let chordMuted = false;
+  let drumMuted = false;
+
+  function buildParams() {
+    const bpmInput = Number(document.getElementById('bpm-input').value) || BPM_DEFAULT;
+    return {
+      bpm: Math.min(BPM_MAX, Math.max(BPM_MIN, bpmInput)),
+      chordMuted,
+      drumMuted,
+      chord: {
+        pattern: CHORD_PATTERNS.find((p) => p.id === chordPatternId),
+        tone,
+        root: { letter: chordLetter, accidental: chordAccidental },
+        quality: chordQuality,
+        octave,
+      },
+      drum: {
+        pattern: DRUM_PATTERNS.find((p) => p.id === drumPatternId),
+        kit: DRUM_KITS.find((k) => k.id === drumKitId),
+      },
+    };
+  }
+
+  function onControlChange() {
+    if (BackingEngine.isPlaying) BackingEngine.updateParams(buildParams());
+  }
+
+  const playBtn = document.getElementById('backing-play');
+  playBtn.addEventListener('click', () => {
+    if (BackingEngine.isPlaying) {
+      BackingEngine.stop();
+      playBtn.textContent = '▶ Play';
+      playBtn.classList.remove('is-playing');
+    } else {
+      BackingEngine.start(buildParams());
+      playBtn.textContent = '■ Stop';
+      playBtn.classList.add('is-playing');
+    }
+  });
+
+  document.getElementById('bpm-input').addEventListener('change', onControlChange);
+
+  function muteChip(id, getMuted, setMuted) {
+    const chip = document.getElementById(id);
+    function render() {
+      chip.textContent = getMuted() ? 'Muted' : 'On';
+      chip.classList.toggle('is-muted', getMuted());
+    }
+    chip.addEventListener('click', () => {
+      setMuted(!getMuted());
+      render();
+      onControlChange();
+    });
+    render();
+  }
+  muteChip('drum-mute', () => drumMuted, (v) => { drumMuted = v; });
+  muteChip('chord-mute', () => chordMuted, (v) => { chordMuted = v; });
+
+  // ---- init -----------------------------------------------------------------
+  renderKitChips();
+  renderDrumList();
+  renderDrumGrid();
+  renderNoteChips();
+  renderAccidentalChips();
+  renderQualityChips();
+  renderToneChips();
+  renderOctave();
+  renderChordList();
+  renderChordGrid();
+</script>
+
+</body>
+</html>
