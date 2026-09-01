@@ -168,6 +168,7 @@ function render() {
               project,
               layerIndex: route.layerIndex,
               engine,
+              takes,
               onChange: replaceLayer,
               onDone: () => go({ screen: 'playback' }),
             })

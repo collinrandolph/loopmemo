@@ -835,6 +835,23 @@ export function audioEngine(sampleRate: number, latencyFrames = 0): BackingEngin
       // a node underneath audio that is already sounding — the same reason the pan presets ramp
       // a wet gain rather than rebuilding the delay.
       const previous = new Map(layerVoices.map((v) => [v.layer.index, v.chain]));
+      const wasLayer = new Map(layerVoices.map((v) => [v.layer.index, v.layer]));
+
+      /**
+       * Did anything change that is baked into *already scheduled* audio?
+       *
+       * An edit to the arrangement has to be heard now — §2.4 calls applying an edit to playing
+       * audio core functionality, not polish, and the horizon is deliberately short so a splice
+       * is never far behind the gesture. But a level, EQ or pan change needs no rescheduling at
+       * all: those live on the chain, which the scheduled buffers are already routed through.
+       *
+       * Distinguished by *identity*, which works because layers are immutable values: an edit
+       * produces a new `barSources` array, while dragging the level slider leaves it the same
+       * reference. That matters — a slider emits an event per pixel, and rescheduling on each
+       * one would tear down and rebuild the horizon dozens of times a second.
+       */
+      let replan = false;
+
       layerVoices = project.layers
         .filter((layer) => layer.sessions.length > 0)
         .filter((layer) => isLayerAudible(layer, recordingIntoLayerIndex))
@@ -842,7 +859,17 @@ export function audioEngine(sampleRate: number, latencyFrames = 0): BackingEngin
           // Reused where it exists, so a level or preset change ramps a running graph instead of
           // rebuilding one under audio that is already sounding (§2.8).
           const chain = previous.get(layer.index) ?? createLayerChain(c, bus!, t);
+          const was = wasLayer.get(layer.index);
+          if (
+            !was ||
+            was.barSources !== layer.barSources ||
+            was.mutedSlots !== layer.mutedSlots ||
+            was.sessions !== layer.sessions
+          ) {
+            replan = true;
+          }
           previous.delete(layer.index);
+          wasLayer.delete(layer.index);
           chain.setEq(layer.eq);
           chain.setPan(layer.pan);
           chain.setLevel(layer.level);
@@ -851,6 +878,8 @@ export function audioEngine(sampleRate: number, latencyFrames = 0): BackingEngin
       // Whatever is left was audible and is not any more. Disconnected rather than silenced, so a
       // muted layer costs nothing per bar.
       for (const chain of previous.values()) chain.disconnect();
+      if (wasLayer.size > 0) replan = true; // a layer went silent; its bars must stop
+      if (replan) rescheduleFuture();
     },
 
     destroy() {

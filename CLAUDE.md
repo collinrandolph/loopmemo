@@ -537,6 +537,22 @@ instead of 2.5. **It is invisible until a layer has audio to play**, which is th
 closing the record-to-playback loop early rather than building recording and playback separately
 and meeting in the middle.
 
+**The engine holds a snapshot, so every screen that edits must push it — this has been got
+wrong three times.** `setLayers` copies each `Layer` into a `LayerVoice`, and nothing re-reads
+project state on its own. The backing rows forgot it and a kit swap was silent; the EQ and pan
+chips forgot it and a preset change did nothing; the Edit Layer axes forgot it and a swipe
+redrew the tile while playback kept scheduling the old arrangement — the drawing and the audio
+disagreeing about one edit, which is the split §1.1 exists to prevent. Both screens now have a
+`syncLayers()` and every mutation calls it.
+
+**`setLayers` reschedules only when the *arrangement* moved, and tells them apart by identity.**
+An edit has to be heard now — §2.4 calls applying an edit to playing audio core functionality
+rather than polish — but a level, EQ or pan change needs no rescheduling at all, because those
+live on the chain the scheduled buffers already run through. Layers are immutable values, so an
+edit produces a new `barSources` array while a slider drag leaves the same reference. That
+distinction is load-bearing: a slider emits an event per pixel, and rescheduling on each one
+would tear down and rebuild the horizon dozens of times a second.
+
 **Which bar the backing generates comes from the transport, through `slotAt`.** The backing is
 *generated*, so unlike `segments()` it needs to be told which bar to make — and the engine counted
 its own bars off its own frame origin instead of asking. Two derivations of one quantity, and they

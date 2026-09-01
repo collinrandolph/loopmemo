@@ -35,6 +35,7 @@ import { loopFrames } from '../../src/domain/timing.ts';
 import type { BackingEngine } from './audio.ts';
 import { type Rgb, type WaveNode, LR, clamp01, el, motion, ramp, sizing } from './kit.ts';
 import { amp, simSession } from './sim.ts';
+import type { TakeStore } from './takes.ts';
 import { barAmplitude } from './peaks.ts';
 
 const BARS_PER_ROW = 4;
@@ -123,6 +124,8 @@ export function editLayerScreen(opts: {
   // `BackingEngine`, not the bare `Engine`: the backing has to be told which traversal is
   // playing, or a one-bar preview walks the chord progression while the sweep holds one slot.
   engine: BackingEngine;
+  /** Where captured audio lives; the engine needs it to play what this screen edits. */
+  takes: TakeStore;
   onChange(layer: Layer): void;
   onDone(): void;
 }): { node: HTMLElement; destroy(): void } {
@@ -274,6 +277,7 @@ export function editLayerScreen(opts: {
     onToggle() {
       layer = { ...layer, muted: !layer.muted };
       opts.onChange(layer);
+      syncLayers();
       volume.update();
     },
   });
@@ -286,8 +290,25 @@ export function editLayerScreen(opts: {
     layer = { ...layer, level: Number(slider.value) / 100 };
     volume.update();
     opts.onChange(layer);
+    syncLayers();
   });
   controls.append(volume, slider);
+
+  /**
+   * Push this screen edit at the engine.
+   *
+   * The engine holds a snapshot of each layer, taken when it was last told. Without this a
+   * swipe rewrote barSources, the tiles redrew from the new arrangement, and playback went on
+   * scheduling the old one — the drawing and the audio disagreeing about the same edit, which
+   * is the exact split 1.1 warns about. 2.4 also calls applying an edit to *playing* audio core
+   * functionality rather than polish, so it has to land now, not on the next navigation.
+   */
+  function syncLayers() {
+    opts.engine.setLayers(
+      { ...project, layers: project.layers.map((l) => (l.index === layer.index ? layer : l)) },
+      opts.takes,
+    );
+  }
 
   function index() {
     return layerPassIndex(layer, t);
@@ -366,6 +387,7 @@ export function editLayerScreen(opts: {
     layer = { ...layer, barSources: next };
     redraw(slot);
     opts.onChange(layer);
+    syncLayers();
   }
 
   /**
@@ -390,6 +412,7 @@ export function editLayerScreen(opts: {
           layer = { ...layer, mutedSlots: toggleSlotMute(layer.mutedSlots, slot) };
           redraw(slot);
           opts.onChange(layer);
+          syncLayers();
         }, HOLD_MS);
       },
 
