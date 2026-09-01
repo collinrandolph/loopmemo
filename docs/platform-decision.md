@@ -251,6 +251,14 @@ In rough priority order. The first two decide whether the architecture holds at 
    whether the design works.
 2. **Loopback calibration accuracy.** Can round-trip latency be measured reliably enough, and
    is it stable across a session?
+
+   *Half of this is now closed.* The capture path itself is exact: an `AudioWorkletProcessor`
+   stamping chunks from the worklet scope's own `currentFrame` returns 72,000 frames of noise
+   bit-identically, with nothing missing and the anchor landing on the frame the main thread
+   expected (`ui/src/verify-capture.ts`). Compensation is applied and its sign is asserted —
+   a take is anchored *earlier* than it arrived, never later. What remains is the acoustic half:
+   how many frames to subtract, which needs a real microphone and a real output, and is the only
+   part of §2.3 a development machine cannot answer alone.
 3. **Simultaneous playback and recording** without the output route collapsing (the failure
    mode §6 describes for Safari — confirm native RN does not share it). Promoted: for the web
    route this is the question that decides everything, and it is answerable today for free.
