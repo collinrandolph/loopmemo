@@ -4,7 +4,7 @@ import { describe, it } from 'node:test';
 import { setSlot, setSlotMuted } from '../src/domain/arrangement.ts';
 import { barRef } from '../src/domain/bar-ref.ts';
 import {
-  type BackingTrack,
+  type BackingMixSource,
   bouncePlan,
   bounceSeed,
   isAudibleInMixdown,
@@ -46,8 +46,9 @@ function withLayers(p: Project, count: number, edit?: (l: Layer, i: number) => L
   return { ...p, layers };
 }
 
-const ref = (over: Partial<BackingTrack> = {}): BackingTrack => ({
+const ref = (over: Partial<BackingMixSource> = {}): BackingMixSource => ({
   id: 'drums',
+  label: 'Drums',
   muted: false,
   level: 1,
   ...over,
@@ -61,7 +62,7 @@ describe('the mixdown rule (§2.6)', () => {
 
   it('carries audible backing tracks into the plan', () => {
     const plan = bouncePlan(withLayers(project(), 2), [ref(), ref({ id: 'chords', muted: true })]);
-    assert.deepEqual(plan?.backing.map((r: BackingTrack) => r.id), ['drums']);
+    assert.deepEqual(plan?.backing.map((r: BackingMixSource) => r.id), ['drums']);
   });
 });
 

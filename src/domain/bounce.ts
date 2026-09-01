@@ -1,4 +1,5 @@
 import { type RetainedBar, compressionPlan } from './arrangement.ts';
+import type { BackingMixSource } from './backing.ts';
 import { type PanPlan, haasDelayFrames, panPlan, panPreset } from './effects.ts';
 import { type EqBand, eqPreset } from './eq.ts';
 import type { RecordingSession } from './pass-index.ts';
@@ -26,22 +27,15 @@ import { loopFrames } from './timing.ts';
  */
 
 /**
- * Enough of a backing track to apply the mixdown rule to it.
+ * §2.6's backing tracks are modelled now, so what used to be a provisional `BackingTrack` here is
+ * `backing.ts`'s real one, flattened for the mixdown rule by `backingMixSources`.
  *
- * ⚠️ **Provisional.** §2.6's drum loop and chord bed are not modelled yet — no `originalBPM`,
- * no playback ratio, no chord settings — so this is the subset bounce needs rather than a
- * definition of what they are. When §2.6 is built this should be absorbed, not duplicated.
- *
- * **There is no `enabled`.** A backing track is either in the sketch or muted out of it, and
- * those were two ways of saying one thing — with only mute reachable, `enabled` was a flag the
- * user could not set that nonetheless decided whether a stem file got written. Muting is the
- * whole of it now.
+ * **What a bounce should do with them is open** (§2.7, §6.1) — whether they belong in the mixdown
+ * at all, and whether their settings carry to the seeded project. That is why this still takes
+ * them as an argument rather than reading `project.backing` itself: the decision stays visible at
+ * the call site instead of being quietly settled by a default here.
  */
-export type BackingTrack = {
-  readonly id: string;
-  readonly muted: boolean;
-  readonly level: number;
-};
+export type { BackingMixSource } from './backing.ts';
 
 /**
  * §2.6's export rule: *what you hear is what you export*, and it applies identically to a
@@ -72,7 +66,7 @@ export type BouncePlan = {
   /** The mixdown is exactly one loop, which is what makes it Pass 1 of the new project. */
   readonly frameCount: number;
   readonly layers: readonly MixSource[];
-  readonly backing: readonly BackingTrack[];
+  readonly backing: readonly BackingMixSource[];
   /**
    * Frames of delay tail that must **wrap to the start of the loop** rather than being
    * truncated (§2.8).
@@ -99,7 +93,7 @@ function contributes(bars: readonly RetainedBar[]): boolean {
  */
 export function bouncePlan(
   project: Project,
-  backing: readonly BackingTrack[] = [],
+  backing: readonly BackingMixSource[] = [],
 ): BouncePlan | undefined {
   const t = projectTiming(project);
   const layers: MixSource[] = [];
@@ -144,10 +138,15 @@ export function bouncePlan(
  * inside a project, and the seven-layer ceiling becomes a stage rather than a wall.
  *
  * **Quality carries from the source, and that is forced rather than chosen.** §2.7's bounce
- * list names BPM, bar count and chord settings but omits it; the mixdown is a sum of the
- * source's layers and therefore sits at the source's sample rate, so seeding a project at any
- * other rate would need a resample at every splice — precisely what snapshotting quality at
- * creation exists to prevent.
+ * list names BPM and bar count but omits it; the mixdown is a sum of the source's layers and
+ * therefore sits at the source's sample rate, so seeding a project at any other rate would need
+ * a resample at every splice — precisely what snapshotting quality at creation exists to prevent.
+ *
+ * **The seeded project starts on the default backing, and that is a placeholder rather than an
+ * answer.** Whether the source's pattern, kit, slots, chord pattern, tone and octave should carry is
+ * open (§2.7), and it is coupled to whether the backing was in the mixdown at all — carrying the
+ * settings *and* baking the audio plays the drums twice. Defaults are what `createProject` gives;
+ * nothing here has decided anything. Resolve §2.7 before changing this line.
  *
  * **`isCompressed` is false.** The flag means this project's recorded passes were discarded;
  * a new project never had any, so the label would be a lie in the Library.

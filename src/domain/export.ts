@@ -1,4 +1,5 @@
-import { type BackingTrack, isAudibleInMixdown } from './bounce.ts';
+import type { BackingMixSource } from './backing.ts';
+import { isAudibleInMixdown } from './bounce.ts';
 import { isStereoPreset, panPreset } from './effects.ts';
 import {
   type AudioQuality,
@@ -76,8 +77,11 @@ export type ExportPlan = {
 export type ExportOptions = {
   readonly format: ExportFormat;
   readonly mp3Bitrate: Mp3Bitrate;
-  /** §2.6's backing tracks, still provisional here — see `bounce.ts`. */
-  readonly backing?: readonly (BackingTrack & { readonly label: string })[];
+  /**
+   * §2.6's backing tracks, flattened by `backingMixSources`. Passed in rather than read off the
+   * project so that one caller cannot export a mute the Playback screen never applied.
+   */
+  readonly backing?: readonly BackingMixSource[];
 };
 
 /**

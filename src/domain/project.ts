@@ -7,6 +7,7 @@ import {
   initialArrangement,
   recordedOrder,
 } from './arrangement.ts';
+import { type BackingTracks, defaultBacking } from './backing.ts';
 import type { PanPresetId } from './effects.ts';
 import type { EqPresetId } from './eq.ts';
 import { type PassIndex, type RecordingSession, passIndex, totalPasses } from './pass-index.ts';
@@ -87,6 +88,15 @@ export type Project = {
    */
   readonly isCompressed: boolean;
   readonly bouncedFromProjectId?: string;
+  /**
+   * The drum track and chord bed (§2.6).
+   *
+   * **Not optional, and not locked.** Both tracks always exist — a sketch that does not want the
+   * chords mutes them (§1.5) — and unlike `bpm` and `barCount` they stay editable for the whole
+   * life of the project. Nothing derived depends on them and no recorded frame references them,
+   * so `isConfigurationLocked` deliberately does not cover this field.
+   */
+  readonly backing: BackingTracks;
   readonly layers: readonly Layer[];
 };
 
@@ -121,6 +131,8 @@ export function createProject(options: {
   quality: AudioQuality;
   beatsPerBar?: number;
   now?: string;
+  /** Setup picks a starting groove (§4.5); omitted, the project starts on the defaults. */
+  backing?: BackingTracks;
 }): Project {
   const { id, name, bpm, barCount, quality } = options;
   if (!Number.isInteger(bpm) || bpm < BPM_MIN || bpm > BPM_MAX) {
@@ -140,6 +152,7 @@ export function createProject(options: {
     beatsPerBar: options.beatsPerBar ?? 4,
     audioQuality: quality,
     isCompressed: false,
+    backing: options.backing ?? defaultBacking(),
     layers: Array.from({ length: LAYER_COUNT }, (_, i) => emptyLayer(i)),
   };
 }
