@@ -9,6 +9,7 @@ import { libraryScreen } from './library.ts';
 import { playbackScreen } from './playback.ts';
 import { projectSettingsScreen } from './settings.ts';
 import { demoLibrary } from './sim.ts';
+import { takeStore } from './takes.ts';
 
 /**
  * Shell for the UI pass: the screens over the real domain and a simulated engine.
@@ -40,6 +41,17 @@ document.body.append(nav, host);
 
 let current: { destroy(): void } | undefined;
 let currentEngine: BackingEngine | undefined;
+
+/**
+ * Captured audio, held here rather than on a screen or an engine.
+ *
+ * Both of those are rebuilt on every navigation, and a take has to outlive them — recording on
+ * Playback and then opening Edit Layer to hunt through the passes is the app's central loop, and
+ * it would be pointless if the audio went with the screen. It is deliberately not in the
+ * `Project` either: a project is a value that gets copied on every edit, and copying it should
+ * not mean copying tens of megabytes of samples.
+ */
+const takes = takeStore();
 
 function open(): Project {
   return projects.find((p) => p.id === openId) ?? projects[0]!;
@@ -107,10 +119,12 @@ function render() {
   //
   // A **sounding** engine, and it is the same `Engine` the simulated one implements — that type
   // was written as the seam a real engine would replace, so this is the swap happening rather
-  // than a second path beside it. The backing tracks are what it can play; layers stay silent
-  // because there is no recorded audio to play.
+  // than a second path beside it. It plays the backing tracks it synthesises and the layers it
+  // has been given audio for; the demo projects have none, so those stay silent until recorded.
   const engine = audioEngine(QUALITY_SPEC[project.audioQuality].sampleRate);
   engine.setBacking(project.backing, projectTiming(project));
+  // A fresh engine on every navigation, so it has to be told what the layers hold each time.
+  engine.setLayers(project, takes);
   currentEngine = engine;
 
   // Where an escape from Export lands: back where it was opened from, never somewhere else.
@@ -136,6 +150,7 @@ function render() {
         ? playbackScreen({
             project,
             engine,
+            takes,
             onChange: replaceLayer,
             onBackingChange(backing) {
               replaceProject({ ...open(), backing });

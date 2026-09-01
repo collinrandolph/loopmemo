@@ -499,6 +499,15 @@ file, no region and no `BarRef`. One shared anchor (§0.4), two builders. Do not
 owns slots 2, 6, 10, 14, 18, 22. Previewing a bar plays the chord that owns it, not the first
 chord and not none.
 
+**The `AudioContext` must be created at the project's sample rate, never the device's.**
+`new AudioContext()` takes the hardware default — 48 kHz here — while `Timing` computes every
+frame count at the project's quality, 44.1 kHz. The engine then holds *two* rates: `frameToTime`
+converts with the domain's, so the backing stays correct, and `scheduleSegments` converts with
+`ctx.sampleRate`, so the recorded layers run 8.8% fast against the drums. A bar measured 2.297 s
+instead of 2.5. **It is invisible until a layer has audio to play**, which is the argument for
+closing the record-to-playback loop early rather than building recording and playback separately
+and meeting in the middle.
+
 **Which bar the backing generates comes from the transport, through `slotAt`.** The backing is
 *generated*, so unlike `segments()` it needs to be told which bar to make — and the engine counted
 its own bars off its own frame origin instead of asking. Two derivations of one quantity, and they

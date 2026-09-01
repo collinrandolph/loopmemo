@@ -24,8 +24,14 @@ import type { ScheduledSegment } from '../../src/domain/schedule-plan.ts';
  * quietly not implementing, because on a platform without that property it comes back.
  */
 
-/** One `AudioBuffer` per recording session, indexed the way `SourceRegion.sessionIndex` is. */
-export type SessionBuffers = readonly AudioBuffer[];
+/**
+ * One `AudioBuffer` per recording session, indexed the way `SourceRegion.sessionIndex` is.
+ *
+ * Entries may be missing, and that is a real state rather than an error: a demo project's
+ * simulated takes have no audio behind them, and a reload loses what was captured. A layer then
+ * plays the bars it can and skips the rest, which is better than refusing to play at all.
+ */
+export type SessionBuffers = readonly (AudioBuffer | undefined)[];
 
 export type ScheduledVoice = {
   readonly segment: ScheduledSegment;

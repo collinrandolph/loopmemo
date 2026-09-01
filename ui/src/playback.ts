@@ -26,7 +26,9 @@ import { type RecordState, type WaveNode, LR, el, motion, ramp, sizing } from '.
 import { SETTINGS_ICON } from './icons.ts';
 import { eqIconSvg, panIconSvg } from './preset-icons.ts';
 import { backingRows } from './backing-rows.ts';
-import { type Engine, amp } from './sim.ts';
+import { amp } from './sim.ts';
+import type { BackingEngine } from './audio.ts';
+import { type TakeStore, takeUrl } from './takes.ts';
 
 const TARGET_LINES = 40; // lanes are an overview: the count follows the container
 const LANE_AMPLITUDE = 34; // peak line height; the lane box is 40, see `.lr-wave--lane`
@@ -74,7 +76,9 @@ type Row = {
  */
 export function playbackScreen(opts: {
   project: Project;
-  engine: Engine;
+  engine: BackingEngine;
+  /** Where captured audio is filed; the domain only ever sees a session id. */
+  takes: TakeStore;
   onChange(layer: Layer): void;
   /** Backing edits, which are project state rather than layer state (§2.6). */
   onBackingChange(backing: BackingTracks): void;
@@ -233,6 +237,10 @@ export function playbackScreen(opts: {
         previousProgress = 0;
         recordingFrom = 0;
         opts.engine.start(0);
+        // Told before the take rather than after: the layer being recorded onto is silent for
+        // the duration (§2.2), and that has to be true from the first bar, not from the commit.
+        opts.engine.setLayers(liveProject(), opts.takes, i);
+        void opts.engine.startCapture();
         playing = true;
         playBtn.setPlaying(true);
         clearLive(row);
@@ -241,9 +249,21 @@ export function playbackScreen(opts: {
       if (next !== 'recording' && was === 'recording') {
         // The whole take is one session however many passes it spanned (§1.4), and the
         // domain decides whether it holds any at all — a take under one bar is not a pass.
-        const captured = Math.max(0, frameNow() - recordingFrom);
-        const updated = recordSession(row.layer, capturedSession(row.layer, captured), t);
+        //
+        // The frame count comes from the engine's own clock, not from the captured buffer's
+        // length: the buffer holds what the input delivered, which after compensation is not
+        // the same window as what the player performed. `recordSession` is deciding how many
+        // bars were traversed, and that is a question about the transport.
+        const frames = Math.max(0, frameNow() - recordingFrom);
+        const session = capturedSession(row.layer, frames);
+        const before = row.layer.sessions.length;
+        const updated = recordSession(row.layer, session, t);
         row.layer = updated;
+        // Only keep the audio if the domain kept the take. A traversal that never completed a
+        // bar holds no passes and is discarded (§1.4), and storing its buffer would leak a
+        // take nothing can ever refer to. Ordered after the layer is in place, because
+        // committing re-reads the rows to tell the engine what to play.
+        void commitCapture(session, updated.sessions.length > before);
         opts.onChange(updated);
         clearLive(row);
         paintRow(row);
@@ -269,13 +289,33 @@ export function playbackScreen(opts: {
   }
 
   function capturedSession(layer: Layer, frames: number): RecordingSession {
+    const id = `${layer.id}-take-${layer.sessions.length + 1}`;
     return {
-      id: `${layer.id}-take-${layer.sessions.length + 1}`,
-      audioFileURL: `sim://${layer.id}/${layer.sessions.length + 1}`,
+      id,
+      audioFileURL: takeUrl(id),
       recordedFrames: frames,
       recordedAt: new Date().toISOString(),
       waveformPeaks: [],
     };
+  }
+
+  /** The project as the rows currently have it, which is ahead of `opts.project` mid-session. */
+  function liveProject(): Project {
+    return { ...project, layers: rows.map((r) => r.layer) };
+  }
+
+  /**
+   * Stop the capture and, if the domain kept the take, file its audio under the session id.
+   *
+   * Async because the worklet flushes its last partial chunk before reporting done, and waiting
+   * for that is what stops the tail of a take being dropped. Nothing on screen waits for it —
+   * the pass count, the badge and the lanes are all decided by `recordSession`, which has
+   * already run against the engine's frame count.
+   */
+  async function commitCapture(session: RecordingSession, keep: boolean) {
+    const captured = await opts.engine.stopCapture();
+    if (captured && keep) opts.takes.put(session, captured.buffer);
+    opts.engine.setLayers(liveProject(), opts.takes);
   }
 
   function layerRow(initial: Layer): Row {

@@ -6,7 +6,19 @@ import {
   drumKit,
 } from '../../src/domain/backing.ts';
 import { type BackingBar, backingSchedule } from '../../src/domain/backing-schedule.ts';
+import type { PassIndex } from '../../src/domain/pass-index.ts';
+import {
+  type Layer,
+  type Project,
+  isLayerAudible,
+  layerPassIndex,
+  projectTiming,
+} from '../../src/domain/project.ts';
+import { segments } from '../../src/domain/schedule-plan.ts';
 import { type Timing, framesPerBar } from '../../src/domain/timing.ts';
+import { type SessionBuffers, scheduleSegments } from './layer-audio.ts';
+import { type Capture, MUSIC_CONSTRAINTS, type Recorder, createRecorder } from './recorder.ts';
+import type { TakeStore } from './takes.ts';
 import { type Transport, playLoopFrom, playheadAt, slotAt } from '../../src/domain/transport.ts';
 import type { Engine } from './sim.ts';
 
@@ -30,6 +42,13 @@ import type { Engine } from './sim.ts';
  * graphs, waveshaper curves and the compressor are platform-bound, while the parameters that
  * *shape* them are domain data and come from `DrumKit` and `ChordTone`.
  */
+
+/**
+ * The crossfade on every segment join (§2.4), in seconds because it is a physical duration —
+ * the same argument that keeps `TOLERANCE_SECONDS` and the envelope times out of frames.
+ * 7 ms sits in the middle of the spec's 5–10.
+ */
+const CROSSFADE_SECONDS = 0.007;
 
 /** Scheduled this far ahead of the playhead, topped up on an interval. */
 const AHEAD_SECONDS = 1.2;
@@ -55,6 +74,28 @@ export type BackingEngine = Engine & {
    * dropped and rebuilt, so the change is heard at the next bar rather than after the lookahead.
    */
   setTransport(transport: Transport): void;
+  /**
+   * The recorded layers, and which one (if any) is being recorded onto right now.
+   *
+   * Called whenever a take commits, a level or mute changes, or arming moves — the engine holds
+   * no opinion about any of that and simply re-reads what it is given on the next bar.
+   *
+   * The layer being captured into is silent for the take (§2.2), and that is *derived* here
+   * through `isLayerAudible` rather than written into `layer.muted`, because writing it through
+   * would make our state indistinguishable from the user's and stopping could not restore
+   * theirs.
+   */
+  setLayers(project: Project, takes: TakeStore, recordingIntoLayerIndex?: number): void;
+  /**
+   * Open the input and start capturing. Resolves false when there is no microphone or the user
+   * declines — a refusal is a state to render, not an exception to throw, since a take that
+   * captures nothing still traverses bars and the transport should not care.
+   *
+   * Capture lives on the engine because the engine owns the `AudioContext`. Handing the context
+   * out instead would put the platform's most replaceable object into every screen that records.
+   */
+  startCapture(): Promise<boolean>;
+  stopCapture(): Promise<Capture | undefined>;
   /** Whether the browser has actually let us make sound yet (autoplay policy). */
   ready(): boolean;
   destroy(): void;
@@ -62,7 +103,12 @@ export type BackingEngine = Engine & {
 
 type Voice = { nodes: AudioNode[]; startsAt: number; endsAt: number };
 
-export function audioEngine(sampleRate: number): BackingEngine {
+/**
+ * `latencyFrames` is the measured round trip to subtract from every capture (§2.3). It defaults
+ * to 0 — uncompensated and honest — because the number belongs to a calibration this build has
+ * not run yet, and a plausible-looking constant would be indistinguishable from a measurement.
+ */
+export function audioEngine(sampleRate: number, latencyFrames = 0): BackingEngine {
   let ctx: AudioContext | undefined;
   let bus: DynamicsCompressorNode | undefined;
   let drumGain: GainNode | undefined;
@@ -78,6 +124,22 @@ export function audioEngine(sampleRate: number): BackingEngine {
   /** Longest a chord voice may ring, by onset index — see `chordRingCaps`. */
   let chordCaps: readonly number[] = [];
 
+  /**
+   * One entry per recorded layer, resolved once per `setLayers` rather than per bar.
+   * `layerPassIndex` walks every session's frame count, which is not work for the scheduler to
+   * repeat 344 times a second.
+   */
+  type LayerVoice = {
+    layer: Layer;
+    index: PassIndex;
+    buffers: SessionBuffers;
+    gain: GainNode;
+  };
+  let layerVoices: LayerVoice[] = [];
+
+  let stream: MediaStream | undefined;
+  let recorder: Recorder | undefined;
+
   let originFrame = 0;
   /** `ctx.currentTime` corresponding to `originFrame`. Undefined when stopped. */
   let anchorTime: number | undefined;
@@ -89,7 +151,17 @@ export function audioEngine(sampleRate: number): BackingEngine {
   // ------------------------------------------------------------------ graph --
   function ensure(): AudioContext {
     if (!ctx) {
-      ctx = new AudioContext();
+      /**
+       * **At the project's rate, not the device's.** Omitting this takes the hardware default —
+       * 48 kHz on this machine — while `Timing` computes every frame count at the project's
+       * quality, 44.1 kHz. The engine then holds two rates: `frameToTime` converts with the
+       * domain's, so the backing stays correct, and `scheduleSegments` converts with the
+       * context's, so the recorded layers run 8.8% fast against the drums.
+       *
+       * It was invisible until layers had audio to play, which is the whole reason to close the
+       * record-to-playback loop early. One rate, named once, and every conversion agrees.
+       */
+      ctx = new AudioContext({ sampleRate });
       // A chord is three or four notes, some tones use three oscillators each, and tails overlap
       // — a dense pattern easily has a dozen oscillators sounding at once. Summed straight into
       // `destination` that clips, and hard digital clipping is exactly a harsh arrhythmic screech,
@@ -580,6 +652,20 @@ export function audioEngine(sampleRate: number): BackingEngine {
       else hat(c, drumGain!, at, kit.hat, onset.voice === 'hatOpen');
     }
 
+    // The recorded layers, on the same anchor and the same bar grid as the backing (§0.4). What
+    // plays is `segments()`'s decision, taken for the slot the transport resolved and then
+    // placed at *this* bar's frame — so bar preview repeats one slot's audio the same way it
+    // repeats one slot's chord, and neither knows about the other.
+    const crossfade = Math.round(CROSSFADE_SECONDS * t.sampleRate);
+    for (const voice of layerVoices) {
+      const slotIndex = head ? slotAt(head) : absoluteBar % Math.max(1, t.barCount);
+      const segs = segments(voice.layer.barSources, voice.index, slotIndex, 1, voice.layer.mutedSlots)
+        .map((s) => ({ ...s, startFrame: barStartFrame }));
+      // `frameToTime` less the origin, because `scheduleSegments` adds a frame count to the
+      // anchor it is handed and the engine's own anchor is offset by where playback started.
+      scheduleSegments(c, voice.gain, segs, voice.buffers, frameToTime(0), crossfade);
+    }
+
     if (!build) return;
     bar.chords.forEach((onset, i) => {
       const frame = barStartFrame + onset.frameOffset;
@@ -670,6 +756,54 @@ export function audioEngine(sampleRate: number): BackingEngine {
     setTransport(next) {
       transport = next.mode === 'idle' ? playLoopFrom(0, 0) : next;
       rescheduleFuture();
+    },
+
+    async startCapture() {
+      const c = ensure();
+      try {
+        if (!stream) {
+          stream = await navigator.mediaDevices.getUserMedia({ audio: MUSIC_CONSTRAINTS });
+        }
+        // The stream is held across takes rather than reopened. Reopening re-negotiates the
+        // input route, and the route is what a latency calibration is measured against (§2.3) —
+        // a new one per take would invalidate the number every time.
+        if (!recorder) {
+          recorder = await createRecorder(c, c.createMediaStreamSource(stream), latencyFrames);
+        }
+        recorder.start();
+        return true;
+      } catch {
+        // No device, no permission, or an insecure origin. The take still runs; it just has no
+        // audio behind it, which is exactly what a demo project's sessions already look like.
+        return false;
+      }
+    },
+
+    async stopCapture() {
+      if (!recorder?.recording()) return undefined;
+      return recorder.stop();
+    },
+
+    setLayers(project, takes, recordingIntoLayerIndex) {
+      const c = ensure();
+      const t = timing ?? projectTiming(project);
+      // Gains are kept across calls, keyed by layer index, so changing a level does not rebuild
+      // a node underneath audio that is already sounding — the same reason the pan presets ramp
+      // a wet gain rather than rebuilding the delay.
+      const previous = new Map(layerVoices.map((v) => [v.layer.index, v.gain]));
+      layerVoices = project.layers
+        .filter((layer) => layer.sessions.length > 0)
+        .filter((layer) => isLayerAudible(layer, recordingIntoLayerIndex))
+        .map((layer) => {
+          const gain = previous.get(layer.index) ?? c.createGain();
+          if (!previous.has(layer.index)) gain.connect(bus!);
+          gain.gain.value = layer.level;
+          previous.delete(layer.index);
+          return { layer, index: layerPassIndex(layer, t), buffers: takes.buffersFor(layer), gain };
+        });
+      // Whatever is left was audible and is not any more. Disconnected rather than muted, so a
+      // silenced layer costs nothing per bar.
+      for (const gain of previous.values()) gain.disconnect();
     },
 
     destroy() {
