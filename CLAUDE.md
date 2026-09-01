@@ -1,7 +1,7 @@
 # Audio Loop Recorder — CLAUDE.md
 
 A mobile app for building multi-layer loop sketches. Set a tempo and bar count, pick a drum
-loop, record up to seven layers while the loop runs, then choose bar by bar which pass of the
+pattern, record up to seven layers while the loop runs, then choose bar by bar which pass of the
 recording fills each slot of the arrangement.
 
 The spec is written for iOS. **The target platform is currently an open decision** — see
@@ -60,9 +60,21 @@ opens. It was deleted rather than kept alongside: two implementations of one dom
 precisely the drift the spec warns about (§1.5), and one of them could not be compiled or
 tested by anything.
 
-**There is no audio code in this repo, deliberately.** A first attempt produced ~400 lines of
-AVFoundation that could not compile and was deleted whole. Do not write audio code until a
+**There is no audio code in `src/`, deliberately.** A first attempt produced ~400 lines of
+AVFoundation that could not compile and was deleted whole. Do not write audio code there until a
 platform is chosen and there is something that can build it.
+
+**`ui/src/audio.ts` makes the browser build audible, and that is allowed.** The deferral protects
+`src/domain` — pure, no platform APIs, so it survives whichever platform wins. `ui/` was always
+browser-specific and always disposable, and `sim.ts`'s `Engine` was written as *the seam a real
+engine replaces*, so a sounding engine implementing that same type is the substitution working
+rather than a second path beside it. It plays `backingSchedule()`; layers stay silent because
+there is no recorded audio to play. **Frames become seconds in exactly one function.**
+
+**`prototype/backing-tracks/` is where the synthesis decisions were made by ear**, and `audio.ts`
+is the port of it. Standalone, plain scripts, no build step; nothing imports it either way. Keep
+it as the reference it is — but the recipes now exist twice, so a change to one is a decision
+about the other.
 
 ## Layout
 
@@ -72,19 +84,22 @@ src/domain/            the whole domain layer — no platform APIs, no dependenc
   timing.ts            frame arithmetic; the end-of-session tolerance
   pass-index.ts        pass numbering, availability, region lookup, vertical stepping
   schedule-plan.ts     what plays when; mid-bar splice entry points
+  backing.ts           the drum track and chord bed: libraries, chord math, the tiling rule
+  backing-schedule.ts  backing onsets in frames; the bar-preview entry point
   arrangement.ts       the edit operations; compression plan
   transport.ts         playback position, the played set, the release edge
   effects.ts           pan law, presets, the Haas delay
   eq.ts                EQ presets, and the biquad response that checks them
   project.ts           Project, Layer, quality, size projection
   bounce.ts            the mixdown plan and the project it seeds
+  export.ts            what files come out, and what each one contains
 tests/                 node:test, one file per module
 Tools/                 toolchain-free cross-checks against docs/kit/lr-kit.js
 docs/                  the spec, the design kit, the mockups, the platform research
 ```
 
 ```bash
-npm run check      # typecheck + tests + the lr-kit.js cross-check
+npm run check      # typecheck (src+tests, then ui) + tests + the lr-kit.js cross-check
 npm test           # just the tests
 npm run ui         # build the browser bundle and serve it on :5173
 ```
@@ -121,14 +136,55 @@ owns the `down` flag, the `e.buttons === 0` bail that catches the missed release
 `lostpointercapture` / `pointercancel`; callers get `dx`/`dy`, `rebase()` to repeat within one
 drag, and `consume()` to say the release was not a tap.
 
-**A screen owns its screen; everything reusable is beside it.** `playback.ts` and
-`edit-layer.ts` are the two screens. `gesture.ts` (the press guard above), `controls.ts`
+**A screen owns its screen; everything reusable is beside it.** `playback.ts`, `edit-layer.ts`,
+`library.ts`, `export.ts` and `settings.ts` are the screens. `gesture.ts` (the press guard above), `controls.ts`
 (`swipeWheel`, `bindChips`), `icons.ts` (inline Lucide paths — take new ones from that set),
-`chords.ts`, `backing-rows.ts` (the drum and chord beds, which own their own state and talk to
-no screen) and `help.ts` are shared. **There are no tests over `ui/`** — only `src/domain` is
+`backing-rows.ts` (the two backing rows, which edit `project.backing` and report upward like a
+layer row) and `help.ts` are shared. **There are no tests over `ui/`** — only `src/domain` is
 covered, so a change here is verified by driving the browser.
 
-**`ui/src/sim.ts` is the only fake part, and that is the test.** It provides a frame counter
+**`bindChips` delegates on the `.lr-chips` group, so no chip may call `stopPropagation`.** The EQ
+and Pan pickers did, and the consequence was quiet: the preset changed and the highlight stayed
+put, so the panel named one preset while a different one looked selected. It was guarding nothing
+either — the only click listener above a chip is on the row *head*, and the chips live in the
+panel, which is the head's sibling. If a chip ever does need to stop an event, move the active
+class with it rather than leaving two mechanisms.
+
+**Every `swipeWheel` is a value with the `↕` pushed right; the layouts differ only in whether the
+caption is drawn.** `row` puts it outside as a `.lr-panel-label`, so a panel of wheels reads as
+labelled rows alongside Volume, EQ and Pan. `inline` — the chord editor's three-abreast Note /
+Sign / Type — draws none: C / ♮ / Maj under a chord button say what they are, and a `↕ NOTE` under
+each spent a line naming what the value already said. The caption still goes on as `aria-label`
+either way. A labelled row is only a column if every label is one width — `.lr-panel-label`'s
+`min-width` has to clear the longest caption at every breakpoint, and at ≤640 it did not.
+
+**To line something up under the control column, give it an empty `.lr-panel-label` and make it a
+row.** Never compute the indent: the column is `min-width` + the row `gap`, and *both* change at
+640px, so a `padding-left` that looks right on a phone is 40px out on a desktop. This has been got
+wrong twice. `settings.ts`'s `annotate()` is the helper; `playback.ts`'s empty-layer note is the
+same trick. A stale `gap` override on one row is enough to break the column on its own — that is
+what put the Preview row 4px off everything else.
+
+**The hint is an icon because a text glyph cannot be vertically centred.** `↕` paints 2.5px below
+the middle of its own line box and overflows a `line-height: 1` box by 2px — `align-items: center`
+centres the box correctly and the ink inside it is still low, and any nudge that fixes it is a
+correction for one font when this is whatever the platform's system font happens to be. An SVG's
+box is its art. **Measure a centring claim rather than eyeballing it**: the box being centred and
+the mark being centred are different facts, and only the second one is visible.
+
+**The project actions live on `settings.ts`, not `library.ts`.** Export, bounce, compress and
+delete were a per-row panel behind a chevron; a Projects row is now a list entry you tap to open,
+with no panel and no second action. Each action operates on `commit()` rather than `opts.project`,
+so pending edits are included — a rename has to reach the exported filenames.
+
+**Setup and project settings are one screen (`settings.ts`), and the locks are derived.**
+`isConfigurationLocked` already says whether tempo and bar count have set, and a project being
+created is just one with no recordings — so it answers false and everything is open. One genuine
+mode bit remains, recording quality, because "does this project exist yet" is not something a
+`Project` can report about itself. **It deliberately has no backing pickers**: the Playback rows
+own those, and a second editor for one piece of state is the drift this codebase keeps undoing.
+
+**`ui/src/sim.ts` is the fake part, and that is the test.** It provides a frame counter
 and synthetic waveform peaks — exactly what a real engine provides. If a screen ever needs
 something from it that a real audio engine could not give, the platform-bound surface has
 grown past what the deferral assumed, and that is worth stopping for.
@@ -398,11 +454,81 @@ and the flag means recorded passes were discarded — a new project never had an
 last bar runs past the loop point; a bounce renders a fixed length, so it must wrap to the start
 or the seed has a seam the original never had.
 
-**Backing tracks are still not modelled.** §2.6's drum loop and chord bed have no
-`originalBPM`, no playback ratio and no chord settings anywhere in `src/domain`.
-`bounce.ts` defines the *subset* it needs and marks it provisional — absorb it when §2.6 is
-built rather than leaving two definitions. `isAudibleInMixdown` is shared with export on
-purpose: two readings of "was this audible" would let the bounce and the export disagree.
+**`isAudibleInMixdown` is shared with export on purpose**: two readings of "was this audible"
+would let the bounce and the export disagree about the same project. It is structurally typed for
+the same reason, so a layer and a backing track can both be asked.
+
+**What a bounce does with the backing tracks is deliberately unresolved** (§2.7, §6.1), and there
+are two coupled questions, not one: is the backing in the mixdown, and do its settings carry to
+the seeded project. They constrain each other — carrying the settings *and* baking the audio
+plays the drums twice, while baking without carrying freezes a groove that §1.2 says never locks.
+`bouncePlan` therefore still takes the backing as an **argument** rather than reading
+`project.backing`, so the choice stays visible at the call site instead of being settled by a
+default. `bounceSeed` lands on `defaultBacking()` as a placeholder. Do not turn either into a
+decision before §2.7 is settled.
+
+## Backing tracks
+
+Two synthesised tracks, `project.backing.drums` and `.chords` (§2.6). **Neither is a file** — no
+`audioFileURL`, no `originalBPM`, no playback ratio, and nothing ships as an asset. That whole
+apparatus existed to stretch a sampled loop to the project tempo, and synthesis deleted the
+problem rather than solving it; it is in §5.2 so it does not get rebuilt.
+
+**Two axes per track, and keeping them independent is the point.** Drums are pattern × kit,
+chords are chord pattern × tone — deliberately the same word on both rows, because they are the
+same idea, and the two panels are laid out control for control to say so. A kit is a parameter set
+fed to the same three recipes, so any
+kit plays any pattern — the earlier design baked a kit into each pattern to avoid auditioning
+sampled combinations, and that reason is gone. Do not offer a combined list; it re-couples them.
+
+**Envelope times are seconds; pitches are Hz; onsets are frames.** Not an inconsistency. A kick's
+decay is physical and identical at 60 and 240 BPM, so a frame count would silently differ between
+44.1 and 48 kHz — the same argument as `TOLERANCE_SECONDS`. A pitch is not a duration at all.
+Only *when* a voice fires is musical, and that is frames, converted at the platform boundary.
+`kitVoiceFrames` and `toneFrames` do the conversion.
+
+**`beatFrameOffset` divides `framesPerBar`, not its own frames-per-beat.** `framesPerBar` is
+already rounded, so an independently-rounded beat length puts the eighth-note grid on a different
+footing than the bar grid it sits inside and the two disagree by a frame at some tempos.
+
+**Backing shares layer playback's timing, not its scheduling type.** `segments()` schedules
+regions of a recorded file, keyed by `BarRef`; a backing voice is generated on demand and has no
+file, no region and no `BarRef`. One shared anchor (§0.4), two builders. Do not merge them.
+
+**`chordSlotFor(slot) = ((slot − 1) mod 4) + 1`, and bar preview uses the same rule** — chord 2
+owns slots 2, 6, 10, 14, 18, 22. Previewing a bar plays the chord that owns it, not the first
+chord and not none.
+
+**Which bar the backing generates comes from the transport, through `slotAt`.** The backing is
+*generated*, so unlike `segments()` it needs to be told which bar to make — and the engine counted
+its own bars off its own frame origin instead of asking. Two derivations of one quantity, and they
+disagreed exactly where it shows: bar preview held one slot on screen while the chord bed walked
+the whole progression underneath it, and a loop started from slot 6 played the progression from
+chord 1. `slotAt` is the inverse of `cyclePosition`, so the chord you hear and the bar the sweep is
+over are one answer. **Their two grids also have to be one grid** — a preview re-anchors the engine
+and the transport both to frame 0, because a transport whose `startFrame` is not a frame the engine
+calls a downbeat puts the sweep and the drums on different bar lines.
+
+**A change to *which* bar plays next reschedules; a change to what the tracks sound like does
+not.** Scheduling runs `AHEAD_SECONDS` in front, so a jump heard a second and a bit after the
+sweep moved reads as the backing being on a different loop — that is the same bug again. Voices
+already sounding are left alone (cutting a chord mid-decay is a click), and the bar in progress is
+re-scheduled rather than skipped, so `scheduleBar` has to drop onsets already in the past.
+
+**A muted track schedules nothing**, rather than scheduling voices that are then silenced. It
+also means a caller reading the schedule cannot disagree with the mixdown about what was audible.
+
+**`backingMixSources` is the seam bounce and export share.** Both ask only *was this audible* and
+*what is it called*, so the two tracks flatten to one uniform list once. The screen used to hand
+export a hardcoded pair, which meant a backing track muted on Playback still wrote a stem.
+
+**Kit and tone descriptions exist for whoever is tuning them and are not UI copy.** The name is
+the control.
+
+**Anything a handler reads must go through the live `backing`, never a captured snapshot.** The
+rows took the track object once at build time, so `!track.muted` was computed against a value
+that never changed — mute worked and unmute was a no-op that re-sent `muted: true`. Accessors,
+not values.
 
 ## EQ presets are checked, not quoted
 
