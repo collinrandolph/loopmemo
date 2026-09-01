@@ -1,8 +1,15 @@
 # Platform decision — research and recommendations
 
-**Status: deliberately OPEN.** Researched 2026-08-29. The decision is being deferred as far
-into the build as possible; this document exists so it can be made later on evidence rather
-than re-researched from scratch.
+**Status: deliberately OPEN.** Researched 2026-08-29, revisited 2026-08-31. The decision is
+being deferred as far into the build as possible; this document exists so it can be made later
+on evidence rather than re-researched from scratch.
+
+**The 08-31 pass changed three things and the reader should know which.** Drum synthesis
+replaced sampled loops, which deletes the time-stretch requirement (§4) and one of the six
+device checks (§8) — and adds a different set, because synthesis needs oscillators, a shaper
+and a compressor that sampling did not. The domain layer is now TypeScript rather than Swift.
+And `ui/src/audio.ts` is a working Web Audio implementation of the backing tracks, which turns
+"the port should be straightforward" into something with code behind it (§4a).
 
 Nothing here overrides `audio-loop-recorder-spec.md`. The spec describes *what the app does*
 and is platform-neutral in everything that matters. This document is only about *where it
@@ -42,10 +49,17 @@ What is genuinely platform-bound is small: opening an audio file, scheduling a b
 time, reading input, and measuring latency. That is the seam. **If the platform-bound surface
 starts growing, the deferral is failing** — that is the signal to stop and decide.
 
-The existing Swift in `Sources/LoopRecorderCore/` was written to this shape. Its logic was
-verified by mirroring it into JavaScript and executing it (`Tools/*.js`), which is itself
-evidence the layer is portable — it has already been expressed in two languages without the
-design changing.
+This layer has now been expressed in two languages without the design changing, which is the
+evidence that it is portable. It was Swift in `Sources/LoopRecorderCore/`; it is TypeScript in
+`src/domain/`, and the Swift was deleted at `349d15b` rather than kept alongside, because two
+implementations of one domain is precisely the drift the spec warns about in §1.5. `Tools/*.js`
+still cross-checks the timing rules against `docs/kit/lr-kit.js`, so a third expression of the
+same arithmetic is executed on every `npm run check`.
+
+**The language change shrank the seam rather than moving it.** Swift fits only the route that
+needs the Mac that does not exist. TypeScript runs unchanged in Node, in a browser and in React
+Native, so for three of the four routes in §7 the domain is not ported at all — it is imported.
+"Thin enough to rewrite in a day" now applies only to the audio layer itself.
 
 ## 3. Verified: Expo + EAS Build removes the Mac requirement
 
@@ -73,19 +87,42 @@ API implementation for React Native, native C++ underneath. It maps onto the spe
 | Pan presets (§2.8) | `StereoPannerNode` | ✅ |
 | PCM capture (§4.2) | `AudioRecorder.onAudioReady` — float PCM, configurable `sampleRate`, `bufferLength`, `channelCount` | ✅ |
 | Capture to CAF/WAV (§2.7) | `AudioRecorder.enableFileOutput()` — WAV, **CAF**, M4A, FLAC | ✅ |
-| Drum loop time-stretch (§2.6) | `playbackRate` + `pitchCorrection` | ⚠️ see below |
+| Haas delay on Pan presets (§2.8) | `DelayNode` | ✅ documented |
+| Backing voices — pitched (§2.6) | `OscillatorNode`, sine/square/triangle/sawtooth, `detune` | ✅ documented |
+| Backing voices — noise (§2.6) | `createBuffer` + `getChannelData`, `BufferSource` | ✅ documented |
+| Wurly reed saturation (§2.6) | `WaveShaperNode`, `oversample` | ✅ documented |
+| Tremolo on Rhodes and Wurly (§2.6) | oscillator connected **into a `GainNode.gain`** | ⚠️ see below |
+| The backing bus (§2.6) | `DynamicsCompressorNode` | ❌ see below |
 | Latency compensation (§2.3) | — | ❌ see §5 |
 
 `start(when, offset, duration)` is the important one. It is effectively `scheduleSegment`,
 which means §2.4's whole architecture — segment-scheduled playback, never a rendered file —
 survives the port intact.
 
-**Time-stretch, probably solved.** `pitchCorrection` is a creation option; when enabled
-`getLatency()` returns ~0.06 s and `playbackRate` clamps to ±4. Sixty milliseconds of
-algorithmic delay and a rate clamp is the signature of a phase vocoder, i.e. genuine
-pitch-preserving stretch. §2.6 only needs 0.5–2.0×, comfortably inside. The docs do not state
-the algorithm, so **confirm by ear on a device**. `getLatency()` exists precisely so playback
-can be scheduled earlier to compensate, and the docs recommend doing so.
+**Time-stretch is no longer a requirement at all.** It was the one ⚠️ in this table — a phase
+vocoder to fit a sampled drum loop to the project tempo, needing confirmation by ear that
+`playbackRate` 0.75 did not drop the pitch. Synthesis deleted the requirement rather than
+answering it (§5.2), and with it the ratio, the 0.5–2.0× limit, the quality warning and the
+sample-licensing question. That is the single largest reduction in platform risk since this
+document was written.
+
+**What synthesis added instead.** Two gaps, one of them real.
+
+`DynamicsCompressorNode` is **absent** — not in `BaseAudioContext`'s factory list and not among
+the documented effect nodes. It is not a nicety here: `ui/src/audio.ts` routes every voice
+through one because a dense chord pattern easily has a dozen oscillators sounding at once, and
+summed straight to the destination that clips, which is an arrhythmic screech rather than a
+quiet distortion. Two mitigations, both cheap. A `tanh` soft-clip `WaveShaperNode` is already
+proven in this codebase — it is what gives the Wurly its reed growl — and bounded soft clipping
+on the bus is arguably better behaved than a compressor for this material. Failing that,
+`createWorkletProcessingNode` exists, so a compressor can be written rather than found.
+
+Audio-rate modulation — connecting an oscillator's output **into an `AudioParam`** — is
+**undocumented**, neither confirmed nor denied. The tremolo depends on it: a gain stage in
+series oscillating around 1, which is the multiplicative form, and the additive alternative
+reads as a stutter rather than tremolo because a fixed depth dwarfs the signal exactly as the
+note decays. If the connection is unsupported, `setValueCurveAtTime` can approximate it on a
+schedule. **Check this on a device**; it is a two-line test.
 
 **Setup:** an Expo config plugin handles microphone permission and background audio. It ships
 native code, so it needs an Expo **development build**, not Expo Go. This matters for §6 —
@@ -93,6 +130,24 @@ Expo Go would have been the one no-account route onto an iPhone, and this librar
 
 **Maturity risk:** v0.13.3 as of 2026-08-29, published the previous day. Very actively
 developed by a serious team, but pre-1.0. Pin the version; expect API churn.
+
+## 4a. The port is no longer hypothetical
+
+`ui/src/audio.ts` synthesises both backing tracks in the browser, against the real
+`src/domain` schedule, and it is Web Audio. `react-native-audio-api` is Web Audio. So the
+question "will this port" has stopped being an argument about API tables and become a diff.
+
+Everything it uses is documented as present except the two gaps above:
+`createGain`, `createOscillator`, `createBiquadFilter`, `createBufferSource`, `createBuffer`,
+`createWaveShaper`, `setValueAtTime`, `linearRampToValueAtTime`, `exponentialRampToValueAtTime`,
+`currentTime` and `sampleRate`.
+
+**This cuts both ways, and that is the point of raising it.** It is the strongest evidence yet
+that the React Native route works — and it is also the first platform-bound code in the repo
+that is not obviously disposable. §2 says the signal to stop deferring is the platform-bound
+surface growing. It has grown, in the one direction that was sanctioned (`ui/` was always
+browser-specific), and the growth is now valuable enough that the choice of platform decides
+whether it is an asset or a throwaway. Deferring used to be free. It is not any more.
 
 ## 5. The one real gap: no I/O latency API
 
@@ -175,12 +230,16 @@ In rough priority order. The first two decide whether the architecture holds at 
    everything downstream changes.
 2. **Loopback calibration accuracy.** Can round-trip latency be measured reliably enough, and
    is it stable across a session?
-3. **`pitchCorrection` is really a time-stretch**, not a resampler — confirm by ear that
-   `playbackRate` 0.75 does not drop the pitch of a drum loop.
+3. **Simultaneous playback and recording** without the output route collapsing (the failure
+   mode §6 describes for Safari — confirm native RN does not share it). Promoted: for the web
+   route this is the question that decides everything, and it is answerable today for free.
 4. **Mid-bar splice** entering at an arbitrary offset, sample-accurately (§2.5).
-5. **Simultaneous playback and recording** without the output route collapsing (the failure
-   mode §6 describes for Safari — confirm native RN does not share it).
-6. **Fourteen concurrent source nodes** without dropouts.
+5. **Fourteen concurrent source nodes** without dropouts.
+6. **The two synthesis gaps in §4** — a bus limiter without `DynamicsCompressorNode`, and
+   whether an oscillator can be connected into an `AudioParam`.
+
+The `pitchCorrection` check that used to sit at #3 is gone. Synthesis removed the requirement,
+so there is nothing left to confirm by ear.
 
 ## Sources
 
