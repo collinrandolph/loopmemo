@@ -418,24 +418,53 @@ in the whole transport, so it has its own file.
 **This has not been seen on screen.** It is verified numerically against the reference, which
 is not the same as looking right. Confirm in the UI when there is one.
 
-## Where the audio work is still ahead
+## The audio layer, and what it still owes
 
-Not written, and deliberately not started — see the platform section. What it will owe,
-whichever platform wins:
+`segments()` and `splice()` in `schedule-plan.ts` decide *what* plays and *when*. The audio
+layer executes that and little else, which is why it is small: `layer-audio.ts` is about sixty
+lines, `recorder.ts` and `effects-chain.ts` not much more.
 
-- **One shared sample-frame anchor** for all layers. Relative timing drifts them apart (§0.4).
-- **Two alternating players per layer**, so segment N+1 can overlap the tail of N.
-- **An unconditional 5–10 ms equal-power crossfade on every join**, including a splice into
-  the same source. Bar boundaries in a live recording almost never land on silence (§2.4).
+**Built and measured** (all in the browser, on this machine — see `docs/platform-decision.md`
+§8, which listed most of this as needing a device):
+
+- **One shared sample-frame anchor.** Every layer and both backing tracks derive from it (§0.4).
+- **Segment scheduling.** Rendering `segments()` offline reproduces the source *bit-identically*
+  — worst difference 0 — in recorded order and reordered across passes. `verify-joins.ts`.
+- **An unconditional 7 ms equal-power crossfade**, which cuts the worst join step by 393×.
+- **PCM capture** on the audio thread, stamped with the worklet scope's own `currentFrame`.
+  72,000 frames of noise back bit-identically. `verify-capture.ts`.
+- **Latency compensation applied**, with its *sign* asserted by a test.
+- **EQ, pan and the Haas delay**, built once per layer and changed only by ramping gains.
+
+**Two alternating players per layer is an AVFoundation problem, not a requirement.** A player
+there is a long-lived queued object. An `AudioBufferSourceNode` is one-shot, so each segment
+gets its own and overlap is free. It returns on a platform without that property.
+
+Still owed:
+
+- **The latency number.** The mechanism is in place and `latencyFrames` defaults to 0 —
+  uncompensated and honest. Measuring it is loopback calibration (§5 of the platform doc) and
+  needs a real microphone and output.
 - **Beat-sized segments**, so the committed horizon stays short and a splice is never far
-  behind the gesture.
-- **Nothing on the render thread** — no allocation, no locks, no file I/O.
-- **Latency compensation**, mandatory per §2.3 and the thing most quietly missing from the
-  first attempt: it was computed and then discarded. On a platform without a latency API the
-  answer is loopback calibration — see `docs/platform-decision.md` §5.
+  behind the gesture. Currently one bar at a time.
+- **Mid-bar splice.** `splice()` exists and nothing calls it.
+- **Nothing on the render thread** — no allocation, no locks, no file I/O. The worklet holds
+  to this; the scheduler runs on the main thread and allocates per bar, which a browser
+  tolerates and a phone may not.
 
-`segments()` and `splice()` in `schedule-plan.ts` already decide *what* plays and *when*. The
-audio layer's job is to execute that, and little else.
+**The effects graph is fixed-shape on purpose.** `effects.ts` is explicit that every pan preset
+reports the same `delayFrames` and the five without a delay silence it with gain, so a preset
+change is a gain ramp rather than a reconnection — both a rebuild and a change of delay time
+click, and preset changes are a live gesture. The EQ extends the same rule as far as the API
+allows: a fixed chain of `EQ_SLOTS` biquads, with a preset that uses fewer parking the spare
+ones as peaking at 0 dB, which is exactly unity. Only coefficients move; the chain never
+changes length. A `type` change is still needed, because a high-pass cannot be flattened by its
+gain the way a peaking filter can.
+
+**Pan is two gains into a `ChannelMergerNode`, not a `StereoPannerNode`.** The law is the
+domain's — equal power, and ±45° is a hard pan rather than 45° of a half-field — and a panner
+would impose its own. Surround also needs its delayed copy panned *opposite* the dry signal,
+which one panner cannot express.
 
 ## Bounce is compress on every layer, plus a mix
 

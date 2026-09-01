@@ -16,6 +16,7 @@ import {
 } from '../../src/domain/project.ts';
 import { segments } from '../../src/domain/schedule-plan.ts';
 import { type Timing, framesPerBar } from '../../src/domain/timing.ts';
+import { type LayerChain, createLayerChain } from './effects-chain.ts';
 import { type SessionBuffers, scheduleSegments } from './layer-audio.ts';
 import { type Capture, MUSIC_CONSTRAINTS, type Recorder, createRecorder } from './recorder.ts';
 import type { TakeStore } from './takes.ts';
@@ -148,7 +149,7 @@ export function audioEngine(sampleRate: number, latencyFrames = 0): BackingEngin
     layer: Layer;
     index: PassIndex;
     buffers: SessionBuffers;
-    gain: GainNode;
+    chain: LayerChain;
   };
   let layerVoices: LayerVoice[] = [];
 
@@ -189,8 +190,21 @@ export function audioEngine(sampleRate: number, latencyFrames = 0): BackingEngin
       comp.ratio.value = 14;
       comp.attack.value = 0.003;
       comp.release.value = 0.25;
+      /**
+       * Unity, not the 0.5 it was.
+       *
+       * The halving was added alongside the compressor when this bus carried nothing but
+       * synthesised backing, and it was belt and braces even then: a `DynamicsCompressorNode`
+       * applies **no makeup gain**, so with a −20 dB threshold at 14:1 a full-scale input already
+       * leaves around −18 dBFS. There was never 6 dB of clipping risk to spend.
+       *
+       * It stopped being harmless when recorded layers started passing through here, because
+       * they inherited an attenuation chosen for a stack of oscillators they are not part of —
+       * and a quiet microphone had no headroom to give away. Reported as "working but very
+       * quiet"; this was our share of it.
+       */
       const headroom = ctx.createGain();
-      headroom.gain.value = 0.5;
+      headroom.gain.value = 1;
       comp.connect(headroom);
       headroom.connect(ctx.destination);
       bus = comp;
@@ -679,7 +693,7 @@ export function audioEngine(sampleRate: number, latencyFrames = 0): BackingEngin
         .map((s) => ({ ...s, startFrame: barStartFrame }));
       // `frameToTime` less the origin, because `scheduleSegments` adds a frame count to the
       // anchor it is handed and the engine's own anchor is offset by where playback started.
-      scheduleSegments(c, voice.gain, segs, voice.buffers, frameToTime(0), crossfade);
+      scheduleSegments(c, voice.chain.input, segs, voice.buffers, frameToTime(0), crossfade);
     }
 
     if (!build) return;
@@ -820,20 +834,23 @@ export function audioEngine(sampleRate: number, latencyFrames = 0): BackingEngin
       // Gains are kept across calls, keyed by layer index, so changing a level does not rebuild
       // a node underneath audio that is already sounding — the same reason the pan presets ramp
       // a wet gain rather than rebuilding the delay.
-      const previous = new Map(layerVoices.map((v) => [v.layer.index, v.gain]));
+      const previous = new Map(layerVoices.map((v) => [v.layer.index, v.chain]));
       layerVoices = project.layers
         .filter((layer) => layer.sessions.length > 0)
         .filter((layer) => isLayerAudible(layer, recordingIntoLayerIndex))
         .map((layer) => {
-          const gain = previous.get(layer.index) ?? c.createGain();
-          if (!previous.has(layer.index)) gain.connect(bus!);
-          gain.gain.value = layer.level;
+          // Reused where it exists, so a level or preset change ramps a running graph instead of
+          // rebuilding one under audio that is already sounding (§2.8).
+          const chain = previous.get(layer.index) ?? createLayerChain(c, bus!, t);
           previous.delete(layer.index);
-          return { layer, index: layerPassIndex(layer, t), buffers: takes.buffersFor(layer), gain };
+          chain.setEq(layer.eq);
+          chain.setPan(layer.pan);
+          chain.setLevel(layer.level);
+          return { layer, index: layerPassIndex(layer, t), buffers: takes.buffersFor(layer), chain };
         });
-      // Whatever is left was audible and is not any more. Disconnected rather than muted, so a
-      // silenced layer costs nothing per bar.
-      for (const gain of previous.values()) gain.disconnect();
+      // Whatever is left was audible and is not any more. Disconnected rather than silenced, so a
+      // muted layer costs nothing per bar.
+      for (const chain of previous.values()) chain.disconnect();
     },
 
     destroy() {

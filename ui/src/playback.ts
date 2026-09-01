@@ -307,6 +307,19 @@ export function playbackScreen(opts: {
     };
   }
 
+  /**
+   * Push the layer state at the engine.
+   *
+   * Level, mute, EQ and pan are all live gestures made while the loop is running (§2.8), so
+   * they have to reach the audio graph now rather than on the next navigation. The capturing
+   * index goes with them: without it, a level nudge during a take would un-silence the layer
+   * being recorded onto, which is the one thing that must stay quiet (§2.2).
+   */
+  function syncLayers() {
+    const capturing = capturingIndex();
+    opts.engine.setLayers(liveProject(), opts.takes, capturing >= 0 ? capturing : undefined);
+  }
+
   /** The project as the rows currently have it, which is ahead of `opts.project` mid-session. */
   function liveProject(): Project {
     return { ...project, layers: rows.map((r) => r.layer) };
@@ -408,6 +421,7 @@ export function playbackScreen(opts: {
         rowEl.classList.toggle('is-muted', row.layer.muted);
         volume.update();
         opts.onChange(row.layer);
+        syncLayers();
         buildLanes();
       },
     });
@@ -432,12 +446,14 @@ export function playbackScreen(opts: {
       presetGroup('EQ', EQ_PRESETS, () => row.layer.eq, (id) => {
         row.layer = { ...row.layer, eq: id as EqPresetId };
         opts.onChange(row.layer);
+        syncLayers();
       }, (p) => eqIconSvg(p.id as EqPresetId, PRESET_ICON_PX)),
     );
     inner.appendChild(
       presetGroup('Pan', PAN_PRESETS, () => row.layer.pan, (id) => {
         row.layer = { ...row.layer, pan: id as PanPresetId };
         opts.onChange(row.layer);
+        syncLayers();
       }, (p) => panIconSvg(panPreset(p.id as PanPresetId), PRESET_ICON_PX)),
     );
 
@@ -469,6 +485,7 @@ export function playbackScreen(opts: {
       row.layer = { ...row.layer, level: Number((e.target as HTMLInputElement).value) / 100 };
       volume.update();
       opts.onChange(row.layer);
+      syncLayers();
     });
     bindChips(panel);
 
