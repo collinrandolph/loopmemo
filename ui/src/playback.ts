@@ -27,7 +27,7 @@ import { SETTINGS_ICON } from './icons.ts';
 import { eqIconSvg, panIconSvg } from './preset-icons.ts';
 import { backingRows } from './backing-rows.ts';
 import { amp } from './sim.ts';
-import { barAmplitude, computePeaks } from './peaks.ts';
+import { barAmplitude, computePeaks, drawnHeight } from './peaks.ts';
 import type { BackingEngine } from './audio.ts';
 import { type TakeStore, takeUrl } from './takes.ts';
 
@@ -225,6 +225,31 @@ export function playbackScreen(opts: {
   function capturingIndex() {
     return rows.findIndex((r) => r.rec === 'recording');
   }
+
+  /**
+   * Arming is abandoned by touching anything else.
+   *
+   * Armed is a held intention, not a mode — the user has said "this layer, next", and going on
+   * to do something else says they changed their mind. Leaving a row armed after that is a trap:
+   * the next tap on any record dot starts a take on a layer chosen minutes ago, and arming is
+   * exclusive, so it also quietly blocks every other row's dot in the meantime.
+   *
+   * **Everything inside the armed row is exempt**, not just its dot. Setting its level or opening
+   * its panel is preparation for the take, so it would be perverse for it to cancel one.
+   *
+   * **Recording is deliberately not included.** A stray press must never end a take in progress;
+   * that is what the dot is for, and losing a performance to a mis-tap is not a recoverable
+   * mistake. This fires on `pointerdown` so the decision is made before a click reaches whatever
+   * was pressed — which is also what lets a dot on a *different* row disarm this one and arm
+   * itself in the same gesture.
+   */
+  const onPointerDownAnywhere = (e: PointerEvent) => {
+    const armed = rows.findIndex((r) => r.rec === 'armed');
+    if (armed < 0) return;
+    if (rows[armed]!.el.contains(e.target as Node)) return;
+    setRec(armed, 'unarmed');
+  };
+  document.addEventListener('pointerdown', onPointerDownAnywhere);
 
   function setRec(index: number, state: RecordState) {
     let stopped = false;
@@ -623,7 +648,9 @@ export function playbackScreen(opts: {
    */
   function pushLive(row: Row, upto: number) {
     const [from, to] = ramp.slice(row.layer.index, LAYER_COUNT);
-    const peak = opts.engine.inputPeak();
+    // The same display gain the committed waveform uses, so the take does not appear to change
+    // height the moment it stops recording.
+    const peak = drawnHeight(opts.engine.inputPeak());
     while (row.live.length < upto && row.live.length < lineCount) {
       const i = row.live.length;
       const u = lineCount > 1 ? i / (lineCount - 1) : 0;
@@ -804,6 +831,7 @@ export function playbackScreen(opts: {
       alive = false;
       observer?.disconnect();
       document.removeEventListener('keydown', onKey);
+      document.removeEventListener('pointerdown', onPointerDownAnywhere);
       help.destroy();
       opts.engine.stop();
     },
