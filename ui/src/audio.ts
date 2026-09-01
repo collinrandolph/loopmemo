@@ -103,6 +103,11 @@ export type BackingEngine = Engine & {
   openInput(): Promise<boolean>;
   /** Why the input is unavailable, for a screen to show. Undefined once it opens. */
   inputError(): string | undefined;
+  /**
+   * Loudest input sample since the last call, for a meter or a live waveform. Resets on read.
+   * 0 when nothing is capturing, which draws as silence rather than as invention.
+   */
+  inputPeak(): number;
   /** Begin capturing. Opens the input first if arming did not. */
   startCapture(): Promise<boolean>;
   stopCapture(): Promise<Capture | undefined>;
@@ -793,6 +798,8 @@ export function audioEngine(sampleRate: number, latencyFrames = 0): BackingEngin
     },
 
     inputError: () => inputError,
+
+    inputPeak: () => (recorder?.recording() ? recorder.peak() : 0),
 
     async startCapture() {
       // Opening here too, for a caller that never armed. It is a no-op once open, so the normal

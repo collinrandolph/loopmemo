@@ -606,6 +606,7 @@ export function playbackScreen(opts: {
    */
   function pushLive(row: Row, upto: number) {
     const [from, to] = ramp.slice(row.layer.index, LAYER_COUNT);
+    const peak = opts.engine.inputPeak();
     while (row.live.length < upto && row.live.length < lineCount) {
       const i = row.live.length;
       const u = lineCount > 1 ? i / (lineCount - 1) : 0;
@@ -613,7 +614,7 @@ export function playbackScreen(opts: {
       // recording every line without it is display:none, so a layer with audio behaves like an
       // empty one for the length of the take.
       const line = el('div', 'lr-wave__line is-live');
-      const level = amp(row.layer.index, row.layer.sessions.length, i, lineCount) * (0.55 + 0.45 * Math.random());
+      const level = peak;
       line.style.height = `${motion.snapEven(level * LANE_AMPLITUDE, 2)}px`;
       line.style.color = `rgb(${ramp.rgb(from + (to - from) * u)})`;
       row.wave.insertBefore(line, row.note);

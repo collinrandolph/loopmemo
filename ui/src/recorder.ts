@@ -46,6 +46,15 @@ export type Recorder = {
   start(): void;
   stop(): Promise<Capture>;
   recording(): boolean;
+  /**
+   * Loudest sample since this was last called, and **reading it resets the running maximum**.
+   *
+   * Taken from the captured chunks rather than from an `AnalyserNode`, so it sees every sample.
+   * An analyser reports whatever happens to be in its window at the instant it is polled, and
+   * the live waveform polls roughly once a second — it would miss most of the take and, worse,
+   * miss it *unpredictably*. A running maximum between reads cannot skip a transient.
+   */
+  peak(): number;
   destroy(): void;
 };
 
@@ -79,6 +88,7 @@ export async function createRecorder(
 
   let chunks: Chunk[] = [];
   let on = false;
+  let livePeak = 0;
   let settle: ((c: Chunk[]) => void) | undefined;
 
   node.port.onmessage = ({ data }) => {
@@ -89,17 +99,29 @@ export async function createRecorder(
       settle = undefined;
       return;
     }
-    chunks.push(data as Chunk);
+    const chunk = data as Chunk;
+    for (const s of chunk.samples) {
+      const v = s < 0 ? -s : s;
+      if (v > livePeak) livePeak = v;
+    }
+    chunks.push(chunk);
   };
 
   return {
     start() {
       chunks = [];
+      livePeak = 0;
       on = true;
       node.port.postMessage('start');
     },
 
     recording: () => on,
+
+    peak() {
+      const p = livePeak;
+      livePeak = 0;
+      return p;
+    },
 
     async stop(): Promise<Capture> {
       on = false;
