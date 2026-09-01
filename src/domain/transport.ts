@@ -163,6 +163,21 @@ export function cyclePosition(head: Playhead, slot: number): number {
   return (((slot - head.origin) % n) + n) % n;
 }
 
+/**
+ * Which slot the playhead is inside — the inverse of `cyclePosition`.
+ *
+ * `cyclePosition` answers "how far past the origin does this slot sit"; this answers "which slot
+ * sits `phaseSlots` past the origin". Rendering needs the first, because it walks every slot and
+ * asks about each. **Generating audio needs the second**, because it has to produce the one bar
+ * that is playing — and the backing tracks are generated, not read from a file (§2.6).
+ *
+ * In bar mode `cycleLength` is 1, so this is the origin for as long as playback lasts. That is
+ * the whole of bar preview: one slot, so one chord, held rather than walked.
+ */
+export function slotAt(head: Playhead): number {
+  return (head.origin + Math.floor(head.phaseSlots)) % head.barCount;
+}
+
 /** Has the playhead crossed this slot in the current cycle? */
 export function isPlayed(head: Playhead | undefined, slot: number): boolean {
   if (!head) return false;

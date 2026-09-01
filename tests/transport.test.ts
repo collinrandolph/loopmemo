@@ -5,6 +5,7 @@ import { framesPerBar } from '../src/domain/timing.ts';
 import {
   IDLE,
   completedCycleBetween,
+  cyclePosition,
   escalate,
   isPlayed,
   passedAt,
@@ -12,6 +13,7 @@ import {
   playLoopFrom,
   playheadAt,
   releaseSlots,
+  slotAt,
   stop,
 } from '../src/domain/transport.ts';
 import { T } from './fixtures.ts';
@@ -171,6 +173,44 @@ describe('Transport', () => {
     it('is a no-op on anything but bar mode', () => {
       assert.deepEqual(escalate(loop, at(2), T), loop);
       assert.deepEqual(escalate(IDLE, at(2), T), IDLE);
+    });
+  });
+
+  describe('slotAt — which bar is playing', () => {
+    // The backing tracks are generated rather than read from a file, so something has to say
+    // *which* bar to generate. That answer has to be this one: a second one drifts, and it did
+    // — the backing walked the whole chord progression underneath a one-bar preview.
+    it('is the inverse of cyclePosition, at every slot of every cycle', () => {
+      for (let k = 0; k < BARS * 2; k++) {
+        const h = head(k + 0.5)!; // mid-bar, so flooring is doing real work
+        const slot = slotAt(h);
+        assert.equal(cyclePosition(h, slot), k % BARS, `cycle position at slot offset ${k}`);
+      }
+    });
+
+    it('walks the arrangement from the origin, wrapping', () => {
+      assert.equal(slotAt(head(0)!), ORIGIN);
+      assert.equal(slotAt(head(2.9)!), ORIGIN + 2);
+      // ORIGIN is 5 of 16, so ten slots on is past the end and back round to 15.
+      assert.equal(slotAt(head(10)!), (ORIGIN + 10) % BARS);
+      assert.equal(slotAt(head(11)!), 0);
+      assert.equal(slotAt(head(BARS)!), ORIGIN); // a full cycle returns
+    });
+
+    it('holds one slot in bar mode, however long it repeats', () => {
+      // §2.6: previewing a bar plays *that* bar. The cycle is one slot long, so there is
+      // nowhere else for this to go — which is the point of deriving it rather than counting.
+      const bar = playBar(ORIGIN, START);
+      for (const slots of [0, 0.5, 1, 3.3, 9, 40.75]) {
+        assert.equal(slotAt(playheadAt(bar, at(slots), T)!), ORIGIN, `${slots} slots in`);
+      }
+    });
+
+    it('holds the origin before playback has moved, whatever the mode', () => {
+      assert.equal(slotAt(playheadAt(loop, START, T)!), ORIGIN);
+      // Frames before the anchor — the engine's scheduling lead — clamp to phase 0 rather than
+      // running backwards off the origin.
+      assert.equal(slotAt(playheadAt(loop, START - 5000, T)!), ORIGIN);
     });
   });
 
