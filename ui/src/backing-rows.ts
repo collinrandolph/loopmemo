@@ -1,68 +1,81 @@
-import { type BackingTrack, isAudibleInMixdown } from '../../src/domain/bounce.ts';
 import {
   ACCIDENTALS,
+  type BackingTracks,
+  CHORD_TONES,
   type Chord,
+  type ChordToneId,
+  DRUM_KITS,
+  DRUM_PATTERNS,
   NOTE_LETTERS,
+  OCTAVES,
+  type Octave,
   QUALITIES,
+  CHORD_PATTERNS,
   chordLabel,
-  defaultChord,
+  drumPattern,
   randomChord,
-} from './chords.ts';
+} from '../../src/domain/backing.ts';
+import { isAudibleInMixdown } from '../../src/domain/bounce.ts';
 import { bindChips, swipeWheel } from './controls.ts';
 import { DRUM_ICON, PIANO_ICON } from './icons.ts';
 import { LR, el } from './kit.ts';
 
 /**
- * The drum loop and the chord bed (§2.6, §4.4) — "the same kind of object: non-recorded backing
+ * The drum track and the chord bed (§2.6, §4.4) — "the same kind of object: non-recorded backing
  * the user plays over".
  *
- * **None of this is domain state.** §2.6's backing tracks are unmodelled: there is no
- * `originalBPM`, no playback ratio and no chord settings anywhere in `src/domain`, so the
- * progression, the tone and the chosen loop live here and do not survive a reload. `bounce.ts`
- * defines the provisional subset it needs; when the real model arrives, this is what moves.
+ * **This is domain state now.** It used to own the progression, the tone and the chosen loop as
+ * screen state that did not survive a reload, and handed the export screen nothing — so a backing
+ * track muted here still exported a stem. Both tracks live on `Project` now; this edits them and
+ * reports upward, exactly like a layer row.
+ *
+ * Every option comes from `src/domain/backing.ts`. Nothing here invents a pattern name or a tone,
+ * which is what makes what you see identical to what gets scheduled.
  */
-
-/**
- * Editable working copy of the domain's shape — the fields are readonly there, as every domain
- * type is, so the screen owns a mutable mirror rather than reaching into one.
- */
-type Row = { -readonly [K in keyof BackingTrack]: BackingTrack[K] };
-
-const TONES = ['Rhodes', 'Pad', 'Nylon', 'Organ'];
-
-/**
- * Placeholder library — §6.2 lists "drum loop library and selection UI" as not yet designed, so
- * these are names to swipe through, not a decided set.
- */
-const DRUM_LOOPS = [
-  'Dusty Break 02',
-  'Tight Room 01',
-  'Boom Bap 04',
-  'Half-Time Shuffle',
-  'Brush Kit 03',
-  'Four on the Floor',
-].map((name) => ({ id: name, label: name }));
-
-export function backingRows(): HTMLElement {
+export function backingRows(opts: {
+  backing: BackingTracks;
+  onChange(next: BackingTracks): void;
+}): HTMLElement {
   const rowsEl = el('div', 'backing');
+
+  /** Local mirror, so a wheel can read the current value between renders. */
+  let backing = opts.backing;
+
+  function update(next: BackingTracks) {
+    backing = next;
+    opts.onChange(next);
+  }
+
+  const wheelItems = <T extends { id: string; name: string }>(xs: readonly T[]) =>
+    xs.map((x) => ({ id: x.id, label: x.name }));
 
   /**
    * The shared half of a backing row: icon, body, speaker, and a panel that opens on a tap
    * anywhere else in the head. The drum row is only this; the chord row adds to it.
+   *
+   * **`track` is an accessor, not a value.** Passing the object captured the state at build time,
+   * so `!track.muted` read a snapshot that never changed — muting worked once and unmuting was a
+   * no-op that re-sent `muted: true`. Everything a handler reaches for has to go through
+   * `backing`, which `update` replaces wholesale.
    */
-  function backingRow(ref: Row, icon: string, body: HTMLElement) {
+  function backingRow(
+    track: () => { level: number; muted: boolean },
+    setTrack: (patch: { level?: number; muted?: boolean }) => void,
+    icon: string,
+    body: HTMLElement,
+  ) {
     const row = el('div', 'lr-row');
     const head = el('div', 'lr-row-head', `<svg class="backing-icon" viewBox="0 0 24 24">${icon}</svg>`);
     head.appendChild(body);
 
     const vol = LR.VolumeControl({
-      level: () => ref.level * 100,
-      muted: () => ref.muted,
+      level: () => track().level * 100,
+      muted: () => track().muted,
       onToggle() {
-        ref.muted = !ref.muted;
-        // §2.6's export rule: any enabled track sounds and exports; mute is how you exclude
-        // one. `isAudibleInMixdown` is shared with bounce so the two cannot disagree.
-        row.style.opacity = isAudibleInMixdown(ref) ? '1' : '0.62';
+        setTrack({ muted: !track().muted });
+        // §2.6's export rule: anything not muted sounds and exports; mute is how you exclude one.
+        // `isAudibleInMixdown` is shared with bounce and export so the three cannot disagree.
+        row.style.opacity = isAudibleInMixdown(track()) ? '1' : '0.62';
         vol.update();
       },
     });
@@ -78,10 +91,10 @@ export function backingRows(): HTMLElement {
       'div',
       'lr-panel-row',
       '<span class="lr-panel-label">Volume</span>' +
-        `<input class="level" type="range" min="0" max="100" value="${Math.round(ref.level * 100)}" style="flex:1">`,
+        `<input class="level" type="range" min="0" max="100" value="${Math.round(track().level * 100)}" style="flex:1">`,
     );
     settings.querySelector('.level')!.addEventListener('input', (e) => {
-      ref.level = Number((e.target as HTMLInputElement).value) / 100;
+      setTrack({ level: Number((e.target as HTMLInputElement).value) / 100 });
       vol.update();
     });
 
@@ -96,6 +109,7 @@ export function backingRows(): HTMLElement {
       panel.style.maxHeight = row.classList.contains('is-open') ? `${panel.scrollHeight}px` : '0px';
     }
 
+    row.style.opacity = isAudibleInMixdown(track()) ? '1' : '0.62';
     rowsEl.appendChild(row);
     return { row, head, panel, inner, settings, syncPanelHeight };
   }
@@ -106,22 +120,32 @@ export function backingRows(): HTMLElement {
 
   // ------------------------------------------------------------------- drums --
   function drumRow() {
-    const ref: Row = { id: 'drums', muted: false, level: 0.7 };
-    let loop = DRUM_LOOPS[0]!.id;
+    const drums = () => backing.drums;
+    const setDrums = (patch: Partial<BackingTracks['drums']>) =>
+      update({ ...backing, drums: { ...backing.drums, ...patch } });
 
-    const detail = el('div', 'backing-detail', loop);
-    const parts = backingRow(ref, DRUM_ICON, detail);
+    // The head names the pattern, not the kit. A pattern is what the groove *is*; a kit is how it
+    // is voiced, and naming both in a one-line row would put two nouns where the eye wants one.
+    const detail = el('div', 'backing-detail', drumPattern(drums().patternId).name);
+    const parts = backingRow(drums, setDrums, DRUM_ICON, detail);
 
-    // The same wheel as the chord fields, and **always in the panel**. There is nothing to pick
-    // first: a drum row has one loop where a chord row has four chords, so the picker has no
-    // subject to be chosen and no reason to appear and disappear. Which is also why this panel
-    // needs no divider — everything in it is the track's.
+    // Both wheels are **always in the panel**. There is nothing to pick first: a drum row has one
+    // pattern where a chord row has four chords, so a picker here has no subject to be chosen and
+    // no reason to appear and disappear. Which is also why this panel needs no divider —
+    // everything in it belongs to the track.
     parts.inner.append(
-      swipeWheel('Loop', DRUM_LOOPS, () => loop, (v) => {
-        loop = v;
-        detail.textContent = v; // the row head names the loop, so it follows the wheel
-      }),
+      // Volume leads, as it does in every layer panel. A backing row is the same kind of row, so
+      // the one control they share should not move depending on which row you opened.
       parts.settings,
+      swipeWheel('Pattern', wheelItems(DRUM_PATTERNS), () => drums().patternId, (v) => {
+        setDrums({ patternId: v });
+        detail.textContent = drumPattern(v).name;
+      }, { layout: 'row' }),
+      // Independent of pattern (§2.6): any kit plays any pattern. Two wheels rather than one
+      // combined list is the whole point — a single list of 24 would re-couple them.
+      swipeWheel('Kit', wheelItems(DRUM_KITS), () => drums().kitId, (v) => setDrums({ kitId: v }), {
+        layout: 'row',
+      }),
     );
 
     parts.head.addEventListener('click', (e) => {
@@ -133,18 +157,20 @@ export function backingRows(): HTMLElement {
 
   // ------------------------------------------------------------------ chords --
   function chordRow() {
-    const ref: Row = { id: 'chords', muted: false, level: 0.55 };
-    const progression: Chord[] = [defaultChord(), defaultChord(), defaultChord(), defaultChord()];
-    let tone = TONES[0]!;
+    const bed = () => backing.chords;
+    const setBed = (patch: Partial<BackingTracks['chords']>) =>
+      update({ ...backing, chords: { ...backing.chords, ...patch } });
+    const setSlot = (index: number, patch: Partial<Chord>) =>
+      setBed({ slots: bed().slots.map((c, i) => (i === index ? { ...c, ...patch } : c)) });
 
     const slots = el('div', 'chord-slots');
-    const buttons = progression.map((_, i) => {
+    const buttons = bed().slots.map((_, i) => {
       const b = el('span', 'chord');
       b.dataset.slot = String(i);
       slots.appendChild(b);
       return b;
     });
-    const parts = backingRow(ref, PIANO_ICON, slots);
+    const parts = backingRow(bed, setBed, PIANO_ICON, slots);
 
     /**
      * The panel has two shapes and one of them is per-chord, so which chord is being edited is
@@ -155,17 +181,39 @@ export function backingRows(): HTMLElement {
     const chordSection = el('div', 'chord-editor');
     const divider = el('div', 'lr-panel-divider');
 
-    const toneRow = el('div', 'lr-panel-row', '<span class="lr-panel-label">Tone</span>');
-    const toneChips = el('div', 'lr-chips');
-    for (const name of TONES) {
-      const chip = el('span', `lr-chip${name === tone ? ' is-active' : ''}`, name);
-      chip.addEventListener('click', () => {
-        tone = name;
-      });
-      toneChips.appendChild(chip);
+    // All three are per project rather than per slot (§2.6), and they sit with Volume below the
+    // divider — which is what the divider means: above it is the chord being edited, below it is
+    // the whole track.
+    //
+    // **The chord row mirrors the drum row control for control**: Volume, then Pattern, then the
+    // voicing. Tone is to the chord bed what Kit is to the drums — the same list of names doing
+    // the same job — so it is the same control, a wheel. Octave has no counterpart on the drum
+    // row and is only three fixed positions, so chips show the whole range at once and Low or
+    // High is one tap instead of a step.
+    const patternWheel = swipeWheel(
+      'Pattern',
+      wheelItems(CHORD_PATTERNS),
+      () => bed().chordPatternId,
+      (v) => setBed({ chordPatternId: v }),
+      { layout: 'row' },
+    );
+    const toneWheel = swipeWheel(
+      'Tone',
+      wheelItems(CHORD_TONES),
+      () => bed().tone,
+      (v) => setBed({ tone: v as ChordToneId }),
+      { layout: 'row' },
+    );
+
+    const octaveRow = el('div', 'lr-panel-row', '<span class="lr-panel-label">Octave</span>');
+    const octaveChips = el('div', 'lr-chips');
+    for (const octave of OCTAVES) {
+      const chip = el('span', `lr-chip${octave.value === bed().octave ? ' is-active' : ''}`, octave.label);
+      chip.addEventListener('click', () => setBed({ octave: octave.value }));
+      octaveChips.appendChild(chip);
     }
-    toneRow.appendChild(toneChips);
-    bindChips(toneRow);
+    octaveRow.appendChild(octaveChips);
+    bindChips(octaveRow);
 
     // A track setting rather than a per-chord one: it replaces the whole progression, and it is
     // reachable without first picking a chord — which is the point, since the blank slate is
@@ -173,16 +221,24 @@ export function backingRows(): HTMLElement {
     const randomRow = el('div', 'lr-panel-row random-row');
     const randomBtn = el('button', 'lr-btn', 'Randomize chords');
     randomBtn.addEventListener('click', () => {
-      for (let i = 0; i < progression.length; i++) progression[i] = randomChord();
+      setBed({ slots: bed().slots.map(() => randomChord()) });
       render(); // the open editor is showing one of the slots that just changed
     });
     randomRow.appendChild(randomBtn);
 
-    parts.inner.append(chordSection, divider, parts.settings, toneRow, randomRow);
+    parts.inner.append(
+      chordSection,
+      divider,
+      parts.settings,
+      patternWheel,
+      toneWheel,
+      octaveRow,
+      randomRow,
+    );
 
     function paintChords() {
       for (const [i, b] of buttons.entries()) {
-        b.textContent = chordLabel(progression[i]!);
+        b.textContent = chordLabel(bed().slots[i]!);
         b.classList.toggle('is-editing', editing === i);
       }
     }
@@ -191,18 +247,19 @@ export function backingRows(): HTMLElement {
     function paintEditor() {
       chordSection.innerHTML = '';
       if (editing === null) return;
-      const chord = progression[editing]!;
+      const index = editing;
+      const chord = () => bed().slots[index]!;
       chordSection.append(
-        swipeWheel('Note', NOTE_LETTERS, () => chord.letter, (v) => {
-          chord.letter = v;
+        swipeWheel('Note', NOTE_LETTERS.map((l) => ({ id: l, label: l })), () => chord().letter, (v) => {
+          setSlot(index, { letter: v });
           paintChords();
         }),
-        swipeWheel('Sign', ACCIDENTALS, () => chord.accidental, (v) => {
-          chord.accidental = v as Chord['accidental'];
+        swipeWheel('Sign', ACCIDENTALS.map((a) => ({ id: a.id, label: a.label })), () => chord().accidental, (v) => {
+          setSlot(index, { accidental: v as Chord['accidental'] });
           paintChords();
-        }, 'lr-wheel--sign'),
-        swipeWheel('Type', QUALITIES, () => chord.quality, (v) => {
-          chord.quality = v as Chord['quality'];
+        }, { extraClass: 'lr-wheel--sign' }),
+        swipeWheel('Type', QUALITIES.map((q) => ({ id: q.id, label: q.label })), () => chord().quality, (v) => {
+          setSlot(index, { quality: v as Chord['quality'] });
           paintChords();
         }),
       );

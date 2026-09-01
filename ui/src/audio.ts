@@ -1,0 +1,685 @@
+import {
+  type BackingTracks,
+  type ChordTone,
+  type DrumKit,
+  chordTone,
+  drumKit,
+} from '../../src/domain/backing.ts';
+import { type BackingBar, backingSchedule } from '../../src/domain/backing-schedule.ts';
+import { type Timing, framesPerBar } from '../../src/domain/timing.ts';
+import { type Transport, playLoopFrom, playheadAt, slotAt } from '../../src/domain/transport.ts';
+import type { Engine } from './sim.ts';
+
+/**
+ * A **sounding** engine for the browser build: the backing tracks, synthesised live.
+ *
+ * This is `sim.ts`'s `Engine` with audio behind it, which is the point — that type was written as
+ * the seam a real engine would replace, so this is the substitution actually happening rather than
+ * a second thing bolted alongside. Screens keep asking for a frame position and get one; the
+ * difference is that the position now comes from an audio clock that something is audibly playing
+ * against, which is what §2.4 means by the engine's position being authoritative.
+ *
+ * **`src/domain` is untouched and stays pure.** Everything here reads `backingSchedule()` — onset
+ * frames, frequencies, envelope lengths — and does the two things a domain cannot: converts to the
+ * platform's unit, and builds nodes. Frames become seconds in exactly one place (`frameToTime`).
+ *
+ * **This is browser-only and disposable**, like the rest of `ui/`. It is a port of
+ * `prototype/backing-tracks/audio.js`, the sketch the kit and tone decisions were made against;
+ * when a platform is chosen, that prototype and this file are both references to translate from,
+ * not code to carry over. The recipes live here rather than in the domain deliberately: oscillator
+ * graphs, waveshaper curves and the compressor are platform-bound, while the parameters that
+ * *shape* them are domain data and come from `DrumKit` and `ChordTone`.
+ */
+
+/** Scheduled this far ahead of the playhead, topped up on an interval. */
+const AHEAD_SECONDS = 1.2;
+const TOPUP_MS = 250;
+/** Gap between `start()` and the first onset, so scheduling never races the clock. */
+const LEAD_SECONDS = 0.08;
+
+export type BackingEngine = Engine & {
+  /**
+   * What to play. Safe while running: a change to the tracks is picked up by the next bar
+   * scheduled, so swapping a kit or a chord is heard within a bar and never clicks. A change to
+   * *timing* re-anchors instead, because every future bar time is derived from the tempo.
+   */
+  setBacking(backing: BackingTracks, t: Timing): void;
+  /**
+   * Which traversal of the arrangement is playing (§3.6). **The backing follows the transport**,
+   * so the bar being generated is the bar the sweep is over — in bar mode that is one slot held,
+   * which is what makes previewing bar 7 sound like bar 7 (§2.6) instead of walking the
+   * progression underneath a sweep that is not moving.
+   *
+   * Defaults to the whole arrangement from slot 1, which is what every screen without a transport
+   * means by "play". Safe while running: already-scheduled bars that have not sounded yet are
+   * dropped and rebuilt, so the change is heard at the next bar rather than after the lookahead.
+   */
+  setTransport(transport: Transport): void;
+  /** Whether the browser has actually let us make sound yet (autoplay policy). */
+  ready(): boolean;
+  destroy(): void;
+};
+
+type Voice = { nodes: AudioNode[]; startsAt: number; endsAt: number };
+
+export function audioEngine(sampleRate: number): BackingEngine {
+  let ctx: AudioContext | undefined;
+  let bus: DynamicsCompressorNode | undefined;
+  let drumGain: GainNode | undefined;
+  let chordGain: GainNode | undefined;
+
+  let backing: BackingTracks | undefined;
+  let timing: Timing | undefined;
+  // The whole arrangement from the top: what "play" means on every screen that has no transport
+  // of its own. Idle is never stored — a stopped engine schedules nothing anyway, and falling
+  // back to the linear walk keeps a caller that hands one over from going silent.
+  let transport: Transport = playLoopFrom(0, 0);
+  let bars: readonly BackingBar[] = [];
+  /** Longest a chord voice may ring, by onset index — see `chordRingCaps`. */
+  let chordCaps: readonly number[] = [];
+
+  let originFrame = 0;
+  /** `ctx.currentTime` corresponding to `originFrame`. Undefined when stopped. */
+  let anchorTime: number | undefined;
+  let nextBar = 0; // absolute bar index, counting from the loop start
+  let voices: Voice[] = [];
+  let lastHat: { source: AudioBufferSourceNode; stopAt: number } | undefined;
+  let timer: number | undefined;
+
+  // ------------------------------------------------------------------ graph --
+  function ensure(): AudioContext {
+    if (!ctx) {
+      ctx = new AudioContext();
+      // A chord is three or four notes, some tones use three oscillators each, and tails overlap
+      // — a dense pattern easily has a dozen oscillators sounding at once. Summed straight into
+      // `destination` that clips, and hard digital clipping is exactly a harsh arrhythmic screech,
+      // because distortion respects neither envelopes nor timing. **Every voice goes through
+      // this**, never to the destination.
+      const comp = ctx.createDynamicsCompressor();
+      comp.threshold.value = -20;
+      comp.knee.value = 12;
+      comp.ratio.value = 14;
+      comp.attack.value = 0.003;
+      comp.release.value = 0.25;
+      const headroom = ctx.createGain();
+      headroom.gain.value = 0.5;
+      comp.connect(headroom);
+      headroom.connect(ctx.destination);
+      bus = comp;
+
+      // One gain per track, so `level` is a property of the track rather than something baked
+      // into every voice's peak. Mute is not here — `backingSchedule` omits a muted track's
+      // onsets entirely, so there is nothing to turn down.
+      drumGain = ctx.createGain();
+      chordGain = ctx.createGain();
+      drumGain.connect(comp);
+      chordGain.connect(comp);
+    }
+    if (ctx.state === 'suspended') void ctx.resume();
+    return ctx;
+  }
+
+  function applyLevels() {
+    if (!backing || !drumGain || !chordGain) return;
+    drumGain.gain.value = backing.drums.level;
+    chordGain.gain.value = backing.chords.level;
+  }
+
+  // ------------------------------------------------------------ bookkeeping --
+  /**
+   * Cleanup is anchored to the voice's scheduled end **in context time**, not to a wall clock at
+   * the moment it was scheduled. Scheduling runs up to `AHEAD_SECONDS` ahead, so "now" when a
+   * voice is created can be a second before it starts — anchoring to the wrong one disconnects
+   * voices before they ever sound.
+   */
+  function track(nodes: AudioNode[], startTime: number, seconds: number) {
+    voices.push({ nodes, startsAt: startTime, endsAt: startTime + seconds + 0.2 });
+  }
+
+  function sweep() {
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    voices = voices.filter((v) => {
+      if (v.endsAt > now) return true;
+      for (const n of v.nodes) {
+        try {
+          n.disconnect();
+        } catch {
+          /* already disconnected */
+        }
+      }
+      return false;
+    });
+  }
+
+  function silence(nodes: AudioNode[]) {
+    for (const n of nodes) {
+      try {
+        (n as OscillatorNode).stop?.();
+      } catch {
+        /* not started, or already stopped */
+      }
+      try {
+        n.disconnect();
+      } catch {
+        /* already disconnected */
+      }
+    }
+  }
+
+  function killAll() {
+    for (const v of voices) silence(v.nodes);
+    voices = [];
+    lastHat = undefined;
+  }
+
+  /**
+   * Drop what is scheduled but not yet sounding, and rebuild the horizon from where we are.
+   *
+   * Scheduling runs `AHEAD_SECONDS` in front of the playhead, so a change to *which bar plays
+   * next* would otherwise be heard up to a second and a bit late while the sweep moved at once —
+   * long enough to read as the backing being on a different loop from the arrangement, which is
+   * exactly the bug this exists to close.
+   *
+   * **Voices that have already started are left alone.** They were correct when they began, and
+   * cutting a chord mid-decay is a click. The current bar is rescheduled rather than skipped —
+   * `scheduleBar` drops onsets already in the past, so its remaining beats come back rather than
+   * leaving most of a bar silent.
+   */
+  function rescheduleFuture() {
+    if (anchorTime === undefined || !ctx || !timing) return;
+    const now = ctx.currentTime;
+    voices = voices.filter((v) => {
+      if (v.startsAt <= now) return true;
+      silence(v.nodes);
+      return false;
+    });
+    lastHat = undefined; // it may well have been one of those
+    nextBar = Math.floor(Math.max(originFrame, engine.frame()) / framesPerBar(timing));
+    topUp();
+  }
+
+  // ----------------------------------------------------------- drum voices --
+  function noise(c: AudioContext, seconds: number): AudioBuffer {
+    const length = Math.max(1, Math.floor(c.sampleRate * seconds));
+    const buffer = c.createBuffer(1, length, c.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < length; i++) data[i] = Math.random() * 2 - 1;
+    return buffer;
+  }
+
+  /** Pitch-swept sine plus a very short click. The sweep alone reads as boomy, not as a hit. */
+  function kick(c: AudioContext, dest: AudioNode, at: number, k: DrumKit['kick']) {
+    const osc = c.createOscillator();
+    osc.type = 'sine';
+    const gain = c.createGain();
+    osc.connect(gain);
+    gain.connect(dest);
+
+    const click = c.createOscillator();
+    click.type = 'square';
+    click.frequency.value = k.clickFreq;
+    const clickGain = c.createGain();
+    click.connect(clickGain);
+    clickGain.connect(dest);
+
+    osc.frequency.setValueAtTime(k.startFreq, at);
+    osc.frequency.exponentialRampToValueAtTime(k.endFreq, at + k.sweepSeconds);
+    gain.gain.setValueAtTime(0.0001, at);
+    gain.gain.linearRampToValueAtTime(0.9, at + 0.002);
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + k.seconds);
+    clickGain.gain.setValueAtTime(k.clickGain, at);
+    clickGain.gain.exponentialRampToValueAtTime(0.0001, at + 0.012);
+
+    osc.start(at);
+    osc.stop(at + k.seconds + 0.05);
+    click.start(at);
+    click.stop(at + 0.02);
+    track([osc, gain, click, clickGain], at, k.seconds);
+  }
+
+  /** Two detuned tonal oscillators (the shell) plus a highpassed noise burst (the buzz). */
+  function snare(c: AudioContext, dest: AudioNode, at: number, s: DrumKit['snare']) {
+    const body = c.createGain();
+    const o1 = c.createOscillator();
+    o1.type = 'triangle';
+    o1.frequency.value = s.body1;
+    const o2 = c.createOscillator();
+    o2.type = 'triangle';
+    o2.frequency.value = s.body2;
+    o1.connect(body);
+    o2.connect(body);
+
+    const src = c.createBufferSource();
+    src.buffer = noise(c, s.seconds + 0.05);
+    const hp = c.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = s.noiseHighpass;
+    const nGain = c.createGain();
+    src.connect(hp);
+    hp.connect(nGain);
+
+    const out = c.createGain();
+    out.gain.value = 0.6;
+    body.connect(out);
+    nGain.connect(out);
+    out.connect(dest);
+
+    body.gain.setValueAtTime(0.5, at);
+    body.gain.exponentialRampToValueAtTime(0.0001, at + s.bodySeconds);
+    nGain.gain.setValueAtTime(0.7, at);
+    nGain.gain.exponentialRampToValueAtTime(0.0001, at + s.seconds);
+
+    const stopAt = at + s.seconds + 0.05;
+    o1.start(at);
+    o1.stop(stopAt);
+    o2.start(at);
+    o2.stop(stopAt);
+    src.start(at);
+    src.stop(stopAt);
+    track([o1, o2, body, src, hp, nGain, out], at, s.seconds);
+  }
+
+  /**
+   * Filtered noise. Closed and open share the recipe and differ only in decay — the same way
+   * strike and chunk are one chord voice with two envelopes, not a fourth sound (§2.6).
+   *
+   * **Choke**: a real hi-hat is one pair of cymbals, so any new hit cuts off whatever is still
+   * ringing. Scheduling always proceeds in ascending time, so "most recently scheduled" and
+   * "immediately preceding in playback" are the same hat even though we run ahead of the playhead.
+   */
+  function hat(c: AudioContext, dest: AudioNode, at: number, h: DrumKit['hat'], open: boolean) {
+    const seconds = open ? h.openSeconds : h.closedSeconds;
+    const src = c.createBufferSource();
+    src.buffer = noise(c, seconds + 0.05);
+    const hp = c.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = h.highpass;
+    const bp = c.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = h.bandpass;
+    bp.Q.value = 0.8;
+    const gain = c.createGain();
+    src.connect(hp);
+    hp.connect(bp);
+    bp.connect(gain);
+    gain.connect(dest);
+
+    gain.gain.setValueAtTime(open ? 0.32 : 0.38, at);
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + seconds);
+
+    if (lastHat && lastHat.stopAt > at) {
+      try {
+        lastHat.source.stop(at);
+      } catch {
+        /* already stopped */
+      }
+    }
+    const stopAt = at + seconds + 0.02;
+    src.start(at);
+    src.stop(stopAt);
+    lastHat = { source: src, stopAt };
+    track([src, hp, bp, gain], at, seconds);
+  }
+
+  // ---------------------------------------------------------- chord voices --
+  /**
+   * A gentle bounded soft-clip for the Wurly's reed growl — a real Wurlitzer reed distorts
+   * slightly when struck, and that is much of what separates it from a Rhodes. `tanh` saturates
+   * smoothly and cannot blow up however many voices sum into it. Normalised, so the curve itself
+   * adds no gain.
+   */
+  const WURLY_CURVE = (() => {
+    const n = 1024;
+    const k = 2.2;
+    const curve = new Float32Array(n);
+    const norm = Math.tanh(k);
+    for (let i = 0; i < n; i++) curve[i] = Math.tanh(k * (((i / (n - 1)) * 2 - 1) * 1)) / norm;
+    return curve;
+  })();
+
+  /**
+   * Multiplicative tremolo: a gain stage in series oscillating around 1, **never** an additive
+   * wobble on the envelope's own gain. Additive is a fixed depth no matter how far the note has
+   * decayed, so it dwarfs the signal exactly as it fades and reads as a stutter rather than
+   * tremolo. In series it scales down with the note.
+   */
+  function tremolo(c: AudioContext, rate: number, depth: number) {
+    const stage = c.createGain();
+    stage.gain.value = 1;
+    const osc = c.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.value = rate;
+    const amount = c.createGain();
+    amount.gain.value = depth;
+    osc.connect(amount);
+    amount.connect(stage.gain);
+    return { stage, osc, amount };
+  }
+
+  type ToneBuilder = (
+    c: AudioContext,
+    dest: AudioNode,
+    freq: number,
+    at: number,
+    chunk: boolean,
+    seconds: number,
+  ) => void;
+
+  /**
+   * Envelope breakpoints are **fractions of the duration**, never fixed offsets. The duration is
+   * clamped to the gap before the next onset, so a hardcoded 0.35 s breakpoint can land *after*
+   * the end — a non-monotonic automation sequence, which throws. Scaling keeps every case valid
+   * by construction.
+   */
+  const TONES: Record<string, ToneBuilder> = {
+    rhodes(c, dest, freq, at, chunk, seconds) {
+      const osc = c.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      const bark = c.createOscillator(); // the tine's bright attack
+      bark.type = 'sine';
+      bark.frequency.value = freq * 2;
+      const barkGain = c.createGain();
+      const main = c.createGain();
+      const trem = tremolo(c, 4.5, 0.06);
+
+      osc.connect(main);
+      bark.connect(barkGain);
+      barkGain.connect(main);
+      main.connect(trem.stage);
+      trem.stage.connect(dest);
+
+      const peak = chunk ? 0.22 : 0.3;
+      main.gain.setValueAtTime(0.0001, at);
+      main.gain.linearRampToValueAtTime(peak, at + Math.min(chunk ? 0.004 : 0.008, seconds * 0.2));
+      if (chunk) {
+        main.gain.setValueAtTime(peak, at + seconds * 0.3);
+      } else {
+        main.gain.exponentialRampToValueAtTime(peak * 0.45, at + seconds * 0.3);
+        main.gain.setValueAtTime(peak * 0.45, at + seconds * 0.65);
+      }
+      main.gain.exponentialRampToValueAtTime(0.0001, at + seconds);
+      barkGain.gain.setValueAtTime(peak * 0.5, at);
+      barkGain.gain.exponentialRampToValueAtTime(0.0001, at + Math.min(chunk ? 0.05 : 0.18, seconds));
+
+      const stopAt = at + seconds + 0.05;
+      for (const n of [osc, bark, trem.osc]) {
+        n.start(at);
+        n.stop(stopAt);
+      }
+      track([osc, bark, barkGain, main, trem.stage, trem.osc, trem.amount], at, seconds);
+    },
+
+    pad(c, dest, freq, at, chunk, seconds) {
+      const main = c.createGain();
+      const filter = c.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = chunk ? 900 : 1800;
+      filter.Q.value = 0.7;
+      const oscs = [-6, 0, 6].map((cents) => {
+        const o = c.createOscillator();
+        o.type = 'sawtooth';
+        o.frequency.value = freq;
+        o.detune.value = cents;
+        o.connect(filter);
+        return o;
+      });
+      filter.connect(main);
+      main.connect(dest);
+
+      const peak = chunk ? 0.16 : 0.22;
+      main.gain.setValueAtTime(0.0001, at);
+      if (chunk) {
+        main.gain.linearRampToValueAtTime(peak, at + Math.min(0.01, seconds * 0.2));
+        main.gain.setValueAtTime(peak, at + seconds * 0.3);
+      } else {
+        // The swell is the tone: a slow attack and release are its whole identity.
+        main.gain.linearRampToValueAtTime(peak, at + seconds * 0.25);
+        main.gain.setValueAtTime(peak, at + seconds * 0.55);
+      }
+      main.gain.exponentialRampToValueAtTime(0.0001, at + seconds);
+
+      const stopAt = at + seconds + 0.05;
+      for (const o of oscs) {
+        o.start(at);
+        o.stop(stopAt);
+      }
+      track([...oscs, filter, main], at, seconds);
+    },
+
+    wurly(c, dest, freq, at, chunk, seconds) {
+      const osc = c.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      const shaper = c.createWaveShaper();
+      shaper.curve = WURLY_CURVE;
+      shaper.oversample = '2x';
+      // Brighter and faster than the Rhodes' bark, at the third partial — closer to a reed.
+      const bark = c.createOscillator();
+      bark.type = 'sine';
+      bark.frequency.value = freq * 3;
+      const barkGain = c.createGain();
+      const main = c.createGain();
+      const trem = tremolo(c, 5.5, 0.07);
+
+      osc.connect(shaper);
+      shaper.connect(main);
+      bark.connect(barkGain);
+      barkGain.connect(main);
+      main.connect(trem.stage);
+      trem.stage.connect(dest);
+
+      const peak = chunk ? 0.2 : 0.26;
+      main.gain.setValueAtTime(0.0001, at);
+      main.gain.linearRampToValueAtTime(peak, at + Math.min(chunk ? 0.003 : 0.005, seconds * 0.15));
+      if (chunk) {
+        main.gain.setValueAtTime(peak, at + seconds * 0.25);
+      } else {
+        main.gain.exponentialRampToValueAtTime(peak * 0.35, at + seconds * 0.2);
+        main.gain.setValueAtTime(peak * 0.35, at + seconds * 0.5);
+      }
+      main.gain.exponentialRampToValueAtTime(0.0001, at + seconds);
+      barkGain.gain.setValueAtTime(peak * 0.65, at);
+      barkGain.gain.exponentialRampToValueAtTime(0.0001, at + Math.min(chunk ? 0.03 : 0.1, seconds));
+
+      const stopAt = at + seconds + 0.05;
+      for (const n of [osc, bark, trem.osc]) {
+        n.start(at);
+        n.stop(stopAt);
+      }
+      track([osc, shaper, bark, barkGain, main, trem.stage, trem.osc, trem.amount], at, seconds);
+    },
+
+    organ(c, dest, freq, at, chunk, seconds) {
+      const main = c.createGain();
+      main.connect(dest);
+      const oscs = [1, 2, 3, 4].map((harmonic, i) => {
+        const o = c.createOscillator();
+        o.type = 'sine';
+        o.frequency.value = freq * harmonic;
+        const g = c.createGain();
+        g.gain.value = [1, 0.5, 0.28, 0.16][i]!;
+        o.connect(g);
+        g.connect(main);
+        return o;
+      });
+
+      const peak = chunk ? 0.14 : 0.18;
+      // Near-instant attack, flat while held, quick release — an organ does not decay under a
+      // held key, which is most of what makes it read as an organ.
+      main.gain.setValueAtTime(0.0001, at);
+      main.gain.linearRampToValueAtTime(peak, at + Math.min(0.004, seconds * 0.15));
+      main.gain.setValueAtTime(peak, at + seconds * (chunk ? 0.75 : 0.9));
+      main.gain.exponentialRampToValueAtTime(0.0001, at + seconds);
+
+      const stopAt = at + seconds + 0.05;
+      for (const o of oscs) {
+        o.start(at);
+        o.stop(stopAt);
+      }
+      track([...oscs, main], at, seconds);
+    },
+  };
+
+  // -------------------------------------------------------------- schedule --
+  /**
+   * How long each chord onset may ring before the next one in the same bar, wrapping past the bar
+   * line back to the first.
+   *
+   * **This is the prototype's overlap rule, and §6.1 has not settled it.** Capping to the gap
+   * makes cross-onset pile-up structurally impossible for chords, which is what stopped the
+   * cumulative screech in the prototype — but drums are not capped (the hat chokes instead, and
+   * kick and snare do neither), and the floor below means the cap stops holding above ~150 BPM on
+   * the densest pattern. Recorded rather than quietly fixed: whichever policy wins should be one
+   * rule, decided once, not three that happen to coexist here.
+   */
+  function chordRingCaps(bar: BackingBar, t: Timing): number[] {
+    const fpb = framesPerBar(t);
+    return bar.chords.map((onset, i) => {
+      const next = bar.chords[(i + 1) % bar.chords.length]!;
+      const gap =
+        i === bar.chords.length - 1
+          ? fpb - onset.frameOffset + next.frameOffset
+          : next.frameOffset - onset.frameOffset;
+      return Math.max(0.15, gap / t.sampleRate - 0.05);
+    });
+  }
+
+  /** The one place frames become seconds. Project frames, so the ratio is real time. */
+  function frameToTime(frame: number): number {
+    return anchorTime! + (frame - originFrame) / sampleRate;
+  }
+
+  function scheduleBar(absoluteBar: number) {
+    const c = ctx!;
+    const t = timing!;
+    const b = backing!;
+    const barStartFrame = absoluteBar * framesPerBar(t);
+    // **Which slot this bar is** comes from the transport, through the same resolver the sweep
+    // reads (§3.6). A private `absoluteBar % bars.length` is a second answer to the question the
+    // playhead already answers, and it was wrong the moment the two disagreed: bar preview held
+    // one slot on screen while this walked the chord progression underneath it.
+    const head = playheadAt(transport, barStartFrame, t);
+    const bar = head ? bars[slotAt(head)] : bars[absoluteBar % bars.length];
+    if (!bar) return;
+
+    const kit = drumKit(b.drums.kitId);
+    const tone = chordTone(b.chords.tone);
+    const build = TONES[tone.id];
+
+    for (const onset of bar.drums) {
+      const frame = barStartFrame + onset.frameOffset;
+      if (frame < originFrame) continue; // started mid-loop; this one already went past
+      const at = frameToTime(frame);
+      // And this one went past while we were running: `rescheduleFuture` rewinds into the bar in
+      // progress to recover its remaining beats, so its earlier ones have to be dropped here.
+      if (at <= c.currentTime) continue;
+      if (onset.voice === 'kick') kick(c, drumGain!, at, kit.kick);
+      else if (onset.voice === 'snare') snare(c, drumGain!, at, kit.snare);
+      else hat(c, drumGain!, at, kit.hat, onset.voice === 'hatOpen');
+    }
+
+    if (!build) return;
+    bar.chords.forEach((onset, i) => {
+      const frame = barStartFrame + onset.frameOffset;
+      if (frame < originFrame) return;
+      const at = frameToTime(frame);
+      if (at <= c.currentTime) return;
+      const nominal = onset.nominalFrames / t.sampleRate;
+      const seconds = Math.min(nominal, chordCaps[i] ?? nominal);
+      for (const freq of bar.frequencies) {
+        build(c, chordGain!, freq, at, onset.articulation === 'chunk', seconds);
+      }
+    });
+  }
+
+  function topUp() {
+    if (anchorTime === undefined || !ctx || !timing || !backing) return;
+    sweep();
+    const horizon = ctx.currentTime + AHEAD_SECONDS;
+    // Guarded rather than `while (true)`: a pathological tempo must not spin the main thread.
+    for (let n = 0; n < 64; n++) {
+      const startTime = frameToTime(nextBar * framesPerBar(timing));
+      if (startTime > horizon) break;
+      scheduleBar(nextBar);
+      nextBar++;
+    }
+  }
+
+  function rebuild() {
+    if (!backing || !timing) return;
+    bars = backingSchedule(backing, timing);
+    chordCaps = bars[0] ? chordRingCaps(bars[0], timing) : [];
+    applyLevels();
+  }
+
+  // ----------------------------------------------------------------- engine --
+  const engine: BackingEngine = {
+    sampleRate,
+
+    frame: () =>
+      anchorTime === undefined || !ctx
+        ? originFrame
+        : originFrame + Math.round((ctx.currentTime - anchorTime) * sampleRate),
+
+    running: () => anchorTime !== undefined,
+
+    ready: () => ctx?.state === 'running',
+
+    start(atFrame) {
+      const c = ensure();
+      killAll();
+      originFrame = atFrame;
+      anchorTime = c.currentTime + LEAD_SECONDS;
+      nextBar = timing ? Math.floor(atFrame / framesPerBar(timing)) : 0;
+      applyLevels();
+      topUp();
+      if (timer === undefined) timer = window.setInterval(topUp, TOPUP_MS);
+    },
+
+    stop() {
+      originFrame = engine.frame();
+      anchorTime = undefined;
+      if (timer !== undefined) {
+        clearInterval(timer);
+        timer = undefined;
+      }
+      killAll();
+    },
+
+    setBacking(next, t) {
+      const tempoChanged =
+        timing !== undefined &&
+        (timing.bpm !== t.bpm || timing.barCount !== t.barCount || timing.beatsPerBar !== t.beatsPerBar);
+      backing = next;
+      timing = t;
+      rebuild();
+      if (anchorTime === undefined) return;
+      if (tempoChanged) {
+        // Every future bar time is derived from the tempo, so a live change has to re-anchor —
+        // patching the horizon would leave already-scheduled bars at the old spacing.
+        const at = engine.frame();
+        engine.stop();
+        engine.start(at);
+      }
+      // Otherwise nothing to do: the next top-up reads the new tracks, so a kit or chord change
+      // lands within a bar and no running voice is rebuilt underneath itself.
+    },
+
+    setTransport(next) {
+      transport = next.mode === 'idle' ? playLoopFrom(0, 0) : next;
+      rescheduleFuture();
+    },
+
+    destroy() {
+      engine.stop();
+      void ctx?.close();
+      ctx = undefined;
+      bus = undefined;
+    },
+  };
+
+  void bus; // held only so the graph is not collected; the compressor has no other reader
+  return engine;
+}

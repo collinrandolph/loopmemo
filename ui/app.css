@@ -117,7 +117,22 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
   font-size: 15px; font-weight: 600; color: rgba(255,255,255,.86);
   margin-left: auto; white-space: nowrap;
 }
-.lr-stats { margin-top: 2px; }
+.lr-stats { margin-top: 2px; display: flex; align-items: center; gap: 10px; }
+.stats-text { flex: 1; min-width: 0; }
+/* The way into project settings. Sized and coloured like the help control rather than like a
+   button, because it is a route rather than an action — and pushed to the right of the stats it
+   sits beside, where the row was otherwise empty. */
+.header-gear {
+  flex: none; padding: 0; border: none; background: none; cursor: pointer; line-height: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+.header-gear svg {
+  width: 19px; height: 19px; display: block;
+  fill: none; stroke: rgba(255,255,255,.62); stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round;
+  transition: stroke .12s;
+}
+.header-gear:hover svg { stroke: #fff; }
 
 /* Fixed label column: the name and the pass badge swap inside one box, so a lane
    starts at the same x whatever state the layer is in. The width is measured from the
@@ -244,23 +259,42 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
 .lr-wheel {
   flex: 1 1 0; min-width: 0; overflow: hidden;
   background: rgba(255,255,255,.09); border: 1px solid rgba(255,255,255,.14);
-  border-radius: 6px; padding: 7px 4px 5px;
-  display: grid; gap: 1px; justify-items: center;
+  border-radius: 6px; padding: 7px 8px;
+  /* One line: the value, then the arrow pushed to the right edge. Both layouts share it, so an
+     inline field and a labelled row put their hint in the same place. */
+  display: flex; align-items: center; gap: 6px;
   cursor: ns-resize; transition: background .12s;
   touch-action: none; user-select: none; -webkit-user-select: none;
   -webkit-tap-highlight-color: transparent;
 }
 .lr-wheel:hover { background: rgba(255,255,255,.16); }
 .lr-wheel__value {
+  flex: 1 1 auto; text-align: center;
   font-size: 17px; font-weight: 600; color: var(--lr-ink); line-height: 1.2;
-  /* A loop name is a phrase where a note letter is one glyph, so it has to be able to run out
+  /* A pattern name is a phrase where a note letter is one glyph, so it has to be able to run out
      of room without pushing the wheel wider than its column. */
-  max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .lr-wheel--sign .lr-wheel__value { font-size: 21px; line-height: .98; }
-.lr-wheel__cap {
-  font-size: 9px; letter-spacing: .06em; text-transform: uppercase;
-  color: var(--lr-hint); white-space: nowrap;
+
+/* The labelled-row layout adds only the outside caption and its own metrics — the value-and-arrow
+   line is the base rule, shared. */
+.lr-wheel-row { align-items: center; }
+.lr-wheel-row .lr-wheel { flex: 1 1 auto; padding: 8px 10px; gap: 8px; }
+.lr-wheel--row .lr-wheel__value {
+  /* Left-aligned rather than centred: it sits beside a label in a wide box, and a centred value
+     would leave the eye hunting for where each row's answer starts. The inline fields stay
+     centred — they are a glyph wide, with nothing to hunt through. */
+  text-align: left; font-size: 15px;
+}
+/* An icon rather than a `↕` glyph, so it centres on what is drawn rather than on a line box the
+   ink sits low in — see `SWIPE_Y_ICON`. `display: flex` keeps the span the height of the svg, so
+   the wheel's `align-items: center` has nothing left to get wrong. */
+.lr-wheel__ax { flex: none; display: flex; color: var(--lr-hint); }
+.lr-wheel__ax svg {
+  width: 13px; height: 13px; display: block;
+  fill: none; stroke: currentColor; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round;
 }
 
 /* The new value follows the finger in, so a repeat inside one drag reads as travel rather than
@@ -509,7 +543,10 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
      kit's own space-between puts them at the two ends. */
 
   .lr-panel-row { gap: 8px; }
-  .lr-panel-label { min-width: 40px; }
+  /* 46, not 40: the widest label in any panel ("Pattern") measures 44.75px here, so a 40px floor
+     let each row size to its own label and the controls beside them started at three different
+     x positions. The label is a column or it is noise — 6px is the whole cost of it being one. */
+  .lr-panel-label { min-width: 46px; }
   .preset-chips { gap: 3px; }
   .preset-chips .lr-chip { padding: 6px 2px; }
 
@@ -530,3 +567,63 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
   .is-ops-open .layer-ops { padding: 10px 12px; }
   .new-btn { padding: 11px; }
 }
+
+/* ------------------------------------------------------------------ settings --
+   Project setup and project settings, one screen (`settings.ts`). Built from the same panel-row
+   vocabulary as every other panel, so a locked field looks like an inert row rather than a
+   differently-styled one. NOTE: the mobile media block must stay last in this file — see the
+   comment above it. */
+/* `.grid` is a plain block — it sets padding and nothing else — so a bare `gap` here did
+   nothing at all and every row sat directly on the next one, separated only by whatever padding
+   its own control happened to carry. Made a real column. */
+.settings .grid {
+  display: flex; flex-direction: column; gap: 12px;
+  padding: 6px 20px 20px;
+}
+.setting-name {
+  flex: 1; min-width: 0;
+  background: rgba(255,255,255,.09); border: 1px solid rgba(255,255,255,.14);
+  border-radius: 6px; padding: 8px 10px;
+  color: var(--lr-ink); font-size: 15px; font-weight: 600; font-family: inherit;
+}
+.setting-name:focus { outline: none; border-color: rgba(255,255,255,.4); }
+/* The browser default is a mid grey, which over the purple field reads olive rather than muted.
+   A dimmed version of the field's own ink instead. */
+.setting-name::placeholder { color: var(--lr-hint); opacity: 1; }
+.setting-slider { flex: 1; min-width: 0; }
+/* Tabular, so the number does not jitter sideways while a slider is being dragged. */
+.setting-figure {
+  flex: none; min-width: 68px; text-align: right;
+  font-size: 15px; font-weight: 600; color: var(--lr-ink);
+  font-variant-numeric: tabular-nums;
+}
+/* Smaller than the kit's 46px transport button. There it is the control the screen exists for;
+   here it is one item on the tempo row, and at full size it was the largest, brightest thing on a
+   page whose primary action is Create project. */
+.settings .lr-play { width: 32px; height: 32px; flex: 0 0 32px; }
+.settings .lr-play svg { width: 11px; height: 11px; }
+/* Prose and figures that belong to the row above, sharing that row's layout so they indent into
+   the same column automatically. The empty `.lr-panel-label` does the indenting — no measurement,
+   nothing to keep in step with the breakpoint.
+
+   Pulled tight against the control they explain: at the column's full gap they sat equidistant
+   from the row above and the row below, which reads as a floating paragraph rather than as a
+   caption belonging to something. */
+.setting-annotation { align-items: flex-start; margin-top: -8px; }
+.setting-annotation + .setting-annotation { margin-top: -6px; }
+.setting-annotation > :not(.lr-panel-label) { flex: 1; min-width: 0; }
+.setting-figures { font-size: 11px; color: var(--lr-hint); }
+/* Bar count: a fixed four-column grid rather than a wrapping chip row, so both rows are the same
+   shape and each button is a target rather than a token. */
+.setting-bars {
+  flex: 1; min-width: 0;
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;
+}
+.setting-bars .lr-chip { padding: 9px 0; font-size: 14px; text-align: center; }
+/* The project actions, moved here from the Library's per-row panel. Same `.acts` / `.confirm`
+   primitives; only the element carrying `is-confirming` differs, since there is no row here. */
+.setting-actions.is-confirming .acts { display: none; }
+.setting-actions.is-confirming .confirm { display: flex; }
+.setting-actions .acts { padding-left: 0; }
+/* The grouping the removed section labels were carrying. */
+.setting-gap { height: 6px; }

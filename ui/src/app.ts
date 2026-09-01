@@ -1,11 +1,14 @@
+import { backingMixSources } from '../../src/domain/backing.ts';
 import type { Layer, Project } from '../../src/domain/project.ts';
-import { QUALITY_SPEC } from '../../src/domain/project.ts';
+import { QUALITY_SPEC, projectTiming } from '../../src/domain/project.ts';
+import { type BackingEngine, audioEngine } from './audio.ts';
 import { editLayerScreen } from './edit-layer.ts';
 import { exportScreen } from './export.ts';
 import { el } from './kit.ts';
 import { libraryScreen } from './library.ts';
 import { playbackScreen } from './playback.ts';
-import { demoLibrary, simulatedEngine } from './sim.ts';
+import { projectSettingsScreen } from './settings.ts';
+import { demoLibrary } from './sim.ts';
 
 /**
  * Shell for the UI pass: the screens over the real domain and a simulated engine.
@@ -25,7 +28,10 @@ type Route =
   | { screen: 'edit'; layerIndex: number }
   // Export is reachable from two places, and cancelling has to put you back where you were —
   // an escape that lands somewhere you did not come from is a second navigation, not an escape.
-  | { screen: 'export'; from: 'library' | 'playback' };
+  | { screen: 'export'; from: 'library' | 'playback' | 'settings' }
+  // Setup and settings are one screen (see `settings.ts`); the mode decides only the commit verb
+  // and whether recording quality can still be chosen.
+  | { screen: 'settings'; mode: 'new' | 'edit' };
 let route: Route = { screen: 'library' };
 
 const nav = el('div', 'app-nav');
@@ -33,6 +39,7 @@ const host = el('div', 'app-host');
 document.body.append(nav, host);
 
 let current: { destroy(): void } | undefined;
+let currentEngine: BackingEngine | undefined;
 
 function open(): Project {
   return projects.find((p) => p.id === openId) ?? projects[0]!;
@@ -57,9 +64,6 @@ function go(next: Route) {
 
 function render() {
   const project = open();
-  // One engine per mount, at the open project’s capture rate, so frame arithmetic on the
-  // Playback and Edit screens is in the same units the domain computes in.
-  const engine = simulatedEngine(QUALITY_SPEC[project.audioQuality].sampleRate);
 
   nav.innerHTML = '';
   const tabs: { label: string; route: Route }[] = [
@@ -89,11 +93,33 @@ function render() {
   // Screens own a render loop and document-level listeners, so the outgoing one is torn down
   // before the next is built. Without it every navigation leaves a pass running over nodes
   // that are no longer on the page.
+  //
+  // The engine goes with it, and now that matters: an `AudioContext` is a real resource and
+  // browsers cap how many a page may hold, so leaking one per navigation used to be free and is
+  // not any more. Screen first, then engine — a screen's `destroy` stops the transport.
   current?.destroy();
   current = undefined;
+  currentEngine?.destroy();
   host.innerHTML = '';
 
-  const back = route.screen === 'export' ? route.from : 'library';
+  // One engine per mount, at the open project's capture rate, so frame arithmetic on the
+  // Playback and Edit screens is in the same units the domain computes in.
+  //
+  // A **sounding** engine, and it is the same `Engine` the simulated one implements — that type
+  // was written as the seam a real engine would replace, so this is the swap happening rather
+  // than a second path beside it. The backing tracks are what it can play; layers stay silent
+  // because there is no recorded audio to play.
+  const engine = audioEngine(QUALITY_SPEC[project.audioQuality].sampleRate);
+  engine.setBacking(project.backing, projectTiming(project));
+  currentEngine = engine;
+
+  // Where an escape from Export lands: back where it was opened from, never somewhere else.
+  const back: Route =
+    route.screen !== 'export'
+      ? { screen: 'library' }
+      : route.from === 'settings'
+        ? { screen: 'settings', mode: 'edit' }
+        : { screen: route.from };
 
   const screen =
     route.screen === 'library'
@@ -104,21 +130,21 @@ function render() {
             openId = id;
             go({ screen: 'playback' });
           },
-          onExport(id) {
-            openId = id;
-            go({ screen: 'export', from: 'library' });
-          },
-          onChange(next) {
-            projects = next;
-            if (!projects.some((p) => p.id === openId)) openId = projects[0]?.id ?? '';
-          },
+          onNew: () => go({ screen: 'settings', mode: 'new' }),
         })
       : route.screen === 'playback'
         ? playbackScreen({
             project,
             engine,
             onChange: replaceLayer,
+            onBackingChange(backing) {
+              replaceProject({ ...open(), backing });
+              // Straight to the engine as well as into state: a kit swap or a mute has to be
+              // audible on the next bar, not on the next navigation.
+              engine.setBacking(backing, projectTiming(open()));
+            },
             onEdit: (layerIndex) => go({ screen: 'edit', layerIndex }),
+            onSettings: () => go({ screen: 'settings', mode: 'edit' }),
             onBack: () => go({ screen: 'library' }),
             onExport: () => go({ screen: 'export', from: 'playback' }),
           })
@@ -130,19 +156,62 @@ function render() {
               onChange: replaceLayer,
               onDone: () => go({ screen: 'playback' }),
             })
+          : route.screen === 'settings'
+            ? projectSettingsScreen({
+                // For `new` this is only a source of defaults — the tempo, length and beats per
+                // bar a fresh project starts on. Nothing about the open project is written to.
+                project,
+                mode: route.mode,
+                engine,
+                onCommit(next) {
+                  if (route.screen === 'settings' && route.mode === 'new') {
+                    projects = [...projects, next];
+                    openId = next.id;
+                    go({ screen: 'playback' });
+                    return;
+                  }
+                  replaceProject(next);
+                  go({ screen: 'playback' });
+                },
+                onCancel: () =>
+                  go({
+                    screen: route.screen === 'settings' && route.mode === 'new' ? 'library' : 'playback',
+                  }),
+                // The project actions, which used to live in the Library's per-row panel. Each
+                // arrives with pending edits already applied, so the screen persists what it is
+                // handed rather than re-deriving it.
+                onExport(next) {
+                  replaceProject(next);
+                  go({ screen: 'export', from: 'settings' });
+                },
+                onCompress(next) {
+                  replaceProject(next);
+                  go({ screen: 'playback' });
+                },
+                onBounce(source, seed) {
+                  // The source is written back first: it carries any pending rename, and §2.7 is
+                  // explicit that a bounce leaves it otherwise untouched.
+                  replaceProject(source);
+                  projects = [...projects, seed];
+                  openId = seed.id;
+                  go({ screen: 'playback' });
+                },
+                onDelete(id) {
+                  projects = projects.filter((p) => p.id !== id);
+                  openId = projects[0]?.id ?? '';
+                  go({ screen: 'library' });
+                },
+              })
           : exportScreen({
               project,
               engine,
-              // §2.6 is still unmodelled, so the two backing tracks are named here rather than
-              // read off the project. `backing-rows.ts` owns the live ones, which is exactly the
-              // gap: mute one there and this list does not know.
-              backing: [
-                { id: 'drums', muted: false, level: 0.7, label: 'Drums' },
-                { id: 'chords', muted: false, level: 0.55, label: 'Chords' },
-              ],
+              // Read off the project, so muting a backing track on the Playback screen reaches
+              // the export. These used to be hardcoded here — which meant the export always wrote
+              // both stems no matter what the user had muted.
+              backing: backingMixSources(project.backing),
               // Back where you came from, not always the Library.
-              onCancel: () => go({ screen: back }),
-              onShare: () => go({ screen: back }),
+              onCancel: () => go(back),
+              onShare: () => go(back),
             });
 
   current = screen;

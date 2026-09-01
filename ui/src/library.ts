@@ -46,8 +46,8 @@ export function libraryScreen(opts: {
   projects: readonly Project[];
   engine: Engine;
   onOpen(id: string): void;
-  onExport(id: string): void;
-  onChange(projects: readonly Project[]): void;
+  /** Setup for a project that does not exist yet (§4.5). */
+  onNew(): void;
 }): { node: HTMLElement; destroy(): void } {
   const root = el('div', 'lr-screen library');
 
@@ -73,6 +73,7 @@ export function libraryScreen(opts: {
     'lr-btn lr-btn--primary new-btn',
     '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg> New project',
   );
+  newBtn.addEventListener('click', () => opts.onNew());
   header.append(titleRow, el('div', 'sort-note', 'Most recently modified first'), newBtn);
 
   const listEl = el('div', 'lr-rows');
@@ -112,16 +113,7 @@ export function libraryScreen(opts: {
     const main = el('div', 'p-main');
     const right = el('div', 'p-right', '<span class="p-size"></span><span class="p-time">0:00</span>');
     head.append(play, thumb, main, right);
-    head.insertAdjacentHTML('beforeend', '<svg class="chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>');
     rowEl.appendChild(head);
-
-    const panel = el('div', 'lr-panel');
-    const inner = el('div', 'lr-panel-inner');
-    const acts = el('div', 'acts');
-    const confirm = el('div', 'confirm');
-    inner.append(acts, confirm);
-    panel.appendChild(inner);
-    rowEl.appendChild(panel);
 
     const row: Row = { project: initial, el: rowEl, lanes: [] as WaveNode[], play, time: right.querySelector('.p-time')!, rebuild };
 
@@ -162,185 +154,23 @@ export function libraryScreen(opts: {
         ` · ${passes} pass${passes === 1 ? '' : 'es'} · ${modified(p.lastModified)}</div>`;
       right.querySelector('.p-size')!.textContent = mb(sizeProjection(p).uncompressedBytes);
 
-      paintActions();
     }
 
-    function paintActions() {
-      const p = row.project;
-      const projection = sizeProjection(p);
-      acts.innerHTML = '';
-
-      acts.append(
-        action('Open', 'lr-btn lr-btn--primary', () => opts.onOpen(p.id)),
-        action('Export', 'lr-btn', () => opts.onExport(p.id)),
-        action('Bounce to new project', 'lr-btn', askBounce),
-        action('Compress', 'lr-btn', askCompress, !projection.isWorthCompressing),
-        action('Delete', 'lr-btn lr-btn--danger', askDelete),
-      );
-      acts.appendChild(
-        el(
-          'div',
-          'hint',
-          p.isCompressed
-            ? 'Compressed — one pass per layer. Recording a new pass clears this.'
-            : projection.isWorthCompressing
-              ? 'Compress discards unused passes and keeps each layer’s edited loop.'
-              : 'Already one pass per layer — compressing would save nothing.',
-        ),
-      );
-    }
-
-    function action(label: string, cls: string, run: () => void, disabled = false) {
-      const b = el('button', cls, label) as HTMLButtonElement;
-      b.disabled = disabled;
-      b.addEventListener('click', (e) => {
-        e.stopPropagation();
-        run();
-      });
-      return b;
-    }
-
-    /** In place, and stating the outcome — never a generic prompt (§4.1). */
-    function ask(text: string, label: string, danger: boolean, run: () => void) {
-      confirm.innerHTML =
-        `<div class="confirm-text">${text}</div>` +
-        `<button class="lr-btn ${danger ? 'lr-btn--danger' : 'lr-btn--primary'}" data-yes>${label}</button>` +
-        '<button class="lr-btn" data-no>Cancel</button>';
-      rowEl.classList.add('is-confirming');
-      confirm.querySelector('[data-yes]')!.addEventListener('click', (e) => {
-        e.stopPropagation();
-        rowEl.classList.remove('is-confirming');
-        run();
-      });
-      confirm.querySelector('[data-no]')!.addEventListener('click', (e) => {
-        e.stopPropagation();
-        rowEl.classList.remove('is-confirming');
-      });
-    }
-
-    function askCompress() {
-      const p = row.project;
-      const plan = projectCompressionPlan(p);
-      if (!plan) {
-        ask(
-          `<b>${p.name}</b> has a bar pointing at audio that is no longer there, so compressing ` +
-            'it would bake a hole into the only copy. Open it and repair that bar first.',
-          'Open',
-          false,
-          () => opts.onOpen(p.id),
-        );
-        return;
-      }
-      const { uncompressedBytes, compressedBytes } = plan.projection;
-      ask(
-        `Compress <b>${p.name}</b>? Unused passes are discarded — <b>${mb(uncompressedBytes)} → ` +
-          `${mb(compressedBytes)}</b>. The kept loop becomes Pass 1; bars stay editable and you ` +
-          'can record new passes at any time.',
-        'Compress',
-        false,
-        () => {
-          replace(compressedProject(p, (i) => simSession(`${p.id}-c${i}`, loopFrames(projectTiming(p)))));
-        },
-      );
-    }
-
-    function askBounce() {
-      const p = row.project;
-      const plan = bouncePlan(p);
-      if (!plan) {
-        // `bouncePlan` refuses on a slot pointing at audio that is gone, and on a mixdown with
-        // nothing audible in it — a seed made of silence is worse than declining.
-        ask(
-          `<b>${p.name}</b> has nothing audible to mix down, or a bar pointing at audio that is ` +
-            'no longer there. Open it and check before bouncing.',
-          'Open',
-          false,
-          () => opts.onOpen(p.id),
-        );
-        return;
-      }
-      ask(
-        `Bounce <b>${p.name}</b> to a new project? Every layer is mixed down to one loop on ` +
-          `layer 1 of a new sketch, at ${p.bpm} BPM. <b>${p.name} is left untouched.</b>`,
-        'Bounce',
-        false,
-        () => {
-          // `bounceSeed`, not `compressedProject`. Both leave one loop on the layer, but the
-          // seed is a *new* project and §2.7 is explicit that `isCompressed` must be false on
-          // it: the flag means recorded passes were discarded, and a project that never had
-          // any would be wearing a label that lies. Reaching for compress here put a
-          // "Compressed" tag on every bounce.
-          insert(
-            bounceSeed(p, simSession(`${p.id}-mix`, plan.frameCount), {
-              id: `${p.id}-mix-${rows.length}`,
-              name: `${p.name} mix`,
-              now: new Date().toISOString(),
-            }),
-          );
-        },
-      );
-    }
-
-    function askDelete() {
-      const p = row.project;
-      const passes = projectTotalPasses(p);
-      ask(
-        `Delete <b>${p.name}</b>? ${passes} recorded pass${passes === 1 ? '' : 'es'} and ` +
-          `${mb(sizeProjection(p).uncompressedBytes)} go with it. This cannot be undone.`,
-        'Delete',
-        true,
-        () => remove(p.id),
-      );
-    }
-
+    // The whole row opens the project. There is no second action on a row any more — export,
+    // bounce, compress and delete moved to the project's own settings screen, so a Projects row
+    // is a list entry rather than a control surface.
     head.addEventListener('click', (e) => {
       if ((e.target as HTMLElement).closest('.lr-play')) return;
-      // §4.1's open question, settled the way it proposes: the row body opens the project and
-      // the chevron is the secondary action.
-      if ((e.target as HTMLElement).closest('.chev')) {
-        rowEl.classList.toggle('is-open');
-        rowEl.classList.remove('is-confirming');
-        return;
-      }
       opts.onOpen(row.project.id);
     });
-    panel.addEventListener('click', (e) => e.stopPropagation());
 
     listEl.appendChild(rowEl);
     rebuild();
     return row;
   }
 
-  // ------------------------------------------------------------------- edits --
-  function commit() {
-    opts.onChange(rows.map((r) => r.project));
-    paintStorage();
-  }
-
-  function replace(next: Project) {
-    const row = rows.find((r) => r.project.id === next.id);
-    if (!row) return;
-    row.project = next;
-    row.rebuild();
-    commit();
-  }
-
-  function insert(next: Project) {
-    // Newest first, which is where the sort would put it anyway.
-    const row = projectRow(next, rows.length);
-    rows.unshift(row);
-    listEl.insertBefore(row.el, listEl.firstChild);
-    commit();
-  }
-
-  function remove(id: string) {
-    const at = rows.findIndex((r) => r.project.id === id);
-    if (at < 0) return;
-    if (playingId === id) setPlaying(null);
-    rows[at]!.el.remove();
-    rows.splice(at, 1);
-    commit();
-  }
+  // **No edit helpers here any more.** Replacing, inserting and removing a project all moved
+  // out with the actions that called them; this screen lists projects and opens one.
 
   // --------------------------------------------------------------- playback --
   /** Exclusive, matching the arming rule: starting one stops another (§4.1). */
@@ -385,7 +215,7 @@ export function libraryScreen(opts: {
   const help = helpControl({
     title: 'Projects',
     content: () => [
-      'play a project without opening it · tap the row to open · chevron for export, bounce, compress and delete',
+      'play a project without opening it · tap a row to open it · export, bounce, compress and delete live in that project’s settings',
     ],
   });
 

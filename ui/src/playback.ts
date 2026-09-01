@@ -1,4 +1,5 @@
 import { isSilentAt } from '../../src/domain/arrangement.ts';
+import type { BackingTracks } from '../../src/domain/backing.ts';
 import { toAbsolute } from '../../src/domain/bar-ref.ts';
 import { PAN_PRESETS, type PanPresetId, panPreset } from '../../src/domain/effects.ts';
 import { EQ_PRESETS, type EqPresetId } from '../../src/domain/eq.ts';
@@ -22,6 +23,7 @@ import { framesPerBar, loopFrames, loopSeconds } from '../../src/domain/timing.t
 import { bindChips } from './controls.ts';
 import { helpControl } from './help.ts';
 import { type RecordState, type WaveNode, LR, el, motion, ramp, sizing } from './kit.ts';
+import { SETTINGS_ICON } from './icons.ts';
 import { eqIconSvg, panIconSvg } from './preset-icons.ts';
 import { backingRows } from './backing-rows.ts';
 import { type Engine, amp } from './sim.ts';
@@ -74,7 +76,11 @@ export function playbackScreen(opts: {
   project: Project;
   engine: Engine;
   onChange(layer: Layer): void;
+  /** Backing edits, which are project state rather than layer state (§2.6). */
+  onBackingChange(backing: BackingTracks): void;
   onEdit(layerIndex: number): void;
+  /** Project settings (§4.5), reached by the gear beside the project stats. */
+  onSettings(): void;
   /** Up to the Library. Also what Escape does once nothing is armed or recording. */
   onBack(): void;
   onExport(): void;
@@ -99,7 +105,25 @@ export function playbackScreen(opts: {
   // ------------------------------------------------------------------ header --
   const header = el('div', 'lr-header');
   const titleRow = el('div', 'lr-title-row');
+
+  /**
+   * The way into project settings, and it is a **visible control** rather than a tappable header.
+   *
+   * Tapping the title row used to do this, which had the appeal of "the place a value is shown is
+   * the place you change it" and the problem of being invisible. It was also quietly inconsistent:
+   * tapping a *layer* name on this same screen renames it in place, so tapping the *project* name
+   * to navigate away taught the opposite lesson two rows apart. A gear says what it does.
+   *
+   * `paintTitle` rewrites the stats text, so that lives in its own span — writing `textContent` on
+   * the row would take the button with it.
+   */
   const statsRow = el('div', 'lr-meta lr-stats');
+  const statsText = el('span', 'stats-text');
+  const gearBtn = el('button', 'header-gear', `<svg viewBox="0 0 24 24">${SETTINGS_ICON}</svg>`);
+  gearBtn.setAttribute('type', 'button');
+  gearBtn.setAttribute('aria-label', 'Project settings');
+  gearBtn.addEventListener('click', () => opts.onSettings());
+  statsRow.append(statsText, gearBtn);
   const transportEl = el('div', 'lr-transport');
   header.append(titleRow, statsRow, transportEl);
 
@@ -121,7 +145,7 @@ export function playbackScreen(opts: {
     titleRow.innerHTML =
       `<div class="lr-title">${project.name}</div>` +
       `<div class="lr-settings">${project.bpm} BPM · ${project.barCount} Bars · ${project.beatsPerBar}/4</div>`;
-    statsRow.textContent =
+    statsText.textContent =
       `${passes} Pass${passes === 1 ? '' : 'es'} · ${(size.uncompressedBytes / 1e6).toFixed(1)} MB`;
   }
 
@@ -178,9 +202,12 @@ export function playbackScreen(opts: {
     }
   }
 
-  // The drum loop and the chord bed own their own state and talk to nothing here, so they are
-  // built whole rather than wired in (§2.6 is unmodelled, see `backing-rows.ts`).
-  const backingEl = backingRows();
+  // The drum track and the chord bed edit `project.backing` and report upward, exactly like a
+  // layer row — which is what lets a mute here reach the export screen (§2.6).
+  const backingEl = backingRows({
+    backing: project.backing,
+    onChange: opts.onBackingChange,
+  });
 
   // --------------------------------------------------------------- layer rows --
   const layersEl = el('div', 'lr-rows');
@@ -644,7 +671,7 @@ export function playbackScreen(opts: {
 
   root.append(
     header,
-    el('div', 'lr-section-label', 'Backing'),
+    el('div', 'lr-section-label', 'Backing Tracks'),
     backingEl,
     el('div', 'lr-section-label', 'Layers'),
     layersEl,
@@ -705,8 +732,12 @@ function presetGroup<P extends { id: string; name: string }>(
   const chips = el('div', 'lr-chips preset-chips');
   for (const preset of presets) {
     const chip = el('span', `lr-chip${preset.id === current() ? ' is-active' : ''}`, icon(preset));
-    chip.addEventListener('click', (e) => {
-      e.stopPropagation();
+    // **No `stopPropagation` here.** `bindChips` moves `is-active` by delegating on the enclosing
+    // `.lr-chips`, so stopping the event at the chip meant the selection never moved — the preset
+    // changed and the highlight stayed where it was. It was guarding nothing either: the only
+    // click listener above this is on the row *head*, and these chips are in the panel, which is
+    // the head's sibling rather than its ancestor.
+    chip.addEventListener('click', () => {
       name.textContent = preset.name;
       onPick(preset.id);
     });

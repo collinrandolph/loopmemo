@@ -32,8 +32,9 @@ import { SWIPE_THRESHOLD } from './controls.ts';
 import { trackDrag } from './gesture.ts';
 import { helpControl } from './help.ts';
 import { loopFrames } from '../../src/domain/timing.ts';
+import type { BackingEngine } from './audio.ts';
 import { type Rgb, type WaveNode, LR, clamp01, el, motion, ramp, sizing } from './kit.ts';
-import { type Engine, amp, simSession } from './sim.ts';
+import { amp, simSession } from './sim.ts';
 
 const BARS_PER_ROW = 4;
 const LINES_PER_BAR = 16;
@@ -118,7 +119,9 @@ type Tile = {
 export function editLayerScreen(opts: {
   project: Project;
   layerIndex: number;
-  engine: Engine;
+  // `BackingEngine`, not the bare `Engine`: the backing has to be told which traversal is
+  // playing, or a one-bar preview walks the chord progression while the sweep holds one slot.
+  engine: BackingEngine;
   onChange(layer: Layer): void;
   onDone(): void;
 }): { node: HTMLElement; destroy(): void } {
@@ -447,8 +450,10 @@ export function editLayerScreen(opts: {
 
     if (isDouble) {
       // Escalate rather than restart: `escalate` rebases the anchor by the cycles already
-      // completed, so bar mode becomes loop mode without playback pausing (§3.7).
+      // completed, so bar mode becomes loop mode without playback pausing (§3.7). The rebase
+      // lands on a bar boundary, so the engine's grid still holds and it only needs telling.
       transport = escalate(transport, frameNow(), t);
+      opts.engine.setTransport(transport);
     } else if (transport.mode !== 'idle' && transport.origin === slot) {
       releasePlayed(head);
       transport = stop();
@@ -459,8 +464,18 @@ export function editLayerScreen(opts: {
       return;
     } else {
       releasePlayed(head);
-      if (!opts.engine.running()) opts.engine.start(0);
-      transport = playBar(slot, frameNow());
+      // **Re-anchored, even when already running.** The backing is generated on the engine's bar
+      // grid and the sweep runs on the transport's, so the two have to be one grid — and they are
+      // only one grid if the transport starts on a frame the engine calls a downbeat. Starting
+      // both at 0 says so without arithmetic. It also absorbs the engine's scheduling lead: frames
+      // before the anchor read as negative, which `playheadAt` floors to phase 0, so the sweep
+      // waits for the audio rather than leading it by 80 ms.
+      //
+      // Transport first, then start: the engine schedules its first bars inside `start`, and
+      // handing it the new traversal afterwards would only throw them away again.
+      transport = playBar(slot, 0);
+      opts.engine.setTransport(transport);
+      opts.engine.start(0);
       lastPhase = 0;
       select(slot);
     }

@@ -23,6 +23,26 @@ export const PIANO_ICON =
   '<path d="M6 8h4"/><path d="M14 8h.01"/><path d="M18 8h.01"/><path d="M2 12h20"/>' +
   '<path d="M6 12v4"/><path d="M10 12v4"/><path d="M14 12v4"/><path d="M18 12v4"/>';
 
+/**
+ * Lucide `move-vertical` — the swipe-axis hint on a `swipeWheel`.
+ *
+ * The same shape as the `↕` it replaces, and it replaces it because **a text glyph cannot be
+ * centred reliably.** `↕` paints 2.5px below the centre of its own line box (its ink runs 9px
+ * above the baseline and 3px below, so its visual middle is not the baseline-derived middle) and
+ * overflows a `line-height: 1` box by 2px. No amount of `align-items: center` fixes that, since
+ * the box is centred correctly and the ink inside it is not — and any hardcoded nudge would be a
+ * correction for one font, when this is whatever the platform's system font happens to be.
+ *
+ * An SVG's box *is* its art, so centring it centres what you see.
+ */
+export const SWIPE_Y_ICON =
+  '<path d="M12 2v20"/><path d="m8 18 4 4 4-4"/><path d="m8 6 4-4 4 4"/>';
+
+/** Lucide `settings` — the way into a project's settings from the Playback header. */
+export const SETTINGS_ICON =
+  '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>' +
+  '<circle cx="12" cy="12" r="3"/>';
+
 /** Lucide `circle-question-mark`, wrapped because it is used on its own rather than in a row. */
 export const HELP_ICON =
   '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/>' +

@@ -5,7 +5,8 @@
       "name": "loop-recorder-ui",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "ui"],
-      "port": 5173
+      "port": 5173,
+      "autoPort": true
     }
   ]
 }

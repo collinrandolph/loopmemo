@@ -1,4 +1,4 @@
-import type { BackingTrack } from '../../src/domain/bounce.ts';
+import type { BackingMixSource } from '../../src/domain/backing.ts';
 import {
   DEFAULT_SELECTION,
   type ExportFormat,
@@ -32,7 +32,7 @@ import type { Engine } from './sim.ts';
 export function exportScreen(opts: {
   project: Project;
   engine: Engine;
-  backing: readonly (BackingTrack & { label: string })[];
+  backing: readonly BackingMixSource[];
   /** Leave without exporting. Distinct from `onShare` even where both land in the same place. */
   onCancel(): void;
   onShare(): void;

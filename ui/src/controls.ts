@@ -1,4 +1,5 @@
 import { trackDrag } from './gesture.ts';
+import { SWIPE_Y_ICON } from './icons.ts';
 import { el } from './kit.ts';
 
 /** The two controls this app adds on top of `docs/kit/`, both used by more than one screen. */
@@ -6,8 +7,7 @@ import { el } from './kit.ts';
 export const SWIPE_THRESHOLD = 22; // shared with the Edit Layer tiles: one gesture, one travel
 
 /**
- * One vertically-swipeable field. Three inline are the chord editor; one on its own is the drum
- * loop picker.
+ * One vertically-swipeable field.
  *
  * **Up steps forward**, matching the pass axis on the Edit Layer screen. Both are the same rule:
  * the material moves under the finger, so the next value is pulled in from the side you drag
@@ -18,17 +18,32 @@ export const SWIPE_THRESHOLD = 22; // shared with the Edit Layer tiles: one gest
  * mouse the drag is available but awkward, and a control with no tap affordance reads as inert.
  *
  * The press guard lives in `trackDrag` — see that file for why it is not `hasPointerCapture`.
+ *
+ * **Every wheel looks the same: the value, and a right-aligned `↕`.** What differs is only whether
+ * the caption is drawn.
+ *
+ * - `row` is a full-width setting in a panel — Pattern, Kit, Tone. Its caption sits *outside* the
+ *   control as an ordinary `.lr-panel-label`, so it reads as a labelled row like Volume, EQ and
+ *   Pan directly above it.
+ * - `inline` is the chord editor's Note / Sign / Type, three abreast, and draws **no caption at
+ *   all**. Three fields reading C / ♮ / Maj under a chord button are self-describing, and a
+ *   `↕ NOTE` under each one spent a line naming what the value already says. The arrow stays,
+ *   because that is the part a value cannot tell you.
+ *
+ * The caption still names the control for assistive tech in both layouts, drawn or not.
  */
 export function swipeWheel(
   caption: string,
   options: readonly { id: string; label: string }[],
   current: () => string,
   onPick: (id: string) => void,
-  extraClass = '',
+  opts: { extraClass?: string; layout?: 'inline' | 'row' } = {},
 ): HTMLElement {
-  const node = el('div', `lr-wheel ${extraClass}`);
+  const row = opts.layout === 'row';
+  const node = el('div', `lr-wheel ${row ? 'lr-wheel--row' : ''} ${opts.extraClass ?? ''}`);
+  node.setAttribute('aria-label', caption);
   const value = el('div', 'lr-wheel__value');
-  node.append(value, el('div', 'lr-wheel__cap', `↕ ${caption}`));
+  node.append(value, el('span', 'lr-wheel__ax', `<svg viewBox="0 0 24 24">${SWIPE_Y_ICON}</svg>`));
 
   function paint(dir = 0) {
     value.textContent = options.find((o) => o.id === current())?.label ?? '';
@@ -59,7 +74,14 @@ export function swipeWheel(
   });
 
   paint();
-  return node;
+  if (!row) return node;
+
+  // The label goes outside the control, so what the caller mounts is the panel row. The drag stays
+  // bound to the wheel alone — a drag that started on the caption would step a value the finger
+  // was never on.
+  const wrap = el('div', 'lr-panel-row lr-wheel-row', `<span class="lr-panel-label">${caption}</span>`);
+  wrap.appendChild(node);
+  return wrap;
 }
 
 /**
