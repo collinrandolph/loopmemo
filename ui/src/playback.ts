@@ -199,7 +199,29 @@ export function playbackScreen(opts: {
   });
   transportEl.append(playBtn, progressBar, position, masterVol, masterSlider);
 
+  /**
+   * **Pausing while a take is running commits it, exactly as the record control does.**
+   *
+   * It used to stop the engine and leave the row recording, so `stopCapture` and `recordSession`
+   * were never reached and the performance was simply gone — the one outcome this app must never
+   * produce, and reachable by pressing the most obvious button on the screen. Escape already
+   * refuses to end a pass for the same reason; the transport was the hole.
+   *
+   * Delegating to `setRec` rather than duplicating the commit is what keeps the two paths from
+   * drifting, and the order is load-bearing: `setRec` reads the take's length from
+   * `frameNow()`, which falls back to `heldFrame` once the engine stops — so stopping first
+   * would commit a take of zero frames and the domain would decline it (§1.4), which is the
+   * same loss by a different route. Its own stop branch calls back here once the row is no
+   * longer recording, and that call does the transport work.
+   */
   function setPlaying(on: boolean) {
+    if (!on) {
+      const capturing = capturingIndex();
+      if (capturing >= 0) {
+        setRec(capturing, 'unarmed');
+        return;
+      }
+    }
     playing = on;
     playBtn.setPlaying(on);
     if (on) {
