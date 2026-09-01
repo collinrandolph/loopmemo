@@ -1,8 +1,8 @@
 # Audio Loop Recorder — Product & Implementation Specification
 
 An iOS app for building multi-layer loop sketches. The user sets a tempo and bar count, picks a
-drum loop, and records up to seven layers over it while the loop runs continuously. Afterwards they
-choose, bar by bar, which pass of the recording fills each slot of the arrangement.
+drum pattern, and records up to seven layers over it while the loop runs continuously. Afterwards
+they choose, bar by bar, which pass of the recording fills each slot of the arrangement.
 
 **It is a sketchpad for improvising, not a DAW.** Almost every design decision follows from that.
 
@@ -36,13 +36,17 @@ Settled deliberately. Earlier drafts used other words; these are the current one
 |-----|-------|-----------|
 | **bar** | One bar of music. The unit of the grid, the swipe axis, and the splice. | "measure" |
 | **pass** | One traversal of the loop during a continuous recording. The vertical swipe axis. | "take", "iteration", "loop" |
-| **loop** | The project's repeating structure itself, and the drum loop. | — |
+| **loop** | The project's repeating structure itself. | — |
 | **layer** | One of the seven recorded tracks. | "track" |
 | **slot** | A bar's position in the *arrangement*, as opposed to where its audio came from. | — |
 | **session** | One continuous recording onto a layer. A layer accumulates several. | — |
 | **tile** | One bar's cell on the Edit Layer screen. | — |
 | **lane** | One layer's full-loop strip on the Playback screen. | — |
-| **backing tracks** | The drum loop and chord bed collectively. | "reference tracks" |
+| **backing tracks** | The drum track and chord bed collectively. | "reference tracks" |
+| **drum pattern** | One bar of drum onsets — kick, snare, hats — repeated for the whole loop. | "drum loop" |
+| **drum kit** | The synthesis parameters the pattern is played through. A separate axis from pattern. | — |
+| **chord pattern** | The chord bed's rhythm: which beats the chord is played on, and how. The counterpart of a drum pattern, and named to say so. | "strum pattern" |
+| **strike / chunk** | The two chord articulations. A strike rings; a chunk is short and damped. | — |
 
 **Why "pass" rather than "take".** *Take* implies converging on one right version of the same
 performance. This app leaves the loop running so the player can improvise, and each traversal may
@@ -98,7 +102,7 @@ Breaking any of these produces bugs that look cosmetic but aren't.
 | Pass availability derives from recorded audio, per session | §1.4 |
 | The available pass set for a bar can be non-contiguous | §1.4 |
 | Unselected passes cannot be auto-deleted while a project is uncompressed | §2.7 |
-| All layers derive timing from one shared sample-frame anchor | §2.4 |
+| All layers **and both backing tracks** derive timing from one shared sample-frame anchor | §2.4, §2.6 |
 
 ## 0.5 Suggested build order
 
@@ -139,9 +143,17 @@ destroys the feature.
 | Bar count | 4, 8, 12, 16, 20, 24, 28, 32 | Multiples of 4 only. Locked after the first recording. |
 | Time signature | 4/4 | v1 only — but see §5.1 |
 | Layers | Exactly 7 | |
-| Drum loop | From a library | Time-stretched to the project BPM (§2.6) |
-| Chord bed | Optional | Generated, not sampled (§4.4) |
+| Drum track | Pattern + kit | Synthesised (§2.6). **Not locked** — changeable at any time. |
+| Chord bed | Slots, pattern, tone, octave | Synthesised (§4.4). **Not locked** — changeable at any time. |
 | Recording quality | Standard or High | Global setting, snapshotted per project (§2.7) |
+
+**Only the first three lock.** BPM, bar count and beats per bar lock after the first recording
+because every derived value — `framesPerBar`, bar boundaries, pass availability, the arrangement's
+length — is computed from them, so changing one invalidates audio already on disk. **Backing tracks
+feed nothing derived.** They are synthesised fresh on every loop and no recorded frame depends on
+them, so the user keeps changing them for the life of the project: swap the kit after four layers,
+drop the chords once the guitar carries the harmony, try a different groove against what is already
+recorded. That is the whole reason they are backing rather than a fixed part of the session.
 
 ```
 loopSeconds = barCount × beatsPerBar × 60 / bpm
@@ -276,13 +288,16 @@ Project
 │   ├── isCompressed (Bool)           // a label and a storage fact only;
 │   │                                 // cleared by recording. Never gate UI on it.
 │   └── bouncedFromProjectId (UUID?)  // lineage
-├── drumLoop                           // backing track
-│   └── id, name, audioFileURL, duration, originalBPM, channels
-├── chordProgression                   // backing track, optional
-│   ├── enabled, scale, tone, level
-│   └── slots[4]                       // one chord per bar, repeats every 4 bars
-│       └── root (note + natural/flat/sharp)
-│           // quality derived from the scale; major triad if non-diatonic
+├── drumTrack                          // backing track (§2.6) — synthesised, no file
+│   ├── patternId, kitId               // two independent axes
+│   └── level, muted
+├── chordBed                           // backing track (§2.6) — synthesised, no file
+│   ├── chordPatternId                 // per project, not per slot
+│   ├── tone, octave                   // octave: low | default | high
+│   ├── level, muted
+│   └── slots[4]                       // one chord per bar, tiled across the loop
+│       ├── root (note + natural/flat/sharp)
+│       └── quality (major | minor | dom7 | min7 | maj7)
 ├── layers[7] → Layer
 └── exportSettings (format, quality)
 ```
@@ -300,6 +315,18 @@ structures describing the same thing is exactly how they drift apart.
 
 **Pass numbers are never stored.** They are derived from session order and duration (§1.4), which
 keeps them stable as sessions are added.
+
+**A backing track has no `enabled` flag, and neither one is optional.** Both always exist on the
+project; a sketch that does not want the chords mutes them. Earlier drafts carried `enabled`
+alongside `muted`, which were two spellings of one state — and only `muted` was ever reachable from
+the interface, so `enabled` was a field the user could not set that nonetheless decided whether a
+backing stem was written. Mute is the single control and the single fact (§2.6).
+
+**There is no `scale` field, and quality is stored, not derived.** See §4.4.
+
+**Neither backing track stores a file, a duration or an `originalBPM`.** They are synthesised, so
+there is nothing to time-stretch and nothing to ship; `patternId` and `kitId` name recipes, not
+assets.
 
 ## 1.6 Recording lifecycle
 
@@ -351,8 +378,11 @@ per-bar mute (§3.7).
 | Graph, taps, scheduling | `AVAudioEngine`, `AVAudioPlayerNode` |
 | Session config and routing | `AVAudioSession` |
 | Effects | `AVAudioUnitEQ`, panning via `AVAudioMixerNode` |
-| Drum loop time-stretch | `AVAudioUnitTimePitch` |
+| Backing-track voices | Oscillator, noise and filter nodes — **no sampler and no time-stretch unit** (§2.6) |
 | Waveform peaks | `vDSP_maxmgv` on tap buffers |
+
+`AVAudioUnitTimePitch` used to appear here, for stretching a sampled drum loop to the project
+tempo. Synthesised backing removed the only thing that needed it (§2.6).
 
 ## 2.2 Simultaneous playback and recording
 
@@ -369,7 +399,7 @@ tone. They are actively harmful for music. Note that Bluetooth microphones may a
 processing regardless of mode.
 
 The microphone is never routed to the output, so there is no feedback path — but with speaker
-monitoring the drum loop, chord bed and previous layers are all audible to the mic and will be
+monitoring the drum track, chord bed and previous layers are all audible to the mic and will be
 captured into the new layer, compounding with every layer. Headphones matter; see §4.7.
 
 ## 2.3 Input, output and latency
@@ -501,27 +531,109 @@ demonstrate the need.
 
 ## 2.6 Backing tracks
 
-The drum loop and the chord bed are the same kind of object: non-recorded backing the user plays
-against. They share a row treatment, an enable/level/mute control, and one export rule.
+The drum track and the chord bed are the same kind of object: non-recorded backing the user plays
+against. They share a row treatment (§3.8), a level and mute control, and one export rule.
 
-### Drum loop
+**Both are synthesised live, and neither is a file.** Nothing is sampled, nothing is sourced, and
+no audio asset ships with the app. Both are driven from the **same sample-frame anchor** as layer
+playback (§0.4) — one clock, not two transports, which would drift against each other on every
+replay.
 
-Each loop stores an immutable `originalBPM`; playback rate is `targetBPM / originalBPM`, applied with
-`AVAudioUnitTimePitch` (range 0.5–2.0×). Warn on quality when the ratio exceeds 2.0 or falls below
-0.5. Superpowered SDK is the upgrade path if wider ratios are needed.
+**Neither is time-stretched, and neither can be.** Because both are generated at the correct
+frequencies and triggered at computed offsets, changing BPM changes only *when* voices fire, never
+how they sound. There is no playback ratio, no quality warning and no ratio limit anywhere in the
+backing path. That immunity is the entire reason for synthesising rather than sampling.
+
+### Drum track
+
+**Pattern and kit are two independent axes.** Any kit plays any pattern — the same shape as tone
+and pattern for the chord bed.
+
+- **Pattern** — one bar of onsets, looped for the length of the project. Six of them, every onset
+  on a straight beat or eighth. No swung or triplet-subdivided pattern is accepted: it would
+  introduce a second timing grammar alongside the straight one everything else uses, for a
+  genre-coverage gain that does not pay for it.
+- **Kit** — four of them. A kit is a *parameter set* (frequencies, sweep and decay times, filter
+  cutoffs) fed into the three recipes below, not a different recipe per kit. A kit has to occupy a
+  genuinely different region of that parameter space to read as distinct; one that only nudges
+  another's numbers is indistinguishable by ear and does not earn a slot.
+
+Three voices, one recipe each:
+
+| Voice | Recipe |
+|---|---|
+| Kick | Pitch-swept sine plus a very short click transient. The sweep alone reads as boomy, not as a hit. |
+| Snare | Two detuned tonal oscillators (the shell) plus a highpassed noise burst (the buzz). |
+| Hat | Filtered noise. **Closed and open are one recipe differing only in decay** — the same way strike and chunk are one chord voice with two envelopes, not a fourth sound. |
+
+**The hat chokes itself.** A real hi-hat is one pair of cymbals, so any new hit, open or closed,
+cuts off whatever is still ringing from the last. Kick and snare do not choke, and how voices that
+outlive their own onset gap are handled is **not yet settled** — see §6.1.
 
 ### Chord bed
 
-Generated, not sampled — see §4.4 for the interface. Because the chords are synthesised at the
-correct frequencies, **there is no time-stretch problem**: changing BPM changes only when chords
-trigger, never how they sound. The chord bed is immune to the ratio limits above.
+Four slots on a recurring **4-bar** progression, one chord per bar. Bar counts are always multiples
+of 4 (§1.2), so the progression tiles evenly into every valid project length and no
+partial-progression case exists.
+
+```
+chordSlot(arrangementSlot) = ((arrangementSlot − 1) mod 4) + 1
+```
+
+So chord 2 plays in slots 2, 6, 10, 14, 18, 22 — and **bar-preview mode follows the same rule**,
+playing the one chord that owns the previewed slot rather than the first chord or none. What you
+hear in preview is what you hear in the loop.
+
+Per slot: a **root** (note plus natural / flat / sharp) and an explicit **quality** — major, minor,
+dom7, min7 or maj7. See §4.4.
+
+Per project, not per slot: **chord pattern**, **tone** (Rhodes, Pad, Wurly, Organ) and **octave**
+(Low / Default / High) — in that order, because it is the drum row's order too. **Tone is to the
+chord bed what kit is to the drums**: the voicing of a track whose rhythm the pattern already
+fixed, so the two sit in the same place and work the same way.
+
+**The chord pattern is one setting for the whole progression.** Seven of them, same one-bar
+straight-eighth constraint as the drums. Each onset is a **strike** (full, lets the chord ring per
+the tone's own envelope) or a **chunk** (short, damped, quieter). A per-slot pattern was considered and
+rejected: it is the axis most likely to make a four-bar bed sound arranged rather than supportive,
+and the bed exists to be played against, not composed. It is also a fourth per-slot decision on top
+of root and quality, in a control whose entire justification is that it is quick.
+
+### Backing settings are never locked
+
+Unlike BPM and bar count (§1.2), a backing track can be changed at any point in a project's life,
+including after every layer is recorded. Nothing derived depends on it and no recorded frame
+references it. Changing one is exactly as consequential as muting one, which is to say: audible
+immediately, and reversible by changing it back.
 
 ### Export rule
 
-**Any enabled track is exported, backing tracks included.** To exclude one, mute it. The export
-screen has no mute controls of its own — muting happens on the Playback screen, where the user can
-hear the result. The rule is *what you hear is what you export*, and it applies identically to a
-bounce mixdown.
+**Any track that is not muted is exported, backing tracks included.** To exclude one, mute it. The
+export screen has no mute controls of its own — muting happens on the Playback screen, where the
+user can hear the result. The rule is *what you hear is what you export*, and it applies identically
+to a bounce mixdown.
+
+**Mute is the only control, and it means both things.** A backing track the sketch does not want is
+muted, and a muted backing track produces no file. This deliberately diverges from layers: a muted
+*layer* is a performance the user made and is not using right now, so it still ships as a stem. A
+muted *backing track* is a decision that the sketch does not have one.
+
+### Unresolved: voices that ring past the loop point
+
+A struck chord can outlive the bar it was struck in — a Pad rings for seconds, and a strike or an
+open hat late in the last bar will still be sounding when the loop wraps. **Live this is correct and
+needs nothing**: the loop is continuous, so the tail simply overlaps the next pass, which is what a
+real instrument does.
+
+**Bounce and export render a fixed length, and there it is a defect.** A rendered loop that stops
+dead at the loop point has a seam the live version never had; the tail has to wrap to the start,
+exactly as §2.8's delayed copy of the last bar already must. Two things make this sharper for
+backing than for the Haas delay: the tails are **two orders of magnitude longer** (seconds against
+milliseconds), and they are *musically* load-bearing rather than a width effect, so truncating one
+is plainly audible.
+
+`tailFrames` is the existing home for this obligation and currently accounts only for the pan
+delay. **Not yet addressed** — flagged here so it is not discovered at render time. See §6.1.
 
 ## 2.7 Storage, quality and compression
 
@@ -600,10 +712,10 @@ Discards every recorded pass, keeping each layer's final edited loop.
 
 Creates a **new project** seeded with a combined, compressed copy of the original.
 
-- All layers are mixed into a **single audio file** with EQ, pan and level baked in. Enabled backing tracks are included; the mixdown contains exactly what was audible.
+- All layers are mixed into a **single audio file** with EQ, pan and level baked in. Whether unmuted backing tracks are part of that mixdown is **unresolved — see below**.
 - That file becomes **layer 1** of the new project, as **Pass 1**, and layer 1 can record further passes like any other layer. Layer 1 starts **neutral** — level 1, Flat, Center, unmuted — because the processing is already in the audio.
 - **The original project is untouched.**
-- BPM, bar count, beats per bar and chord settings are preset from the source.
+- BPM, bar count and beats per bar are preset from the source. **What happens to the backing tracks is unresolved — see below.**
 - **Audio quality carries too, and that is forced rather than chosen.** The mixdown is a sum of the source's layers and therefore sits at its sample rate; seeding at any other rate would need a resample at every splice, which is exactly what snapshotting quality at creation exists to prevent.
 - **`isCompressed` is false.** The flag means a project's recorded passes were discarded; a new project never had any, so the Library label would be a lie.
 - Layers 2–7 are empty and available.
@@ -613,9 +725,32 @@ bounce is **compress applied to every layer at once, plus a mix**. The mixdown i
 which is what makes it Pass 1 — so it is filled through the ordinary recording lifecycle (§1.6) and
 bounce needs no arrangement logic of its own.
 
+#### Unresolved: what a bounce does with the backing tracks
+
+**Do not implement either reading until this is settled.** The current direction is that backing
+tracks stop being part of a bounce, but "part of" has two separate meanings and they are decided
+independently:
+
+| Question | Readings |
+|---|---|
+| Is the backing **in the mixdown**? | It is baked into layer 1 alongside the layers — or the mixdown is layers only, and a bounce is a stem of the performance rather than of the sketch. |
+| Do the **settings** carry to the new project? | Pattern, kit, slots, tone, octave and chord pattern are preset from the source — or the new project starts on defaults. |
+
+**The two questions constrain each other, which is why neither can be answered alone.** If the
+backing is in the mixdown *and* the settings carry live, the drums play twice and the bounce does
+not sound like its source. If it is in the mixdown and the settings do not carry, the groove is
+frozen into the audio and can never be changed again — which contradicts §1.2's rule that backing
+never locks, in the one place it would matter most. If it is not in the mixdown but the settings
+carry, the bounce is quiet where the source was full but is otherwise recoverable in a tap.
+
+**It also reaches §2.6's export rule**, which currently says *what you hear is what you export*
+applies identically to a bounce mixdown. A layers-only mixdown makes bounce the sole exception to
+that rule, so the rule has to be narrowed deliberately rather than left to be contradicted in
+passing.
+
 **Refused in two cases**: a slot pointing at audio that does not exist, since baking a hole into the
 seed is not a repair even though the original survives; and a mixdown with nothing audible in it,
-which would seed a project with a loop of silence. Every layer muted but a backing track enabled
+which would seed a project with a loop of silence. Every layer muted but a backing track unmuted
 is still a valid bounce.
 
 **A Surround layer's delay tail must wrap.** Live, the delayed copy of the last bar runs past the
@@ -1073,7 +1208,7 @@ alignment with the others.
 
 Lists all projects, **most recently modified first**. Reference: `project-library-mockup.html`.
 
-**Row anatomy**: play button · thumbnail · name and metadata · size or position · chevron · panel.
+**Row anatomy**: play button · thumbnail · name and metadata · size or position. **No chevron and no panel** — see the actions note below.
 
 | Element | Detail |
 |---------|--------|
@@ -1090,15 +1225,25 @@ The size readout swaps to a position readout while playing, so the row doesn't c
 > Preview should play a **cached rendered mix**, not the full scheduling engine. The Library may show
 > dozens of projects; standing up seven player nodes per row to audition a sketch is wasteful.
 
-**Actions** (in the panel): Open · Export · Bounce · Compress · Delete.
+**Actions live on the project's own settings screen (§4.5), not here.** Export, bounce, compress and
+delete were originally a per-row panel behind a chevron, which made a browsing list carry every
+operation the app can perform on a project. They are operations *on a project*, so they sit under the
+settings for the thing they act on. Open is not an action at all any more — **tapping the row opens
+the project**, which settles §4.1's open question by removing the alternative rather than choosing
+between the two.
+
+**One consequence, accepted deliberately.** This section makes the Library the place storage is
+"visible and user-managed", and compress and delete are storage actions that used to sit beside the
+sizes. The Library still shows every number — per project and the device total — but reaching the
+action is now one tap further, through the project. Sizes are what you browse by; discarding audio
+is something you do to one sketch at a time.
 
 **Destructive actions confirm in place and state the outcome.** Compress shows the real projection —
 "214 MB → 26 MB" — because a projected saving is the entire reason to do it, and a generic prompt
 hides the only fact that would inform the decision. Compress is disabled on already-compressed
-projects, and its copy notes that recording a new pass clears the status.
-
-**Open questions**: tapping the row currently expands the actions; in the build the row body should
-open the project and the chevron should stay the secondary action.
+projects, and its copy notes that recording a new pass clears the status. Compress and bounce both
+refuse a project with a bar pointing at missing audio; from the settings screen the remedy is to
+close and repair that bar, rather than the "open it" the Library used to offer.
 
 ## 4.2 Playback screen
 
@@ -1106,8 +1251,9 @@ Reference: `playback-screen-mockup.html`.
 
 ```
 Header      project name · BPM · bars · time signature
+            passes · size · settings gear
             play · progress bar · position · master volume icon + slider
-Backing     drum loop · chord bed
+Backing     drum track · chord bed
 Layers      seven rows
 Footer      gesture legend · Export
 ```
@@ -1157,8 +1303,10 @@ several per drawn line. **No allocation, no locks, no UIKit in the tap callback.
 `CADisplayLink`. `AVAudioRecorder` metering gives only a current level, not a history; use the tap.
 
 **Backing rows** use the same primitive: a Lucide `drum` or `keyboard-music` icon, the content
-(drum part name; the four chords), a speaker, and a panel. The drum row shows no BPM — that's a
-project setting shown in the header. The chord row's scale and tone live in its panel.
+(drum pattern name; the four chords), a speaker, and a panel. The drum row shows no BPM — that's a
+project setting shown in the header. Each row's remaining settings live in its panel: **pattern and
+kit** for drums, **pattern, tone and octave** for chords, plus a level on both. Every one of
+them stays editable for the life of the project (§1.2).
 
 ## 4.3 Edit Layer screen
 
@@ -1199,37 +1347,75 @@ predictable.
 
 ## 4.4 Chord bed
 
-A generated chord bed that plays alongside the drum loop, enabled without recording anything, and
+A generated chord bed that plays alongside the drum track, audible without recording anything, and
 available while recording every layer.
 
-| Control | Options |
-|---------|---------|
-| Scale | Major, minor, and less common scales (dorian, mixolydian, phrygian, lydian, harmonic minor…) |
-| Four chord slots | A recurring **4-bar** progression, one chord per bar |
-| Chord root per slot | Note with natural / flat / sharp |
-| Tone | Several timbres |
+| Control | Options | Scope |
+|---------|---------|-------|
+| Four chord slots | A recurring **4-bar** progression, one chord per bar | — |
+| Chord root per slot | Note with natural / flat / sharp | Per slot |
+| Chord quality per slot | Major, minor, dom7, min7, maj7 | Per slot |
+| Chord pattern | Seven (§2.6) | Per project |
+| Tone | Rhodes, Pad, Wurly, Organ | Per project |
+| Octave | Low / Default / High | Per project |
 
-**Scale plus root is enough.** The scale determines each chord's **quality** from its root: pick D in
-C major and you get D minor; pick D in D major and you get D major. The user never chooses "minor" or
-"diminished" — they pick a scale and four roots, and the harmony is correct by construction.
+**Quality is picked directly, and there is no scale.** Each slot carries its own quality; the user
+chooses "D minor", not "D in the key of C". Two consequences follow and are intended: *outside the
+scale* cannot exist without a scale, so there is no dashed or marked slot state, and **a slot can
+never be wrong**, so nothing is defaulted or corrected on the user's behalf.
 
-**Do not add a chord-quality picker to the primary interface.** It would double the decisions and
-undo the entire benefit. Out-of-scale roots are allowed (borrowed chords are useful): default them to
-a major triad and mark them as outside the scale. A per-slot override, if ever wanted, belongs behind
-a long-press.
+> **This reverses an earlier rule** that derived quality from a scale and explicitly forbade a
+> quality picker — see §5.2. The reversal is deliberate and was made after building the interface
+> both ways. Do not restore the scale.
 
-**Bar counts are always multiples of 4**, so a 4-bar progression tiles evenly into every valid
-project length — no partial-progression case exists at any bar count.
+Five qualities, not more. Diminished, augmented, suspended and extensions past the seventh were left
+out on the same footing as swung chord patterns: the bed exists to give a sketch a harmonic floor,
+and a vocabulary that needs scrolling is slower than the thing it is backing.
 
-**Synthesised, not sampled** (§2.6). Trigger one chord per bar against the shared sample-frame
-anchor. Voicing follows the tone — a pad holds through the bar, a keyed tone re-articulates — and
-sits mid-register so it stays under vocals.
+**Octave is one setting for the whole progression**, three positions, ±1 from the mid-register
+default. It was built as ±2 and narrowed after listening — the outer two octaves were hard to listen
+to and bought nothing. Three positions also read better as Low / Default / High than as signed
+numbers.
+
+**Bar counts are always multiples of 4**, so the progression tiles evenly into every valid project
+length — no partial-progression case exists at any bar count. Which chord owns which slot, live and
+in bar preview alike, is `((slot − 1) mod 4) + 1` (§2.6).
+
+**Synthesised, not sampled** (§2.6), and triggered against the shared sample-frame anchor. Rhythm is
+the **chord pattern's** job, not the tone's: an earlier draft had voicing follow the timbre — a pad
+holding through the bar, a keyed tone re-articulating — which quietly welded two independent choices
+together, so picking a sound also picked a groove. They are separate axes now. Any tone plays any
+chord pattern, and both sit mid-register so the bed stays under vocals.
 
 ## 4.5 Project Setup and Export
 
-**Setup**: name, BPM, bar count, drum loop selection with preview at the project tempo, and the
-recording quality inherited from the global setting. This is the **last point** at which BPM, bar
-count and quality can be changed for the project.
+**Setup**: name, BPM, bar count, a preview at that tempo, and the recording quality inherited from
+the global setting. This is the **last point** at which quality can be chosen at all, and the last
+point at which BPM and bar count can be changed *until the first recording locks them* (§1.2).
+
+**The project actions live here**: export, bounce to a new project, compress and delete (§4.1).
+They act on a project, so they sit with that project's settings rather than behind a chevron on a
+browsing list. They appear only for a project that exists — there is nothing to export or delete
+about one being created — and they act on the fields as currently edited, so a rename typed above
+reaches the exported filenames.
+
+**Setup and settings are one screen, not two.** The fields are identical and only their editability
+differs, and that is derived rather than moded: a project being created is simply one with no
+recordings, so `isConfigurationLocked` answers false and everything is open. Quality is the single
+exception — it is choosable exactly once, and "does this project exist yet" is not a fact a project
+can report about itself.
+
+**Setup does not choose the backing tracks.** §4.5 originally put drum pattern and kit here; a new
+project now starts on the default groove and every backing choice is made from its row on the
+Playback screen (§4.2), where it can be heard against what is already recorded. One editor for one
+piece of state, and the blank slate stays a blank slate rather than a form. The backing tracks are
+not locked by anything, ever (§1.2), so nothing is lost by deferring the choice.
+
+**The preview is of the tempo, not of the arrangement.** It is a play button on the tempo control
+itself, looping **one bar** of drums — hearing what 96 against 132 actually feels like is the one
+thing a BPM number cannot tell you. Bar count is deliberately not part of it: the drum pattern is
+one bar and repeats identically, so a longer loop would sound the same while taking longer to come
+round, and changing the length would disturb a preview it has nothing to do with.
 
 **Export**: format (WAV / MP3), quality, preview, share. **No mute controls** — it exports the
 project exactly as it currently sounds, and muting happens on the Playback screen where the result
@@ -1248,7 +1434,7 @@ Global, and — unless stated — they apply live.
 | **Master level limiting** | On / off | Live |
 | **Playback loop mode** | Repeat on / off | Live |
 
-**There is no metronome setting** — the drum loop replaces it (§5.1 #8). **There is no bar increment
+**There is no metronome setting** — the drum track replaces it (§5.1 #8). **There is no bar increment
 mode** — the two-axis swipe replaced it (§5.2).
 
 Recording quality is the only setting with snapshot semantics, and the reason is worth stating in the
@@ -1272,7 +1458,7 @@ a reminder; the manual carries the reasoning.
 |---------|--------|
 | Editing | What `P2 / 5` means; the two axes; **reading the gradient** — the highest-value entry, because the swipe is discoverable by accident and the colour encoding is not; live editing and mid-bar splice; why the pass axis disappears after compressing |
 | Recording setup | The ideal wired setup; why Bluetooth output with the phone mic is impossible (A2DP vs HFP — explained as a constraint, so it reads as physics rather than a bug); why Bluetooth monitoring feels detached; what bleeds when using the speaker |
-| Everything else | Backing tracks; how scale plus four roots produces the chords; what compress discards and keeps; that bounce leaves the original untouched; that export matches what you hear |
+| Everything else | Backing tracks — that they are synthesised, that pattern and kit are separate choices, that muting one is how you exclude it from an export, and that none of them ever lock; what compress discards and keeps; that bounce leaves the original untouched; that export matches what you hear |
 
 **Tone**: short, plain, answering questions users will actually have ("why did that bar change
 colour?", "why does it sound late?"). Each entry readable in isolation, since users arrive by deep
@@ -1296,7 +1482,7 @@ future session would otherwise "clean them up" and quietly undo the iteration.
 | 5 | **A partial bar at the end of a session is kept AND exposed** — reversed; see §1.4 | Still **don't pad**: the rule's real point was that padding creates silent bars that look selectable. `regionFor` clamps to the file, so the bar plays short instead. A bar the recording never reached is still excluded, and a slot with nothing behind it starts muted (§1.6) rather than blank. |
 | 6 | **Exactly 7 layers** | Not "7+". The row stack has no defined behaviour otherwise. |
 | 7 | **Sessions are written to disk continuously**, not at stop | The raw performance is the only asset that can't be recreated. Recovery needs no special handling: under §1.4 a partial session is already a valid one. |
-| 8 | **No metronome — the drum loop replaces it** | Every project has a drum loop for timing reference. A separate click would need its own row, level and export rule for nothing. |
+| 8 | **No metronome — the drum track replaces it** | Every project has a drum track for timing reference. A separate click would need its own row, level and export rule for nothing. |
 | 9 | **No solo** | It earns its place in a DAW with dozens of tracks; with seven layers muting suffices. It also collided with the export rule — if solo mutes everything else, soloing silently changes what exports. |
 | 10 | **No undo stack** | Every reversible action reverts through its own control (below). An undo stack would be a large amount of state for actions that already carry their own inverse. |
 | 11 | **Storage is user-managed, never coerced** | No forced commit, no maximum-passes threshold, no background deletion. See §2.7. |
@@ -1334,6 +1520,12 @@ Do not reintroduce these. Each was built or specified, then removed for the stat
 | **Concatenating sessions into one timeline** | A partial pass puts every later boundary at the wrong offset. |
 | **Deriving pass availability from a stored counter** | Can't express a partial pass, where early bars have one more pass than late ones. |
 | **A global release floor** | Finishing a one-bar playback flashes bars that never played. |
+| **Sampled drum loops, time-stretched to the project tempo** | Specified in full — `originalBPM`, a `targetBPM / originalBPM` ratio, `AVAudioUnitTimePitch`, a 0.5–2.0× limit, a quality warning outside it, and Superpowered as the upgrade path. Replaced by synthesis after listening to both. Pitch-preserved stretching fails hardest on exactly this material — transient-heavy percussion — right across the app's 60–240 BPM range, and synthesis does not merely dodge that: it deletes the ratio, the limit, the warning, the upgrade path, and every sourcing and redistribution-licensing question along with them. Nothing ships as an asset now. |
+| **A kit baked into each drum pattern** | Correct under sampling, where an independent kit picker meant auditioning every kit against every pattern as recorded audio. Synthesis makes a kit a parameter set, so the combinatorial cost is zero and the two became independent axes. |
+| **Scale-derived chord quality** | The scale picked each slot's quality from its root, and a quality picker was explicitly forbidden as doubling the decisions. Built both ways; the explicit picker reads better and is what §4.4 now specifies. It also took three sub-rules with it — the out-of-scale slot marking, the major-triad default for non-diatonic roots, and the long-press per-slot override — none of which can mean anything once there is no scale to be outside of. |
+| **Voicing implied by the chord tone** | A pad held through the bar, a keyed tone re-articulated. It welded rhythm to timbre, so choosing a sound also chose a groove. The chord pattern is now its own axis (§2.6). |
+| **A per-slot chord pattern** | Considered when the rhythm axis was added, rejected: it is the axis most likely to make a four-bar bed sound arranged rather than supportive, and it is a fourth per-slot decision in a control whose justification is speed. |
+| **`enabled` alongside `muted` on a backing track** | Two spellings of one state, and only `muted` was ever reachable — so `enabled` was a field the user could not set that still decided whether a backing stem was written. |
 
 ## 5.3 Suppress by default
 
@@ -1358,14 +1550,17 @@ touch-action: none;                         /* on gesture surfaces */
 | **Auto-navigation** to Edit Layer when a recording stops | |
 | **Row density** | Empty and armed layers occupy full-height rows; with two of seven recorded, much of the screen is placeholder. |
 | **Edit Layer gradient scope** | Full ramp, or the layer's `slice(i, 7)` subdivided across the recording. The slice would make colour mean the same thing on both screens and constantly signal which layer you're in — but a seventh of the ramp has less hue separation, so subtle reorderings get harder to spot. Try both against real recordings. |
-| **Preset chord progressions** | A small library (I–V–vi–IV and similar) removes the blank-slate problem. |
+| **Preset chord progressions** | A small library (I–V–vi–IV and similar) removes the blank-slate problem. More valuable now that quality is per slot (§4.4): a preset sets eight fields, not four. |
+| **Backing voices that outlive their onset gap** | A voice can still be ringing when the next onset in the same pattern fires. Three different policies are in play and none is settled: chords cap each voice's ring to the gap before the next onset, the hat chokes its predecessor outright, and kick and snare do neither. Decide one model — cap, choke, or overlap — and apply it consistently, or state deliberately why a voice type differs. |
+| **Backing tails at the loop point** | Live it is correct; a fixed-length bounce or export truncates it into a seam. See §2.6, and `tailFrames`, which currently accounts only for the pan delay. |
+| **What a bounce does with the backing tracks** | Two coupled questions — is the backing in the mixdown, and do its settings carry to the new project. Current direction is that it stops being part of a bounce. See §2.7. |
 | **Layer reordering** | |
 | **Storage full mid-recording** | How gracefully the session ends. |
 | **Showing the pass range** (`P2/4`) | Makes the wrap predictable. |
 
 ## 6.2 Not yet designed
 
-- Drum loop library and selection UI
+- Backing-track **selection UI**. The libraries themselves are settled (§2.6): six drum patterns, four kits, seven chord patterns, four tones. How they are picked inside a backing row's panel is not.
 - Export sharing details beyond format and destination
 - The manual's actual copy (§4.7 is structure only)
 - Onboarding
@@ -1383,7 +1578,7 @@ touch-action: none;                         /* on gesture surfaces */
 
 | Phase | Scope |
 |-------|-------|
-| **1** | Session config, drum loop playback, single-layer recording, pass detection |
+| **1** | Session config, drum track playback, single-layer recording, pass detection |
 | **2** | Seven layers, levels, mute, EQ and pan presets, project persistence |
 | **3** | Edit Layer grid, gestures, transport, splicing, live editing |
 | **4** | Project Library, compress, bounce, export, chord bed, manual |
