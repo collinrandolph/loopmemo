@@ -35,6 +35,7 @@ import { loopFrames } from '../../src/domain/timing.ts';
 import type { BackingEngine } from './audio.ts';
 import { type Rgb, type WaveNode, LR, clamp01, el, motion, ramp, sizing } from './kit.ts';
 import { amp, simSession } from './sim.ts';
+import { barAmplitude } from './peaks.ts';
 
 const BARS_PER_ROW = 4;
 const LINES_PER_BAR = 16;
@@ -336,8 +337,17 @@ export function editLayerScreen(opts: {
     // non-repeating ramp — and a slot pulled from elsewhere lands visibly off the run.
     const src = toAbsolute(ref, barCount) - 1;
     const totalLines = recordedBars() * LINES_PER_BAR;
+    // Real peaks where the take exists, the synthetic generator only where it does not. This is
+    // the screen the two indices are *for*, so a tile has to draw the audio its `BarRef` points
+    // at — a generated shape keyed on the bar number would move when the slot was swiped and
+    // still show material nobody played.
+    const passes_ = index(); // the screen's own resolver, so the peaks agree with the axis
     tile.wave.build(LINES_PER_BAR, (i) => ({
-      height: motion.snapEven(amp(layer.index, src, i, LINES_PER_BAR) * peakHeight, lineWidth),
+      height: motion.snapEven(
+        (barAmplitude(layer, passes_, ref, i, LINES_PER_BAR) ??
+          amp(layer.index, src, i, LINES_PER_BAR)) * peakHeight,
+        lineWidth,
+      ),
       rgb: ramp.rgb((src * LINES_PER_BAR + i) / (totalLines - 1)),
     }));
   }

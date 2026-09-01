@@ -87,13 +87,23 @@ export type BackingEngine = Engine & {
    */
   setLayers(project: Project, takes: TakeStore, recordingIntoLayerIndex?: number): void;
   /**
-   * Open the input and start capturing. Resolves false when there is no microphone or the user
-   * declines — a refusal is a state to render, not an exception to throw, since a take that
+   * Open the microphone, ahead of needing it. **Call this when arming, not when recording.**
+   *
+   * The first call is what raises the browser's permission prompt, and a prompt raised at the
+   * downbeat gets answered several seconds into a take that is already running — so the take
+   * captures nothing and nothing says why. Arming is the moment the user has declared intent and
+   * is not yet counting bars, which makes it the right place to pay for the prompt.
+   *
+   * Resolves false rather than throwing: a refusal is a state to render, since a take that
    * captures nothing still traverses bars and the transport should not care.
    *
    * Capture lives on the engine because the engine owns the `AudioContext`. Handing the context
    * out instead would put the platform's most replaceable object into every screen that records.
    */
+  openInput(): Promise<boolean>;
+  /** Why the input is unavailable, for a screen to show. Undefined once it opens. */
+  inputError(): string | undefined;
+  /** Begin capturing. Opens the input first if arming did not. */
   startCapture(): Promise<boolean>;
   stopCapture(): Promise<Capture | undefined>;
   /** Whether the browser has actually let us make sound yet (autoplay policy). */
@@ -138,6 +148,7 @@ export function audioEngine(sampleRate: number, latencyFrames = 0): BackingEngin
   let layerVoices: LayerVoice[] = [];
 
   let stream: MediaStream | undefined;
+  let inputError: string | undefined;
   let recorder: Recorder | undefined;
 
   let originFrame = 0;
@@ -758,7 +769,7 @@ export function audioEngine(sampleRate: number, latencyFrames = 0): BackingEngin
       rescheduleFuture();
     },
 
-    async startCapture() {
+    async openInput() {
       const c = ensure();
       try {
         if (!stream) {
@@ -770,13 +781,25 @@ export function audioEngine(sampleRate: number, latencyFrames = 0): BackingEngin
         if (!recorder) {
           recorder = await createRecorder(c, c.createMediaStreamSource(stream), latencyFrames);
         }
-        recorder.start();
+        inputError = undefined;
         return true;
-      } catch {
-        // No device, no permission, or an insecure origin. The take still runs; it just has no
-        // audio behind it, which is exactly what a demo project's sessions already look like.
+      } catch (e) {
+        // No device, no permission, or an insecure origin. Kept rather than swallowed: the first
+        // version returned a bare false and the screen ignored it, so a browser that refused the
+        // microphone recorded a silent take and said nothing at all.
+        inputError = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
         return false;
       }
+    },
+
+    inputError: () => inputError,
+
+    async startCapture() {
+      // Opening here too, for a caller that never armed. It is a no-op once open, so the normal
+      // path — armed first — has already paid for the permission prompt by now.
+      if (!(await engine.openInput())) return false;
+      recorder!.start();
+      return true;
     },
 
     async stopCapture() {

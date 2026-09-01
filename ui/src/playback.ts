@@ -27,6 +27,7 @@ import { SETTINGS_ICON } from './icons.ts';
 import { eqIconSvg, panIconSvg } from './preset-icons.ts';
 import { backingRows } from './backing-rows.ts';
 import { amp } from './sim.ts';
+import { barAmplitude, computePeaks } from './peaks.ts';
 import type { BackingEngine } from './audio.ts';
 import { type TakeStore, takeUrl } from './takes.ts';
 
@@ -129,7 +130,10 @@ export function playbackScreen(opts: {
   gearBtn.addEventListener('click', () => opts.onSettings());
   statsRow.append(statsText, gearBtn);
   const transportEl = el('div', 'lr-transport');
-  header.append(titleRow, statsRow, transportEl);
+  /** Only ever visible when the input failed; see `paintInputState`. */
+  const inputNote = el('div', 'input-note');
+  inputNote.style.display = 'none';
+  header.append(titleRow, statsRow, inputNote, transportEl);
 
   /**
    * Two lines, because there are two kinds of number here. Tempo, bar count and time
@@ -231,6 +235,10 @@ export function playbackScreen(opts: {
       row.el.classList.toggle('is-armed', next === 'armed');
       row.el.classList.toggle('is-recording', next === 'recording');
 
+      // Arming is where the permission prompt is paid for. Raised at the downbeat instead, it
+      // is answered seconds into a take that is already running (see `openInput`).
+      if (next === 'armed' && was !== 'armed') void opts.engine.openInput().then(paintInputState);
+
       if (next === 'recording' && was !== 'recording') {
         // A pass always begins on the downbeat, so recording restarts the loop.
         heldFrame = 0;
@@ -240,7 +248,7 @@ export function playbackScreen(opts: {
         // Told before the take rather than after: the layer being recorded onto is silent for
         // the duration (§2.2), and that has to be true from the first bar, not from the commit.
         opts.engine.setLayers(liveProject(), opts.takes, i);
-        void opts.engine.startCapture();
+        void opts.engine.startCapture().then(paintInputState);
         playing = true;
         playBtn.setPlaying(true);
         clearLive(row);
@@ -263,7 +271,7 @@ export function playbackScreen(opts: {
         // bar holds no passes and is discarded (§1.4), and storing its buffer would leak a
         // take nothing can ever refer to. Ordered after the layer is in place, because
         // committing re-reads the rows to tell the engine what to play.
-        void commitCapture(session, updated.sessions.length > before);
+        void commitCapture(row, session, updated.sessions.length > before);
         opts.onChange(updated);
         clearLive(row);
         paintRow(row);
@@ -312,10 +320,40 @@ export function playbackScreen(opts: {
    * the pass count, the badge and the lanes are all decided by `recordSession`, which has
    * already run against the engine's frame count.
    */
-  async function commitCapture(session: RecordingSession, keep: boolean) {
+  async function commitCapture(row: Row, session: RecordingSession, keep: boolean) {
     const captured = await opts.engine.stopCapture();
-    if (captured && keep) opts.takes.put(session, captured.buffer);
+    if (captured && keep) {
+      opts.takes.put(session, captured.buffer);
+      // Peaks are written back onto the session the domain already committed. They are display
+      // only — no pass, region or size derives from them — so filling them late is safe, and it
+      // is the only order available, since the buffer arrives after the worklet flushes.
+      const peaks = computePeaks(captured.buffer);
+      row.layer = {
+        ...row.layer,
+        sessions: row.layer.sessions.map((s) =>
+          s.id === session.id ? { ...s, waveformPeaks: peaks } : s,
+        ),
+      };
+      opts.onChange(row.layer);
+      paintRow(row);
+      buildLanes();
+    }
+    paintInputState();
     opts.engine.setLayers(liveProject(), opts.takes);
+  }
+
+  /**
+   * Say so when the microphone is unavailable, rather than recording silence in silence.
+   *
+   * The first version of capture returned a bare `false` that nothing read, so a browser which
+   * refused the input produced a take with no audio and no explanation — which is exactly the
+   * failure that got reported. The error text is shown verbatim, because the difference between
+   * a denied permission, an insecure origin and no device is the whole of what a user needs.
+   */
+  function paintInputState() {
+    const error = opts.engine.inputError();
+    inputNote.textContent = error ? `No audio input — ${error}. Takes will be silent.` : '';
+    inputNote.style.display = error ? '' : 'none';
   }
 
   function layerRow(initial: Layer): Row {
@@ -529,6 +567,8 @@ export function playbackScreen(opts: {
     for (const row of rows) {
       if (!layerHasRecording(row.layer)) continue;
       const [from, to] = ramp.slice(row.layer.index, LAYER_COUNT);
+      // Resolved once per row, not once per line: `layerPassIndex` walks every session.
+      const index = layerPassIndex(row.layer, t);
       row.wave.build(lineCount, (i, u) => {
         const slot = Math.min(bars - 1, Math.floor((i * bars) / lineCount));
         const ref = row.layer.barSources[slot];
@@ -538,10 +578,15 @@ export function playbackScreen(opts: {
         // s is the first i with `floor(i * bars / lineCount) === s`. Flooring picks a line one
         // slot earlier whenever the division is not exact, which offsets the material.
         const lineInSlot = i - Math.ceil((slot * lineCount) / bars);
+        // Real peaks when the take is behind this bar, and the synthetic generator only when
+        // there is no audio at all — the demo projects, whose sessions hold frame counts and
+        // nothing else. Drawing those flat would make the Library look broken rather than
+        // simulated; drawing a *recorded* bar from a generator is the lie this replaced.
+        const level =
+          (ref && barAmplitude(row.layer, index, ref, lineInSlot, linesPerSlot)) ??
+          amp(row.layer.index, src, lineInSlot, linesPerSlot);
         return {
-          height: silent
-            ? 2
-            : motion.snapEven(amp(row.layer.index, src, lineInSlot, linesPerSlot) * LANE_AMPLITUDE, 2),
+          height: silent ? 2 : motion.snapEven(level * LANE_AMPLITUDE, 2),
           rgb: ramp.rgb(from + (to - from) * u),
         };
       });

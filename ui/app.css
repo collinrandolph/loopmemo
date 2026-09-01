@@ -627,3 +627,11 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
 .setting-actions .acts { padding-left: 0; }
 /* The grouping the removed section labels were carrying. */
 .setting-gap { height: 6px; }
+
+/* Only ever present when the microphone could not be opened. Loud enough to be read before a
+   take is wasted, quiet enough not to look like a permanent part of the header. */
+.input-note {
+  margin: 8px 0 0; padding: 7px 10px; border-radius: 6px;
+  background: rgba(255, 138, 128, .16); border: 1px solid rgba(255, 138, 128, .34);
+  color: #ffd9d4; font-size: 12px; line-height: 1.45;
+}
