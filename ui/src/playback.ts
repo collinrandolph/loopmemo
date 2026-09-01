@@ -309,6 +309,13 @@ export function playbackScreen(opts: {
       paintBadge(row);
     });
     layersEl.classList.toggle('is-capturing', capturingIndex() >= 0);
+    // The armed equivalent of `is-capturing`. The kit hints an *empty, open* layer's record dot
+    // in the record colour, so several open empty rows each looked as live as the one actually
+    // armed — see the override in `app.css`.
+    layersEl.classList.toggle(
+      'is-arming',
+      rows.some((r) => r.rec === 'armed'),
+    );
 
     if (stopped) {
       // The take ends where it ends; the loop does not carry on past it. Rewinding to the
