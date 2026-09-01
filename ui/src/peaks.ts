@@ -27,26 +27,46 @@ import { TAKE_URL_SCHEME } from './takes.ts';
 export const PEAK_FRAMES = 512;
 
 /**
- * Display gain on the drawn height. **Nothing here touches audio** — it scales the picture, not
- * the signal, and the same peaks feed a mixdown at their true value.
+ * The curve from amplitude to drawn height. **Nothing here touches audio** — it shapes the
+ * picture, not the signal, and the same peaks feed a mixdown at their true value.
  *
- * A take that is comfortably audible sits nowhere near full scale. Recording at a sensible
- * level leaves peaks around 0.2–0.4, which drawn literally is a line a few pixels tall in a box
- * sized for 1.0 — so the waveform read as flat and told the user nothing about where they had
- * played. The lane is an *overview*: what it has to show is where the playing is and where the
- * bar is empty, and a fifth of the available height cannot show that.
+ * A take that is comfortably audible sits nowhere near full scale. Recording at a sensible level
+ * leaves peaks around 0.2–0.4, which drawn literally is a few pixels in a box sized for 1.0, so
+ * the lane read as flat and said nothing about where the playing was — the one thing an overview
+ * is for.
  *
- * 2.5 with a hard clamp, deliberately simple. A curve — square root, or a dB scale — would
- * spread the quiet end further and never clip, and is probably the better long-term answer; it
- * also makes a loud take and a clipping one look alike at the top, which for a sketchpad
- * matters less than being able to see the shape at all. Worth revisiting alongside §6.1's
- * question about input gain staging, which is the real cause.
+ * **A power curve rather than a gain, because a gain has to clip and this does not.** A linear
+ * 2.5× reached full height at 0.4 and drew everything above it identically, so a healthy take
+ * and one that was clipping looked the same, and the top 60% of the range carried no
+ * information at all. `peak ** 0.5` is monotonic over the whole range: every amplitude maps to
+ * its own height, loud is still distinguishable from louder, and the clamp below is a guard
+ * against an overshoot rather than a working part of the curve.
+ *
+ * It also spends the pixels where the signal actually is. Against a literal drawing it roughly
+ * triples a quiet passage and barely moves a loud one:
+ *
+ * | peak | literal | 2.5× | `√` |
+ * |---|---|---|---|
+ * | 0.02 | 0.02 | 0.05 | 0.14 |
+ * | 0.10 | 0.10 | 0.25 | 0.32 |
+ * | 0.30 | 0.30 | 0.75 | 0.55 |
+ * | 0.60 | 0.60 | 1.00 | 0.77 |
+ * | 1.00 | 1.00 | 1.00 | 1.00 |
+ *
+ * The cost is that it lifts the very bottom too: room tone at 0.005 draws at 0.07 rather than
+ * 0.01, so near-silence is a thin line rather than nothing. That is the honest trade for seeing
+ * a quiet take, and it is preferable to a noise gate here — a threshold would decide for the
+ * user which of their playing counted as silence.
+ *
+ * None of this is a substitute for recording at a sensible level; see §6.1 on input gain
+ * staging, which is the actual cause and still open.
  */
-export const PEAK_DISPLAY_GAIN = 2.5;
+export const PEAK_DISPLAY_EXPONENT = 0.5;
 
-/** Amplitude to drawn fraction of the box. Clamped, so a loud take fills it and stops. */
+/** Amplitude to drawn fraction of the box. */
 export function drawnHeight(peak: number): number {
-  return Math.min(1, peak * PEAK_DISPLAY_GAIN);
+  if (!(peak > 0)) return 0;
+  return Math.min(1, peak ** PEAK_DISPLAY_EXPONENT);
 }
 
 export function computePeaks(buffer: AudioBuffer, framesPerPeak = PEAK_FRAMES): number[] {
