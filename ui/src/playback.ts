@@ -101,6 +101,8 @@ export function playbackScreen(opts: {
   let lineWidth = 3;
   let previousProgress = 0;
   let recordingFrom = 0;
+  /** Loudest input since the last live line was drawn; see `pushLive`. */
+  let livePeak = 0;
 
   const spent = ramp.tokenRGB('--lr-spent');
   const rows: Row[] = [];
@@ -649,15 +651,28 @@ export function playbackScreen(opts: {
   }
 
   /**
-   * Live capture. In the app these heights come from an input tap — one peak per buffer,
-   * lock-free hand-off, drained on a display link. The draw path is identical: append one
-   * line per elapsed slot.
+   * Live capture, drawn from the input rather than invented.
+   *
+   * **This runs every animation frame and draws a line about once a second**, and that gap is
+   * the whole difficulty. `inputPeak()` reports the loudest sample since the last call *and
+   * resets on read*, so reading it once per frame and using it only when a line happens to be
+   * due threw away roughly fifty-nine readings out of sixty. The line then showed the 16 ms
+   * before it was appended rather than the second it stands for, which is why the live waveform
+   * and the committed one disagreed about the same take — the committed one takes a true
+   * maximum across every frame of the line's span.
+   *
+   * So the maximum is accumulated here instead, and cleared only when a line consumes it. A
+   * burst of lines after a stall share one reading; there is only one number, and spreading it
+   * is more honest than drawing the rest as silence.
+   *
+   * The display gain is the same one the committed waveform uses, so a take does not change
+   * height the moment it stops recording.
    */
   function pushLive(row: Row, upto: number) {
     const [from, to] = ramp.slice(row.layer.index, LAYER_COUNT);
-    // The same display gain the committed waveform uses, so the take does not appear to change
-    // height the moment it stops recording.
-    const peak = drawnHeight(opts.engine.inputPeak());
+    livePeak = Math.max(livePeak, opts.engine.inputPeak());
+    const peak = drawnHeight(livePeak);
+    if (row.live.length < upto) livePeak = 0;
     while (row.live.length < upto && row.live.length < lineCount) {
       const i = row.live.length;
       const u = lineCount > 1 ? i / (lineCount - 1) : 0;
@@ -743,7 +758,12 @@ export function playbackScreen(opts: {
       row.resetA = row.resetA > 0.001 ? motion.approach(row.resetA, 0, motion.TAU.reset!, dt) : 0;
 
       if (row.rec === 'recording') {
-        pushLive(row, Math.floor(head) + 1);
+        // `floor(head)`, not `floor(head) + 1`: a line is drawn once its span has been *heard*,
+        // not when it is entered. Drawing on entry appended line 0 before a single sample had
+        // arrived, so every take opened with a line of silence the committed waveform did not
+        // have. The cost is that the drawing trails the progress rule by one line, which is
+        // what it means to draw a waveform of something that has already happened.
+        pushLive(row, Math.floor(head));
         row.rule.style.width = `${(progress * 100).toFixed(1)}%`;
         paintBadge(row);
       }
