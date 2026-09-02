@@ -547,6 +547,34 @@ plays the drums twice, while baking without carrying freezes a groove that §1.2
 default. `bounceSeed` lands on `defaultBacking()` as a placeholder. Do not turn either into a
 decision before §2.7 is settled.
 
+## Getting files out of the browser
+
+**Ask where the file goes BEFORE rendering it, not after.** `showSaveFilePicker` needs transient
+user activation and Chrome's expires about five seconds after the click. The export rendered every
+file first and only then asked to save, so anything slower than that window threw
+`SecurityError: Must be handling a user gesture to show a file picker` — measured at nine files
+with `navigator.userActivation.isActive` false at the call, and one full loop of a long project is
+enough on its own. `chooseDestination` reserves the destination while the click is still fresh and
+the blob is written into it afterwards, which also means a cancel costs nothing because nothing has
+been rendered yet.
+
+**The other half was `catch { return false }`**, which turned that into silence: the button counted
+through the renders, reset itself, and no file arrived. **`AbortError` is the only error that is not
+an error** — it is the user closing the dialog. Everything else falls through to `<a download>`,
+which needs no activation and works everywhere; it just cannot offer a folder or report a cancel.
+Reported as "it looked like it was preparing the files and never downloaded anything", for every
+option, which is exactly what a swallowed exception looks like from outside.
+
+**The plan decides the container, not the outcome.** `renderOne` returns undefined for a file with
+nothing behind it — a pass whose take is not in this session's store — so the rendered count can be
+lower than the planned one. The name is chosen before any of that is known, so several *planned*
+files stay an archive even when fewer arrive; letting the outcome decide would write a lone `.wav`
+into a file the user has already named `.zip`.
+
+**A short export stays on the screen.** `onShare` means "you are finished here" and it tears the
+screen down — which took the shortfall message with it before it could be read. The file is still
+written; the difference is only whether the screen leaves.
+
 ## Backing tracks
 
 Two synthesised tracks, `project.backing.drums` and `.chords` (§2.6). **Neither is a file** — no

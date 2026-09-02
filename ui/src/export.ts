@@ -14,7 +14,7 @@ import { bindChips } from './controls.ts';
 import { LR, el } from './kit.ts';
 import type { Engine } from './sim.ts';
 import { renderExport } from './export-files.ts';
-import { save, zip } from './save.ts';
+import { chooseDestination, zip } from './save.ts';
 import type { TakeStore } from './takes.ts';
 
 /**
@@ -122,6 +122,8 @@ export function exportScreen(opts: {
     );
     row.addEventListener('click', () => {
       selection = { ...selection, [option.key]: !selection[option.key] };
+      // A message about the last selection is worse than none about this one.
+      saveNote.style.display = 'none';
       paint();
     });
     whatRows.appendChild(row);
@@ -218,7 +220,32 @@ export function exportScreen(opts: {
   const shareBtn = el('button', 'lr-btn lr-btn--primary', 'Share') as HTMLButtonElement;
 
   /**
-   * Render, then hand the result over.
+   * Only ever visible when an export failed. Silence was half of the original bug.
+   */
+  const saveNote = el('div', 'export-note export-error');
+  saveNote.style.display = 'none';
+  // Last in the body, so it sits directly above the button that produced it.
+  body.appendChild(saveNote);
+
+  function fail(message: string) {
+    saveNote.textContent = message;
+    saveNote.style.display = '';
+  }
+
+  /**
+   * Reserve somewhere to put it, then render, then write.
+   *
+   * **The order is the fix.** `showSaveFilePicker` needs transient user activation and Chrome's
+   * expires about five seconds after the click, so asking for it *after* rendering threw
+   * `SecurityError` on every export slow enough to matter — which is most of them — and the old
+   * save swallowed it. Asking first also means cancelling costs nothing, because the render has
+   * not happened yet.
+   *
+   * **The plan decides the container, not the outcome.** The name is chosen before anything is
+   * rendered, so a file that turns out to have nothing behind it — a pass whose take is not in
+   * this session's store — must not turn a `.zip` into a lone `.wav` after the user has already
+   * named it. Several planned files stay an archive even if fewer arrive, and the shortfall is
+   * said out loud rather than left to be noticed.
    *
    * One file is saved as itself; several are zipped, because a browser has no good way to give
    * someone a handful of files at once — a loop of download clicks trips Chrome's
@@ -235,12 +262,21 @@ export function exportScreen(opts: {
     if (exporting) return;
     exporting = true;
     shareBtn.disabled = true;
+    saveNote.style.display = 'none';
     try {
       const plan = exportPlan(project, selection, {
         format,
         mp3Bitrate: bitrate,
         backing: opts.backing,
       });
+      if (plan.files.length === 0) return;
+
+      const archive = plan.files.length > 1;
+      const name = archive ? `${project.name}.zip` : plan.files[0]!.name;
+      // First, while the click that asked for it is still fresh.
+      const destination = await chooseDestination(name, archive ? 'application/zip' : 'audio/wav');
+      if (!destination) return; // cancelled, and nothing has been rendered to waste
+
       const files = await renderExport(
         plan,
         { project, backing: opts.tracks, takes: opts.takes },
@@ -248,12 +284,31 @@ export function exportScreen(opts: {
           shareBtn.textContent = `Rendering ${done} / ${total}…`;
         },
       );
-      if (files.length === 0) return;
-      shareBtn.textContent = files.length > 1 ? 'Packing…' : 'Saving…';
-      const single = files.length === 1 ? files[0] : undefined;
-      const blob = single ? single.blob : await zip(files);
-      const name = single ? single.name : `${project.name}.zip`;
-      if (await save(blob, name)) opts.onShare();
+      if (files.length === 0) {
+        fail('Nothing could be rendered — the audio for this selection is not in this session.');
+        return;
+      }
+      const short = plan.files.length - files.length;
+      if (short > 0) {
+        fail(
+          `${short} of ${plan.files.length} files had no audio behind them and were left out. ` +
+            'Recorded passes only exist in the session they were recorded in.',
+        );
+      }
+
+      shareBtn.textContent = archive ? 'Packing…' : 'Saving…';
+      const blob = archive ? await zip(files) : files[0]!.blob;
+      const problem = await destination.write(blob);
+      if (problem) fail(`Could not save ${destination.filename} — ${problem}`);
+      // **Stay on the screen when something was left out**, even though the file was written.
+      // `onShare` means "you are finished here", and it tears this screen down — which took the
+      // shortfall message with it before it could be read. A short export is exactly the one the
+      // user needs to be told about.
+      else if (short === 0) opts.onShare();
+    } catch (e) {
+      // Never swallowed. A render that throws used to reset the button and say nothing, which is
+      // indistinguishable from an export that worked and went somewhere unexpected.
+      fail(`Export failed — ${e instanceof Error ? `${e.name}: ${e.message}` : String(e)}`);
     } finally {
       exporting = false;
       shareBtn.disabled = false;

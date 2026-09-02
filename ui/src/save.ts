@@ -103,44 +103,92 @@ export async function zip(files: readonly OutputFile[]): Promise<Blob> {
   return new Blob([...parts, directory, end], { type: 'application/zip' });
 }
 
+/** Somewhere to put a file, reserved before the work that produces it. */
+export type Destination = {
+  /** Where it is going, for a message. */
+  readonly filename: string;
+  /** Write the finished blob. The string is why it failed; undefined means it was written. */
+  write(blob: Blob): Promise<string | undefined>;
+};
+
+type FileHandle = {
+  createWritable(): Promise<{ write(b: Blob): Promise<void>; close(): Promise<void> }>;
+};
+
 /**
- * Hand a blob to the user.
+ * Ask the user where the file should go — **before** rendering it, not after.
  *
- * `showSaveFilePicker` where it exists, because it lets them choose the folder and the name and
- * tells us whether they went through with it. Chrome only, and a fallback matters: an `<a
- * download>` click works everywhere and simply drops the file in Downloads. A cancelled picker
- * is a normal outcome, not an error, and reports `false`.
+ * `showSaveFilePicker` requires transient user activation, and Chrome's lasts about five seconds
+ * from the click. An export renders every file first and only then asked to save, so any export
+ * slower than that window threw `SecurityError: Must be handling a user gesture to show a file
+ * picker` — measured here at nine files, and a single full loop of a long project is enough on
+ * its own. The old `catch { return false }` turned that into silence: the button counted through
+ * the renders, reset itself, and no file ever arrived. **Both halves were the bug** — losing the
+ * activation, and then swallowing the proof.
+ *
+ * So the destination is reserved while the click is still fresh, and the blob is written into it
+ * afterwards. It also means a cancel costs nothing: the render has not happened yet.
+ *
+ * Undefined means the user cancelled, which is a decision rather than a failure. Everything else
+ * falls through to `<a download>`, which needs no activation and works in every browser — it just
+ * cannot offer a folder or say whether the user kept the file.
  */
-export async function save(blob: Blob, filename: string): Promise<boolean> {
-  const picker = (window as unknown as { showSaveFilePicker?: (o: unknown) => Promise<unknown> })
+export async function chooseDestination(filename: string, mime: string): Promise<Destination | undefined> {
+  const picker = (window as unknown as { showSaveFilePicker?: (o: unknown) => Promise<FileHandle> })
     .showSaveFilePicker;
+
   if (picker) {
     try {
-      const handle = (await picker({
+      const handle = await picker({
         suggestedName: filename,
         types: [
           {
-            description: blob.type === 'application/zip' ? 'ZIP archive' : 'WAV audio',
-            accept: { [blob.type]: [filename.slice(filename.lastIndexOf('.'))] },
+            description: mime === 'application/zip' ? 'ZIP archive' : 'WAV audio',
+            accept: { [mime]: [filename.slice(filename.lastIndexOf('.'))] },
           },
         ],
-      })) as { createWritable(): Promise<{ write(b: Blob): Promise<void>; close(): Promise<void> }> };
-      const writable = await handle.createWritable();
-      await writable.write(blob);
-      await writable.close();
-      return true;
-    } catch {
-      return false; // the user cancelled, or the picker is unavailable in this context
+      });
+      return {
+        filename,
+        async write(blob) {
+          try {
+            const writable = await handle.createWritable();
+            await writable.write(blob);
+            await writable.close();
+            return undefined;
+          } catch (e) {
+            return reason(e);
+          }
+        },
+      };
+    } catch (e) {
+      // The one error that is not an error. Everything else — no activation left, a context that
+      // refuses the picker, a name the platform will not take — is a reason to fall back rather
+      // than to stop, and must never be mistaken for the user saying no.
+      if (e instanceof DOMException && e.name === 'AbortError') return undefined;
     }
   }
 
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  // Revoked on a later turn of the event loop: revoking synchronously races the download the
-  // click just started, and the file arrives empty.
-  setTimeout(() => URL.revokeObjectURL(url), 60_000);
-  return true;
+  return { filename, write: async (blob) => download(blob, filename) };
+}
+
+/** The download that always works: no activation, no picker, straight to Downloads. */
+function download(blob: Blob, filename: string): string | undefined {
+  try {
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.click();
+    // Revoked on a later turn of the event loop: revoking synchronously races the download the
+    // click just started, and the file arrives empty.
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    return undefined;
+  } catch (e) {
+    return reason(e);
+  }
+}
+
+function reason(e: unknown): string {
+  return e instanceof Error ? `${e.name}: ${e.message}` : String(e);
 }
