@@ -5,24 +5,16 @@ import type { Timing } from '../../src/domain/timing.ts';
 /**
  * One layer's signal path: EQ, pan, the Haas delay, and level (§2.8).
  *
- * Everything about *what* these do is already decided and tested in `src/domain` — `eqPreset`
- * gives bands that map one-to-one onto a `BiquadFilterNode`, and `panPlan` gives the two pairs
- * of gains and a delay time. This file only builds the graph. That split is why the presets
- * could be argued about, measured and corrected long before there was any audio to hear them
- * through, and why `responseDb` can assert that Scoop actually dips.
+ * *What* these do is decided and tested in `src/domain` — `eqPreset` gives bands that map onto a
+ * `BiquadFilterNode`, `panPlan` gives two pairs of gains and a delay time. This only builds the
+ * graph, which is why the presets could be measured and corrected before there was audio.
  *
- * ## The graph is built once and never rebuilt
- *
- * `effects.ts` is explicit about this: every preset reports the *same* `delayFrames`, and the
- * five that use no delay silence it with gain instead. So changing a preset is a gain ramp,
- * never a reconnection and never a change of delay time — both of which click, and a preset
- * change is a live gesture made while the loop is playing.
- *
- * The same argument extends to the EQ, with one concession the API forces. A biquad's `type`
- * has to change when the preset does, because a high-pass cannot be flattened by its gain the
- * way a peaking filter can. So the chain is a fixed number of filters, and a preset with fewer
- * bands parks the spare ones as peaking at 0 dB, which is exactly unity. The count never
- * changes; only the coefficients do.
+ * **The graph is built once and never rebuilt.** Every pan preset reports the same `delayFrames`
+ * and the five without a delay silence it with gain, so a preset change is a gain ramp rather
+ * than a reconnection — both a rebuild and a change of delay time click, and a preset change is a
+ * live gesture. The EQ extends that as far as the API allows: a fixed `EQ_SLOTS` filters, with a
+ * preset that uses fewer parking the spare ones as peaking at 0 dB. Only the coefficients move,
+ * except `type`, which a high-pass cannot flatten by gain the way a peaking filter can.
  *
  *     source(s) ─▶ eq[0..n] ─┬─▶ dryL  ─▶ ┐
  *                            │            ├─▶ merge ─▶ level ─▶ bus
@@ -38,19 +30,13 @@ const EQ_SLOTS = Math.max(...EQ_PRESETS.map((p) => p.bands.length));
 const RAMP_SECONDS = 0.02;
 
 /**
- * `BiquadFilterNode.Q` is **in decibels for `lowpass` and `highpass`**, and a plain linear Q for
- * `peaking`. The spec converts the first two with `10^(Q/20)` before using them, so handing it
- * the domain's Butterworth 0.7071 asks for an effective Q of 1.085 — a filter with a resonant
- * bump, which is exactly the colour `BUTTERWORTH_Q` was chosen to avoid.
+ * `BiquadFilterNode.Q` is **in decibels for `lowpass` and `highpass`** and linear for `peaking`.
+ * The spec converts the first two with `10^(Q/20)`, so handing it the domain's Butterworth 0.7071
+ * asks for an effective Q of 1.085 — a resonant bump, the exact colour `BUTTERWORTH_Q` avoids.
  *
- * It is not a subtle error and it does not announce itself. At the corner a Butterworth is
- * −3.01 dB; the browser gave **+0.71 dB**, a 3.7 dB disagreement, and shallower slopes for two
- * of the five presets. Reported as "EQ is either not working or too subtle to hear" — it was
- * working, and it had been quietly softened.
- *
- * Caught by asking the browser's own `getFrequencyResponse` what it thought the filters did and
- * comparing that against `responseDb`. Neither side could have found it alone: the domain's
- * transfer function was right all along, and the graph was faithfully building the wrong filter.
+ * It does not announce itself: at the corner a Butterworth is −3.01 dB and the browser gave
+ * +0.71. `verify-eq.ts` is the guard, and it took both sides to find — the domain's transfer
+ * function was right, and the graph was faithfully building the wrong filter.
  */
 function webAudioQ(kind: BiquadKind, q: number): number {
   return kind === 'peaking' ? q : 20 * Math.log10(q);

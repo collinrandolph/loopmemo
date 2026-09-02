@@ -11,24 +11,15 @@ import { encodeWav } from './wav.ts';
 /**
  * Turning an `ExportPlan` into actual files (§2.7).
  *
- * The domain already decided *what* comes out — which files, their names, lengths and channel
- * counts — and none of that needed audio. This renders them, and it does so **through the same
- * engine that plays them**. An export written as a second rendering path would be a second set
- * of decisions about crossfades, splices, the pan law, the compressor and which bar carries
- * which chord, and every one of those is a chance for the file to disagree with what the user
- * heard. Here the only way they can differ is if `prerender` and the live scheduler differ, and
- * they are the same function.
+ * The domain decided *what* comes out — which files, their names, lengths and channel counts —
+ * without needing audio. This renders them **through the same engine that plays them**: a second
+ * rendering path would be a second set of decisions about crossfades, splices, pan law, the
+ * compressor and which bar carries which chord, and every one is a chance for the file to
+ * disagree with what was heard.
  *
- * ## MP3 is not possible in this build
- *
- * §2.7 offers WAV and MP3. The browser has no MP3 encoder: `AudioEncoder` reports `mp3` as
- * unsupported while offering AAC and Opus, and this repo carries no runtime dependencies, so
- * shipping a LAME-class encoder is not on the table either.
- *
- * That is a limitation of **this build**, not of the design — a native platform has MP3 or AAC
- * available — so the format stays in the domain and the spec, and `ui/` is where it is refused.
- * The Export screen disables the choice and says why, rather than writing a WAV with an `.mp3`
- * name, which would be the one genuinely dishonest option.
+ * **MP3 is not possible in this build** — no encoder, and no runtime dependencies to add one. It
+ * is a limit of the build rather than the design, so the format stays in the domain and `ui/`
+ * refuses it; writing a WAV with an `.mp3` name is the one dishonest option.
  */
 
 /** Everything an export needs that the plan does not carry. */
@@ -72,11 +63,8 @@ function silentBacking(): BackingTracks {
 }
 
 /**
- * Render one pass through the engine, offline.
- *
- * `channels` is 2 throughout, and a mono file takes channel 0 afterwards. Rendering mono would
- * mean a different graph — the merger has two inputs and the pan law fills both — so the choice
- * of how many channels to *write* stays with the file rather than with the render.
+ * Render one pass through the engine, offline. Always two channels — the merger has two inputs
+ * and the pan law fills both — so how many to *write* stays a property of the file, not the render.
  */
 async function renderThroughEngine(
   ctx: RenderContext,
@@ -107,18 +95,16 @@ function toMono(buffer: AudioBuffer, makeup = CENTRE_MAKEUP): AudioBuffer {
   return mono;
 }
 
-/**
- * Which layer or backing track a planned file is about.
- *
- * The plan names files as `Project - Source - kind`, so the source is recoverable from the name.
- * That is a weaker link than an id and it is the one the domain offers; if it ever becomes load
- * bearing, `ExportFile` should carry the layer index instead of this reading it back out.
- */
 /** The planned name without its extension. Everything matched below is in the stem of it. */
 function baseName(file: ExportFile): string {
   return file.name.replace(/\.[^.]+$/, '');
 }
 
+/**
+ * Which layer or backing track a planned file is about, read back out of `Project - Source - kind`.
+ * A weaker link than an id and the one the domain offers; if it becomes load-bearing, `ExportFile`
+ * should carry the layer index instead.
+ */
 function sourceOf(
   file: ExportFile,
   project: Project,
@@ -155,13 +141,9 @@ async function renderOne(ctx: RenderContext, file: ExportFile): Promise<AudioBuf
   }
 
   if (file.kind === 'pass') {
-    // No rendering at all: a pass is the capture, exactly as it arrived (§1.4). Sessions are
-    // never concatenated, so one file is one session's own buffer.
-    //
-    // Matched against the name *without its extension*. Reading the take number off the full
-    // name gave `Number('1.wav')`, which is NaN, so `sessions[NaN - 1]` was undefined and every
-    // pass silently vanished from the archive — an export that produced fewer files than it
-    // promised and said nothing.
+    // No rendering: a pass is the capture as it arrived (§1.4), and sessions are never
+    // concatenated, so one file is one session's buffer. Matched against the name *without* its
+    // extension — `Number('1.wav')` is NaN, and every pass vanishes from the archive.
     const base = baseName(file);
     const layerFor = project.layers.find((l) =>
       base.startsWith(`${project.name} - ${l.name || `Layer ${l.index + 1}`} - take `),
@@ -179,12 +161,9 @@ async function renderOne(ctx: RenderContext, file: ExportFile): Promise<AudioBuf
 }
 
 /**
- * Render every file in the plan.
- *
- * Sequential on purpose. Each render holds a full loop of float samples per channel, and a
- * sixteen-file export started in parallel would hold all of them at once for no gain — offline
- * rendering is already faster than real time, and the wall-clock cost is dominated by the work
- * rather than by waiting.
+ * Render every file in the plan, sequentially: each render holds a full loop of float samples per
+ * channel, and offline rendering is already faster than real time, so parallelism would hold
+ * sixteen of those at once for no gain.
  */
 export async function renderExport(
   plan: ExportPlan,
@@ -195,8 +174,7 @@ export async function renderExport(
   const out: OutputFile[] = [];
   for (const [i, file] of plan.files.entries()) {
     const buffer = await renderOne(ctx, file);
-    // `ExportFile.name` already carries the extension — the domain appends the format, because
-    // the format is what decides it. Adding one here produced `Late Night.wav.wav`.
+    // `ExportFile.name` already carries the extension; the domain appends the format.
     if (buffer) out.push({ name: file.name, blob: encodeWav(buffer, depth) });
     onProgress?.(i + 1, plan.files.length);
   }

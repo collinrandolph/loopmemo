@@ -27,7 +27,7 @@ import { SETTINGS_ICON } from './icons.ts';
 import { eqIconSvg, panIconSvg } from './preset-icons.ts';
 import { backingRows } from './backing-rows.ts';
 import { amp } from './demo.ts';
-import { renderLoop } from './screen.ts';
+import { renderLoop, syncCollapse } from './screen.ts';
 import { barAmplitude, computePeaks, drawnHeight } from './peaks.ts';
 import type { BackingEngine } from './audio.ts';
 import { type TakeStore, takeUrl } from './takes.ts';
@@ -57,6 +57,8 @@ type Row = {
   note: HTMLElement;
   badge: HTMLElement;
   volume: { update(): void };
+  /** Re-measure the collapse after something changes the panel's content. */
+  syncPanel(): void;
   live: HTMLElement[];
   resetA: number;
 };
@@ -460,6 +462,7 @@ export function playbackScreen(opts: {
       note,
       badge: label.querySelector('.lr-pass-badge')!,
       volume: { update() {} },
+      syncPanel() {},
       live: [],
       resetA: 0,
     };
@@ -532,7 +535,11 @@ export function playbackScreen(opts: {
     head.addEventListener('click', (e) => {
       if ((e.target as HTMLElement).closest('.lr-rec, .lr-volume, .layer-name')) return;
       rowEl.classList.toggle('is-open');
+      syncCollapse(rowEl, panel);
     });
+    // An empty row hides the presets and the Edit button, so gaining audio changes an open
+    // panel's height. Measured rather than guessed, so that needs no second CSS case.
+    row.syncPanel = () => syncCollapse(rowEl, panel);
     volumeRow.querySelector('.level')!.addEventListener('input', (e) => {
       row.layer = { ...row.layer, level: Number((e.target as HTMLInputElement).value) / 100 };
       volume.update();
@@ -550,6 +557,7 @@ export function playbackScreen(opts: {
 
   function paintRow(row: Row) {
     const recorded = layerHasRecording(row.layer);
+    row.syncPanel();
     row.el.classList.toggle('has-audio', recorded);
     row.el.classList.toggle('is-empty', !recorded);
     row.el.classList.toggle('is-muted', row.layer.muted);

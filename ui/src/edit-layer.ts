@@ -360,8 +360,7 @@ export function editLayerScreen(opts: {
 
   /**
    * The two swipe axes, the hold, and the tap. Press state and the release edges belong to
-   * `trackDrag` — including the reason it is not `hasPointerCapture`, which is written up there
-   * because this file and the chord wheel both used to answer it separately.
+   * `trackDrag`, including the reason it is not `hasPointerCapture`.
    */
   function attachGestures(node: HTMLElement, slot: number) {
     let axis: 'pass' | 'bar' | null = null;

@@ -1,21 +1,18 @@
 /**
- * Pointer-drag tracking, and the one thing this app has to get right about it.
+ * Pointer-drag tracking. **Every pointer gesture in the app goes through this** — do not write a
+ * second one.
  *
- * **Press state is owned here, never asked of the platform.** `pointermove` fires on plain
- * hover, so a move handler that does not know whether a button is down will act on hover. The
- * obvious guard, `hasPointerCapture`, does not work: capture is a *routing* hint and it survives
- * a `pointerup` the page never receives — released outside the window, focus lost, the browser
- * taking the gesture over. Hover then re-enters the element still holding orphaned capture, the
- * guard passes, and the move is measured against an origin from minutes ago. An enormous delta,
- * and the control steps with nothing pressed.
+ * **Press state is owned here, never asked of the platform.** `pointermove` fires on plain hover,
+ * and the obvious guard, `hasPointerCapture`, does not work: capture is a *routing* hint that
+ * survives a `pointerup` the page never receives — released outside the window, focus lost, the
+ * browser taking the gesture over. Hover re-enters the element holding orphaned capture, the
+ * guard passes, and the move is measured against an ancient origin, so the control steps with
+ * nothing pressed. **The mockup guards that way, so copying it reintroduces the bug.**
  *
- * That bug shipped once, from the mockup, which guards this way — so copying the mockup
- * reintroduces it (CLAUDE.md). It was then written a second time in a second control. This
- * module exists so there is exactly one copy of the answer:
+ * The answer, in one place:
  *
  * - an own `down` flag, set on `pointerdown` and cleared on every route out;
- * - a bail on `e.buttons === 0`, which catches the missed release itself, since mouse and touch
- *   both report no buttons once up;
+ * - a bail on `e.buttons === 0`, which catches the missed release itself;
  * - `lostpointercapture` and `pointercancel` treated as ends, because capture can go without a
  *   `pointerup` ever arriving.
  */

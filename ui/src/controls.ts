@@ -9,28 +9,16 @@ export const SWIPE_THRESHOLD = 22; // shared with the Edit Layer tiles: one gest
 /**
  * One vertically-swipeable field.
  *
- * **Up steps forward**, matching the pass axis on the Edit Layer screen. Both are the same rule:
- * the material moves under the finger, so the next value is pulled in from the side you drag
- * toward — the filmstrip §3.7 states for the horizontal axis, applied to the vertical one it
- * leaves open.
+ * **Up steps forward**, matching the pass axis: the material moves under the finger, so the next
+ * value is pulled in from the side you drag toward (§3.7's filmstrip, on the vertical axis). A
+ * tap steps too — upper half forward, lower half back — because a mouse drag is awkward and a
+ * control with no tap affordance reads as inert.
  *
- * A tap steps too, upper half forward and lower half back, on the same axis as the drag: with a
- * mouse the drag is available but awkward, and a control with no tap affordance reads as inert.
- *
- * The press guard lives in `trackDrag` — see that file for why it is not `hasPointerCapture`.
- *
- * **Every wheel looks the same: the value, and a right-aligned `↕`.** What differs is only whether
- * the caption is drawn.
- *
- * - `row` is a full-width setting in a panel — Pattern, Kit, Tone. Its caption sits *outside* the
- *   control as an ordinary `.lr-panel-label`, so it reads as a labelled row like Volume, EQ and
- *   Pan directly above it.
- * - `inline` is the chord editor's Note / Sign / Type, three abreast, and draws **no caption at
- *   all**. Three fields reading C / ♮ / Maj under a chord button are self-describing, and a
- *   `↕ NOTE` under each one spent a line naming what the value already says. The arrow stays,
- *   because that is the part a value cannot tell you.
- *
- * The caption still names the control for assistive tech in both layouts, drawn or not.
+ * **Every wheel is the value with a right-aligned `↕`**; the layouts differ only in whether the
+ * caption is drawn. `row` puts it outside as a `.lr-panel-label`, so a panel of wheels reads as
+ * labelled rows alongside Volume, EQ and Pan. `inline` — the chord editor's Note / Sign / Type —
+ * draws none, because C / ♮ / Maj under a chord button say what they are. The caption goes on as
+ * `aria-label` either way.
  */
 export function swipeWheel(
   caption: string,

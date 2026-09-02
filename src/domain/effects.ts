@@ -1,11 +1,8 @@
 import type { Timing } from './timing.ts';
 
 /**
- * Per-layer pan and its delay path (§2.8).
- *
- * EQ is **deliberately absent**. The presets in §2.8 are placeholders — frequencies and
- * directions with no gain, Q or filter type — and inventing the missing numbers here would
- * make guesses look decided. It joins this file once the shapes are settled.
+ * Per-layer pan and its delay path (§2.8). EQ is its own module (`eq.ts`), because its presets
+ * needed a research pass §2.8 does not contain and a response curve to check them against.
  */
 
 /** Linear gain from decibels. */

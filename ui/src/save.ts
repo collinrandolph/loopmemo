@@ -35,15 +35,11 @@ async function deflate(bytes: Uint8Array<ArrayBuffer>): Promise<Uint8Array<Array
 }
 
 /**
- * A ZIP holding `files`, deflated.
+ * A ZIP holding `files`, deflated. Deliberately plain — no directories, no zip64, no data
+ * descriptors — because tens of megabytes is inside every limit the basic format has.
  *
- * Deliberately plain: no directories, no zip64, no data descriptors. The sizes here are tens of
- * megabytes at most, which is inside every limit the basic format has, and a bigger
- * implementation would be more to get wrong for no gain.
- *
- * PCM audio deflates by roughly a tenth — worth having and not worth expecting much from. The
- * stored fallback exists for the case where the compressed form would be *larger*, which happens
- * with high-entropy audio and would otherwise make the archive bigger than its contents.
+ * PCM deflates by roughly a tenth. The stored fallback covers high-entropy audio, where the
+ * compressed form is larger and the archive would otherwise exceed its contents.
  */
 export async function zip(files: readonly OutputFile[]): Promise<Blob> {
   const encoder = new TextEncoder();
@@ -116,22 +112,15 @@ type FileHandle = {
 };
 
 /**
- * Ask the user where the file should go — **before** rendering it, not after.
+ * Ask where the file should go — **before** rendering it, not after.
  *
- * `showSaveFilePicker` requires transient user activation, and Chrome's lasts about five seconds
- * from the click. An export renders every file first and only then asked to save, so any export
- * slower than that window threw `SecurityError: Must be handling a user gesture to show a file
- * picker` — measured here at nine files, and a single full loop of a long project is enough on
- * its own. The old `catch { return false }` turned that into silence: the button counted through
- * the renders, reset itself, and no file ever arrived. **Both halves were the bug** — losing the
- * activation, and then swallowing the proof.
- *
- * So the destination is reserved while the click is still fresh, and the blob is written into it
- * afterwards. It also means a cancel costs nothing: the render has not happened yet.
+ * `showSaveFilePicker` needs transient user activation, and Chrome's lasts about five seconds from
+ * the click, so asking after a render throws `SecurityError` on any export slower than that.
+ * Reserving the destination first also means a cancel costs nothing, since nothing is rendered.
  *
  * Undefined means the user cancelled, which is a decision rather than a failure. Everything else
- * falls through to `<a download>`, which needs no activation and works in every browser — it just
- * cannot offer a folder or say whether the user kept the file.
+ * falls through to `<a download>`, which needs no activation and works everywhere — it just
+ * cannot offer a folder or say whether the file was kept.
  */
 export async function chooseDestination(filename: string, mime: string): Promise<Destination | undefined> {
   const picker = (window as unknown as { showSaveFilePicker?: (o: unknown) => Promise<FileHandle> })
@@ -162,9 +151,8 @@ export async function chooseDestination(filename: string, mime: string): Promise
         },
       };
     } catch (e) {
-      // The one error that is not an error. Everything else — no activation left, a context that
-      // refuses the picker, a name the platform will not take — is a reason to fall back rather
-      // than to stop, and must never be mistaken for the user saying no.
+      // The one error that is not an error. No activation left, a context that refuses the
+      // picker, a name the platform will not take: all reasons to fall back, not to stop.
       if (e instanceof DOMException && e.name === 'AbortError') return undefined;
     }
   }

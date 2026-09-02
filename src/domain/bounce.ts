@@ -27,13 +27,11 @@ import { loopFrames } from './timing.ts';
  */
 
 /**
- * §2.6's backing tracks are modelled now, so what used to be a provisional `BackingTrack` here is
- * `backing.ts`'s real one, flattened for the mixdown rule by `backingMixSources`.
+ * The backing tracks, flattened for the mixdown rule by `backingMixSources`.
  *
- * **What a bounce should do with them is open** (§2.7, §6.1) — whether they belong in the mixdown
- * at all, and whether their settings carry to the seeded project. That is why this still takes
- * them as an argument rather than reading `project.backing` itself: the decision stays visible at
- * the call site instead of being quietly settled by a default here.
+ * **What a bounce should do with them is open** (§2.7, §6.1) — whether they belong in the mixdown,
+ * and whether their settings carry to the seeded project. Taken as an argument rather than read
+ * off `project.backing`, so the choice stays visible at the call site.
  */
 export type { BackingMixSource } from './backing.ts';
 

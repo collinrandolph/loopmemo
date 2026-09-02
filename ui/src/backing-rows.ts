@@ -17,6 +17,7 @@ import {
 } from '../../src/domain/backing.ts';
 import { isAudibleInMixdown } from '../../src/domain/bounce.ts';
 import { bindChips, swipeWheel } from './controls.ts';
+import { syncCollapse } from './screen.ts';
 import { DRUM_ICON, PIANO_ICON } from './icons.ts';
 import { LR, el } from './kit.ts';
 
@@ -24,10 +25,8 @@ import { LR, el } from './kit.ts';
  * The drum track and the chord bed (§2.6, §4.4) — "the same kind of object: non-recorded backing
  * the user plays over".
  *
- * **This is domain state now.** It used to own the progression, the tone and the chosen loop as
- * screen state that did not survive a reload, and handed the export screen nothing — so a backing
- * track muted here still exported a stem. Both tracks live on `Project` now; this edits them and
- * reports upward, exactly like a layer row.
+ * **Both tracks are `Project` state**, so this edits them and reports upward exactly like a layer
+ * row, and a mute here reaches the mixdown and the export.
  *
  * Every option comes from `src/domain/backing.ts`. Nothing here invents a pattern name or a tone,
  * which is what makes what you see identical to what gets scheduled.
@@ -53,10 +52,9 @@ export function backingRows(opts: {
    * The shared half of a backing row: icon, body, speaker, and a panel that opens on a tap
    * anywhere else in the head. The drum row is only this; the chord row adds to it.
    *
-   * **`track` is an accessor, not a value.** Passing the object captured the state at build time,
-   * so `!track.muted` read a snapshot that never changed — muting worked once and unmuting was a
-   * no-op that re-sent `muted: true`. Everything a handler reaches for has to go through
-   * `backing`, which `update` replaces wholesale.
+   * **`track` is an accessor, not a value.** A captured object is a snapshot that never changes,
+   * so `!track.muted` makes unmute a no-op that re-sends `muted: true`. Everything a handler
+   * reads goes through `backing`, which `update` replaces wholesale.
    */
   function backingRow(
     track: () => { level: number; muted: boolean },
@@ -73,8 +71,8 @@ export function backingRows(opts: {
       muted: () => track().muted,
       onToggle() {
         setTrack({ muted: !track().muted });
-        // §2.6's export rule: anything not muted sounds and exports; mute is how you exclude one.
-        // `isAudibleInMixdown` is shared with bounce and export so the three cannot disagree.
+        // `isAudibleInMixdown` is shared with bounce and export, so the three cannot disagree
+        // about what a mute means (§2.6).
         row.style.opacity = isAudibleInMixdown(track()) ? '1' : '0.62';
         vol.update();
       },
@@ -98,16 +96,7 @@ export function backingRows(opts: {
       vol.update();
     });
 
-    /**
-     * `max-height` is the kit's collapse mechanism, and a CSS value has to be a guess big enough
-     * for the tallest panel it will ever hold. The guess costs time: 400 against 180px of content
-     * means the first 55% of a collapse moves nothing, because `max-height` has to fall past the
-     * content before the box starts shrinking. Measured per panel instead, so the transition is
-     * the whole of the movement and a tap gets an immediate response.
-     */
-    function syncPanelHeight() {
-      panel.style.maxHeight = row.classList.contains('is-open') ? `${panel.scrollHeight}px` : '0px';
-    }
+    const syncPanelHeight = () => syncCollapse(row, panel);
 
     row.style.opacity = isAudibleInMixdown(track()) ? '1' : '0.62';
     rowsEl.appendChild(row);
@@ -129,13 +118,10 @@ export function backingRows(opts: {
     const detail = el('div', 'backing-detail', drumPattern(drums().patternId).name);
     const parts = backingRow(drums, setDrums, DRUM_ICON, detail);
 
-    // Both wheels are **always in the panel**. There is nothing to pick first: a drum row has one
-    // pattern where a chord row has four chords, so a picker here has no subject to be chosen and
-    // no reason to appear and disappear. Which is also why this panel needs no divider —
-    // everything in it belongs to the track.
+    // Both wheels are always in the panel: a drum row has one pattern where a chord row has four
+    // chords, so nothing has to be picked first and the panel needs no divider. Volume leads, as
+    // in every layer panel — the one control they share should not move between row types.
     parts.inner.append(
-      // Volume leads, as it does in every layer panel. A backing row is the same kind of row, so
-      // the one control they share should not move depending on which row you opened.
       parts.settings,
       swipeWheel('Pattern', wheelItems(DRUM_PATTERNS), () => drums().patternId, (v) => {
         setDrums({ patternId: v });
@@ -181,15 +167,12 @@ export function backingRows(opts: {
     const chordSection = el('div', 'chord-editor');
     const divider = el('div', 'lr-panel-divider');
 
-    // All three are per project rather than per slot (§2.6), and they sit with Volume below the
-    // divider — which is what the divider means: above it is the chord being edited, below it is
-    // the whole track.
+    // Per project rather than per slot (§2.6), and below the divider with Volume — which is what
+    // the divider means: above it the chord being edited, below it the whole track.
     //
-    // **The chord row mirrors the drum row control for control**: Volume, then Pattern, then the
-    // voicing. Tone is to the chord bed what Kit is to the drums — the same list of names doing
-    // the same job — so it is the same control, a wheel. Octave has no counterpart on the drum
-    // row and is only three fixed positions, so chips show the whole range at once and Low or
-    // High is one tap instead of a step.
+    // **The chord row mirrors the drum row control for control**: Volume, Pattern, then voicing.
+    // Tone is to the bed what Kit is to the drums, so it is the same control. Octave has no
+    // counterpart and is three fixed positions, so chips show the range at once.
     const patternWheel = swipeWheel(
       'Pattern',
       wheelItems(CHORD_PATTERNS),
@@ -275,13 +258,11 @@ export function backingRows(opts: {
     }
 
     /**
-     * Closing a panel that is showing a chord has to unmount the editor **after** the collapse,
-     * not with it. `is-editing-chord` hides the fields outright, so dropping it alongside
-     * `is-open` shortened the content from 180px to 111px in one frame while `max-height` was
-     * still animating — the panel jumped most of the way down and then eased the remainder.
+     * Closing a panel showing a chord unmounts the editor **after** the collapse. Dropping
+     * `is-editing-chord` alongside `is-open` shortens the content in one frame while `max-height`
+     * is still animating, so the panel jumps most of the way down and eases the remainder.
      *
-     * The chord button un-highlights immediately, because that is feedback for the tap and does
-     * not move anything. Only the part that changes height waits.
+     * The chord button un-highlights immediately: that is tap feedback and moves nothing.
      */
     parts.panel.addEventListener('transitionend', (e) => {
       if (e.propertyName !== 'max-height') return;

@@ -243,9 +243,8 @@ export type RetainedBar =
  * **A rest is still a bar.** The silence occupies its slot and the arrangement stays
  * `barCount` long — muting bar 3 does not shorten the loop or renumber what follows it.
  *
- * **The flags clear.** They are spent: the silence lives in the audio now, and keeping them
- * would silence it twice over. Worse, unmuting afterwards would reveal silence rather than
- * the take that used to be there, which is not something the user could undo.
+ * **The flags clear.** The silence is in the audio now, so keeping them would silence it twice,
+ * and unmuting later would reveal silence rather than the take that was there.
  *
  * A muted slot needs no source, so an unresolved one is not an error there — it is about to
  * be silence either way. Returns undefined only when an **audible** slot points at audio

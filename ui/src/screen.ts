@@ -73,6 +73,18 @@ export function confirmPanel(
   };
 }
 
+/**
+ * Size a `max-height` collapse to what the panel actually holds. Call after toggling the class.
+ *
+ * The kit collapses with `max-height`, and a CSS value has to clear the tallest content the panel
+ * will ever hold — which costs time on the way back, because `max-height` has to fall past the
+ * content before the box starts shrinking, and needs a per-case override the moment one panel is
+ * shorter than the guess. Measuring is the whole of the movement.
+ */
+export function syncCollapse(host: HTMLElement, panel: HTMLElement, openClass = 'is-open'): void {
+  panel.style.maxHeight = host.classList.contains(openClass) ? `${panel.scrollHeight}px` : '0px';
+}
+
 /** A row whose content lines up under the control column, with an empty label as the spacer. */
 export function annotationRow(node: HTMLElement): HTMLElement {
   const row = el('div', 'lr-panel-row setting-annotation', '<span class="lr-panel-label"></span>');

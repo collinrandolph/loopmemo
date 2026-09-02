@@ -196,10 +196,9 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
 .lr-row.is-muted .lr-wave { opacity: .5; transition: opacity .18s; }
 .lr-row.has-audio .empty-note { display: none; }
 .lr-row:not(.has-audio) [data-needs-audio] { display: none; }
-.lr-row.is-open .lr-panel { max-height: 400px; }
-/* Scoped to `.lr-rows`: backing rows never carry `has-audio` either, and this was quietly
-   capping the chord panel at the height its old two-row version happened to fit in. */
-.lr-rows .lr-row:not(.has-audio).is-open .lr-panel { max-height: 120px; }
+/* Height is measured and set by `syncCollapse`, so there is no guess here and no
+   per-panel override: a CSS cap has to clear the tallest panel it will ever hold, which
+   makes the first half of every collapse move nothing. */
 
 /* A preset picker is a label, a current value and a strip of six icons. Six icons do not
    fit beside the other two, so the naming goes on its own line and the strip takes the

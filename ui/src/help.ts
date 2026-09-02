@@ -2,7 +2,7 @@ import { HELP_ICON } from './icons.ts';
 import { el } from './kit.ts';
 
 /**
- * The help affordance §4.7 asks for, holding what the footer used to say out loud.
+ * The help affordance §4.7 asks for: the gestures a screen supports, on request.
  *
  * **This is a placeholder for the manual, not the manual.** §4.7 describes a real one: sections
  * on editing, recording setup and everything else, each readable in isolation, reached by deep

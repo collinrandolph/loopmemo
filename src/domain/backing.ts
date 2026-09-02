@@ -1,19 +1,15 @@
 /**
  * Backing tracks (§2.6, §4.4): the drum track and the chord bed.
  *
- * **Both are synthesised, so neither is a file.** There is no `audioFileURL`, no `duration`, no
- * `originalBPM` and no playback ratio anywhere here — an earlier draft had all four, for a
- * sampled loop stretched to the project tempo, and synthesis deleted the problem they solved
- * (§5.2). `patternId` and `kitId` name recipes, not assets, and nothing ships.
+ * **Both are synthesised, so neither is a file.** No `audioFileURL`, no `originalBPM`, no playback
+ * ratio — that apparatus existed to stretch a sampled loop to the project tempo, and synthesis
+ * deleted the problem rather than solving it (§5.2). `patternId` and `kitId` name recipes.
  *
- * **This is the whole model, not a subset.** `bounce.ts` used to carry a provisional
- * `BackingTrack` with just `{ id, muted, level }`, marked to be absorbed rather than duplicated
- * once §2.6 was built. This is that absorption; `ui/src/chords.ts` is absorbed here too, so the
- * chord vocabulary has one definition instead of a screen-state copy that could not survive a
- * reload.
+ * **This is the whole model, not a subset**: one definition of the chord vocabulary and of what a
+ * track is, so nothing can hold a second copy that drifts.
  *
- * Pure data and pure arithmetic. Turning any of it into sound is the platform's job — see
- * `backing-schedule.ts` for the frame arithmetic that sits between the two.
+ * Pure data and pure arithmetic. Turning it into sound is the platform's job; `backing-schedule.ts`
+ * is the frame arithmetic between the two.
  */
 
 // ---------------------------------------------------------------- chords --
@@ -24,10 +20,10 @@ export type ChordQuality = 'major' | 'minor' | 'dom7' | 'min7' | 'maj7';
 /**
  * One chord slot.
  *
- * **There is no scale, and quality is stored rather than derived** (§4.4). The user picks
- * "D minor", not "D in the key of C". Two things follow and both are load-bearing: *outside the
- * scale* cannot exist without a scale, so there is no marked or dashed slot state, and a slot can
- * never be wrong, so nothing is defaulted or corrected on the user's behalf.
+ * **There is no scale, and quality is stored rather than derived** (§4.4, deprecated on this
+ * point). The user picks "D minor", not "D in the key of C". Two things follow: *outside the
+ * scale* cannot exist without a scale, so there is no marked slot state; and a slot can never be
+ * wrong, so nothing is corrected on the user's behalf.
  */
 export type Chord = {
   readonly letter: string;
