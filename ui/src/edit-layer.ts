@@ -44,45 +44,30 @@ const LINES_PER_BAR = 16;
 
 const TILE_TALL = 120; // the mockup's tile, and the height nothing grows past
 /**
- * Below this a tile stops being readable, so the grid scrolls instead of shrinking further —
- * and scrolling is the state with the gesture conflict, so the floor is what decides whether
- * that conflict can be reached at all.
- *
- * 50, not the 72 it was. 72 was chosen while the tile still carried a separate hint strip and
- * 48px of chrome; folding the arrows into the label dropped that to 28, so a 50px tile now has
- * more waveform than a 74px one did then. Left at 72 the floor would have been the thing
- * *causing* a fallback rather than the thing preventing one.
+ * Below this a tile stops being readable and the grid scrolls instead of shrinking further.
+ * Scrolling is the state with the gesture conflict, so this floor decides whether that conflict
+ * is reachable at all — set it too high and it *causes* the fallback it exists to prevent.
  */
 const TILE_SHORT = 50;
 
 /**
- * What the tile spends on things that are **not** the waveform, and the waveform gets the rest.
- * A fixed *fraction* is right at 120 — 60% is the mockup's 72 — and wrong as soon as the tile
- * shrinks, because the label and the hint are type at a fixed size and do not shrink with it.
- *
- * Two values because a short tile stops carrying the separate hint strip and folds the two axis
- * arrows into the label instead (`.is-compact-tiles`). That is a row of type saved, and it goes
- * straight back into the waveform: at 74 the wave is 46 rather than 26.
+ * What the tile spends on things that are **not** the waveform. Type does not shrink with the
+ * tile, so this is subtracted rather than taken as a fraction. Two values because a short tile
+ * drops the hint strip and folds the axis arrows into the label (`.is-compact-tiles`).
  */
 const TILE_CHROME_TALL = 48; // label + hint strip
 const TILE_CHROME_COMPACT = 28; // label alone, arrows folded in
 
 /**
- * Where the hint strip stops fitting, and so where the label folds the arrows in.
- *
- * Derived rather than picked: the tall form is label + waveform + hint, and the waveform is
- * `WAVE_RATIO` of the tile, so it fits while `0.6h + 40 ≤ h` — that is, at 100 and above.
+ * Where the hint strip stops fitting. Derived, not picked: label + waveform + hint fits while
+ * `WAVE_RATIO * h + 40 ≤ h`, which is 100 and above.
  */
 const TILE_HINT_MIN = 100;
 
 /**
  * The waveform is the smaller of "what is left after the chrome" and this fraction of the tile.
- *
- * Both halves are needed. Subtracting alone lets the waveform **grow as the tile shrinks**: at
- * 120 the tall chrome leaves 72, and one pixel later the compact chrome leaves 91, so a 20-bar
- * grid that shaved 3px off its tiles drew a *bigger* waveform than a 16-bar one. The fraction
- * caps that. The subtraction still governs at the short end, where a fraction would run the
- * waveform under the label.
+ * Both halves are needed: subtracting alone lets the waveform **grow as the tile shrinks**, at the
+ * step where the chrome goes compact; a fraction alone runs it under the label at the short end.
  */
 const WAVE_RATIO = 0.6;
 /** Peaks fill two thirds of the waveform box, which is the mockup's 48 in its 72. */
@@ -109,15 +94,13 @@ type Tile = {
 /**
  * Edit Layer (§3.4, §3.6, §3.7).
  *
- * The gestures, the three animation accumulators and the render pass follow
- * `docs/mockups/edit-layer-mockup.html`, which is the reference. What differs is only where
- * the *rules* come from: `stepPassAt` / `stepBarAt` for the axes, `canSwipeSlot` for the mute
- * lock, and `playheadAt` / `passedAt` for the transport — all `src/domain`, so the screen and
- * the tests cannot disagree about them.
+ * Gestures, the three animation accumulators and the render pass follow
+ * `docs/mockups/edit-layer-mockup.html`. The *rules* come from `src/domain` instead —
+ * `stepPassAt` / `stepBarAt` for the axes, `canSwipeSlot` for the mute lock, `playheadAt` /
+ * `passedAt` for the transport — so the screen and the tests cannot disagree.
  *
- * The mockup wraps the pass axis blindly through a pass count. Ours wraps through the passes
- * that actually exist for that bar, so a gap in the available set is skipped (§1.4) — visible
- * on bars 9–16 of the demo layer, which have no pass 3.
+ * The pass axis wraps through the passes that actually exist for that bar, so a gap in the
+ * available set is skipped (§1.4), which the mockup's blind pass count cannot express.
  */
 export function editLayerScreen(opts: {
   project: Project;
@@ -149,9 +132,8 @@ export function editLayerScreen(opts: {
   // ------------------------------------------------------------------ chrome --
   const root = el('div', 'lr-screen');
   const header = el('div', 'lr-header');
-  // Same shape as the Playback header: name and the level control on one line, the running
-  // count on its own beneath. Tempo and bar count are project settings and belong to the
-  // project's header, not to a screen that edits one layer inside it.
+  // Same shape as the Playback header. Tempo and bar count are project settings and belong to
+  // the project's header, not to a screen that edits one layer inside it.
   const titleRow = el('div', 'lr-title-row');
   const statsRow = el('div', 'lr-meta lr-stats');
   const controls = el('div', 'header-controls');
@@ -161,9 +143,8 @@ export function editLayerScreen(opts: {
   const rowsEl = el('div');
   grid.append(rowsEl);
 
-  // Kept as a live node rather than markup: `refresh` repaints it and rebuilds its swatch, so it
-  // stays current whether or not the sheet is open. §4.7 calls reading the gradient the manual's
-  // highest-value entry, which is why it belongs here rather than under the grid.
+  // A live node, not markup: `refresh` repaints it and rebuilds its swatch. §4.7 calls reading
+  // the gradient the manual's highest-value entry, which is why it lives in the help sheet.
   const legend = el('div', 'legend');
   const help = helpControl({
     title: 'Edit Layer',
@@ -176,15 +157,11 @@ export function editLayerScreen(opts: {
   });
 
   /**
-   * Compress and Clear, deliberately awkward to reach (§4.3).
+   * Compress and Clear, deliberately awkward to reach (§4.3): open the drawer, choose, then
+   * confirm a sentence stating the outcome in passes and megabytes (§4.1). Both are irreversible,
+   * and on Playback discarding a take would be a mis-tap away from arming one.
    *
-   * Both are irreversible and both live only here, on the screen for the one layer they act on —
-   * putting them on Playback would make discarding a take a mis-tap away from arming one. The
-   * friction is three deliberate steps: open the drawer, choose, then confirm a sentence that
-   * states the outcome in passes and megabytes (§4.1's rule for destructive actions).
-   *
-   * They are also the only two actions in the app that can leave a screen with nothing to show,
-   * so clearing returns to Playback rather than sitting on an empty grid.
+   * Clearing returns to Playback rather than sitting on an empty grid.
    */
   const drawer = el('div', 'layer-ops');
   const opsBtn = el('button', 'lr-btn', 'Layer…');
@@ -291,13 +268,10 @@ export function editLayerScreen(opts: {
   controls.append(volume, slider);
 
   /**
-   * Push this screen edit at the engine.
-   *
-   * The engine holds a snapshot of each layer, taken when it was last told. Without this a
-   * swipe rewrote barSources, the tiles redrew from the new arrangement, and playback went on
-   * scheduling the old one — the drawing and the audio disagreeing about the same edit, which
-   * is the exact split 1.1 warns about. 2.4 also calls applying an edit to *playing* audio core
-   * functionality rather than polish, so it has to land now, not on the next navigation.
+   * Push this screen's edit at the engine, which holds a snapshot and re-reads nothing on its
+   * own. Without it a swipe redraws the tile while playback keeps scheduling the old arrangement
+   * — the drawing and the audio disagreeing about one edit (§1.1) — and §2.4 calls applying an
+   * edit to *playing* audio core functionality, so it has to land now.
    */
   function syncLayers() {
     opts.engine.setLayers(
@@ -350,14 +324,12 @@ export function editLayerScreen(opts: {
       `<span class="rel"><i class="ax">↔</i>${ref.relativeBar}</span>`;
     tile.node.title = `slot ${slot + 1} · pass ${ref.pass}, bar ${ref.relativeBar} · available: ${passes.join(', ') || 'none'}`;
 
-    // Colour indexes per LINE across the whole recording, so any length gets one continuous,
-    // non-repeating ramp — and a slot pulled from elsewhere lands visibly off the run.
+    // Colour indexes per LINE across the whole recording: one continuous non-repeating ramp at
+    // any length, so a slot pulled from elsewhere lands visibly off the run.
     const src = toAbsolute(ref, barCount) - 1;
     const totalLines = recordedBars() * LINES_PER_BAR;
-    // Real peaks where the take exists, the synthetic generator only where it does not. This is
-    // the screen the two indices are *for*, so a tile has to draw the audio its `BarRef` points
-    // at — a generated shape keyed on the bar number would move when the slot was swiped and
-    // still show material nobody played.
+    // Real peaks where the take exists, `amp` only where it does not. A tile must draw the audio
+    // its `BarRef` points at — this is the screen the two indices are *for*.
     const passes_ = index(); // the screen's own resolver, so the peaks agree with the axis
     tile.wave.build(LINES_PER_BAR, (i) => ({
       height: motion.snapEven(
@@ -495,10 +467,9 @@ export function editLayerScreen(opts: {
       releasePlayed(head);
       // **Re-anchored, even when already running.** The backing is generated on the engine's bar
       // grid and the sweep runs on the transport's, so the two have to be one grid — and they are
-      // only one grid if the transport starts on a frame the engine calls a downbeat. Starting
-      // both at 0 says so without arithmetic. It also absorbs the engine's scheduling lead: frames
-      // before the anchor read as negative, which `playheadAt` floors to phase 0, so the sweep
-      // waits for the audio rather than leading it by 80 ms.
+      // one grid only if the transport starts on a frame the engine calls a downbeat, and 0 says
+      // so without arithmetic. It also absorbs the scheduling lead: frames before the anchor read
+      // as negative and `playheadAt` floors them to phase 0, so the sweep waits for the audio.
       //
       // Transport first, then start: the engine schedules its first bars inside `start`, and
       // handing it the new traversal afterwards would only throw them away again.
@@ -604,20 +575,14 @@ export function editLayerScreen(opts: {
   /**
    * **Fit the grid to the screen rather than scrolling it.**
    *
-   * `.tile` sets `touch-action: none`, which it must — that is what stops the browser eating a
-   * vertical drag before it can step the pass axis (§3.7). The consequence is that a grid taller
-   * than the viewport cannot be scrolled by dragging it, because every drag is already a gesture.
-   * At 375×812 five rows fit, so 4 through 20 bars are fine and 24, 28 and 32 are not.
+   * `.tile` sets `touch-action: none` so the browser cannot eat a vertical drag before it steps
+   * the pass axis (§3.7) — which also means a grid taller than the viewport cannot be dragged to
+   * scroll. Sizing the tile to the space available removes the conflict instead of arbitrating
+   * it, and keeps the whole arrangement on screen, which is what the colour signature is for.
    *
-   * Sizing the tile to the space available removes the conflict instead of arbitrating it, and
-   * keeps the whole arrangement on screen — which is what the colour signature is *for*: §4.7
-   * calls reading the gradient the manual's highest-value entry, and a gradient you have to
-   * scroll through is not one you can read.
-   *
-   * Above `TILE_TALL` it stops growing, so a desktop window does not produce a grid of enormous
-   * tiles. Below `TILE_SHORT` it gives up and lets the page scroll — **which no phone reaches**:
-   * swept at 375×812, 375×667 and 320×568, every valid bar count fits, 32 bars landing at 72, 54
-   * and 50. The scrolling branch is the honest floor rather than a state anyone stands in.
+   * Clamped to `TILE_TALL` so a desktop window does not produce enormous tiles, and floored at
+   * `TILE_SHORT`, below which the page scrolls. **No phone reaches the floor**: swept at 375×812,
+   * 375×667 and 320×568, every bar count fits.
    */
   function syncTileHeight() {
     const rows = Math.ceil(barCount / BARS_PER_ROW);
@@ -626,27 +591,21 @@ export function editLayerScreen(opts: {
     const padding = Number.parseFloat(style.paddingTop) + Number.parseFloat(style.paddingBottom);
     // Document-relative, so the measurement does not change with how far the page is scrolled.
     const top = box.top + window.scrollY;
-    // `documentElement.clientHeight`, **not** `window.innerHeight`. The first is the layout
-    // viewport, which is what CSS lays out against; the second is the visual viewport, and the
-    // two are different numbers whenever the browser is scaling — and on a phone, whenever the
-    // address bar is part-collapsed. Measured 1213 against 812 on the same screen, which is
-    // the difference between a 120px tile and a 72px one, so the grid simply did not fit.
+    // `documentElement.clientHeight`, **not** `window.innerHeight`: the layout viewport is what
+    // CSS lays out against, and the visual viewport differs whenever the browser is scaling or
+    // the address bar is part-collapsed. Measured 1213 against 812 on the same screen.
     const available = viewportHeight() - top - footer.getBoundingClientRect().height - padding;
     const perRow = Math.floor((available - (rows - 1) * SEAM) / rows);
 
     apply(Math.min(TILE_TALL, Math.max(TILE_SHORT, perRow)));
 
-    // Then correct against the result rather than trusting the model. Predicting the height of
-    // everything around the grid means knowing about the drawer, the footer's border, the shell
-    // above it and whatever comes next — miss any of them and the grid overflows by a little,
-    // which is exactly the state this exists to prevent. Measuring what actually happened costs
-    // one reflow and cannot be wrong about it.
+    // Then correct against the result rather than trusting the model: predicting the height of
+    // everything around the grid means knowing about the drawer, the footer's border and the
+    // shell, and missing any of them overflows by a little. One reflow cannot be wrong.
     for (let pass = 0; pass < 3; pass++) {
-      // How far past the bottom of the screen the footer has been pushed — **not**
-      // `documentElement.scrollHeight`, which is stretched to the visual viewport regardless of
-      // what the page contains and reported 401px of overflow on a page whose footer sat exactly
-      // on the fold. The footer is the last thing in the screen, so where it ends is where the
-      // content ends.
+      // How far past the fold the footer has been pushed — **not** `scrollHeight`, which is
+      // stretched to the visual viewport regardless of content. The footer is the last thing in
+      // the screen, so where it ends is where the content ends.
       const over = Math.round(footer.getBoundingClientRect().bottom + window.scrollY) - viewportHeight();
       if (over <= 0 || tileHeight <= TILE_SHORT) break;
       apply(Math.max(TILE_SHORT, tileHeight - Math.ceil(over / rows)));
@@ -682,8 +641,8 @@ export function editLayerScreen(opts: {
 
   function refresh() {
     const passes = totalPasses(index());
-    // Rebuilt rather than patched, so `controls` has to be re-appended each time — it lives in
-    // this row now and `innerHTML` would drop it.
+    // Rebuilt, not patched, so `controls` is re-appended: it lives in this row and `innerHTML`
+    // would drop it.
     titleRow.innerHTML = `<div class="lr-title">${layer.name || `Layer ${layer.index + 1}`}</div>`;
     titleRow.appendChild(controls);
     statsRow.textContent = `${passes} Pass${passes === 1 ? '' : 'es'}`;
@@ -717,10 +676,8 @@ export function editLayerScreen(opts: {
   let mounted = true;
   requestAnimationFrame(() => {
     if (!mounted) return;
-    // `refresh` first: it fills the header, and until it does the header is 28px rather than 72.
-    // Measuring the grid's available height against an empty header hands it 44 phantom pixels,
-    // which is a whole row's worth of tile at 32 bars — the grid then overflows the screen the
-    // fit is meant to prevent.
+    // `refresh` first: it fills the header, and measuring against an empty one hands the grid 44
+    // phantom pixels — a whole row of tile at 32 bars, so the grid overflows.
     refresh();
     syncTileHeight();
     syncSizing();

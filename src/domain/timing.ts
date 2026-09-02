@@ -13,22 +13,15 @@ export type Timing = {
 };
 
 /**
- * Stop latency, expressed as a **duration** rather than a frame count — a hardcoded frame
- * count means different slack at 44.1 kHz than at 48 kHz, and the thing being absorbed is a
- * physical delay measured in milliseconds.
+ * Stop latency, as a **duration** rather than a frame count: a frame count means different slack
+ * at 44.1 kHz than at 48 kHz, and what is absorbed is a physical delay in milliseconds.
  *
- * **It absorbs the crumb at the near edge of a bar, not a shortfall at the far edge.** Under
- * `barExists` a bar exists once the session captured any of it, so a bar that stopped a hair
- * short is admitted for free and needs no forgiveness. What needs absorbing is the opposite
- * case: stopping a recording is never instant, so a pass played to exactly the loop point
- * captures a few milliseconds past it. Without this the overrun becomes a whole phantom bar —
- * and, through `passCount`, a whole phantom pass that inflates the size projection.
+ * **It guards the near edge of a bar, not the far edge.** A bar exists once the session captured
+ * any of it (`barExists`), so a bar stopping short needs no forgiveness. What needs absorbing is
+ * the overrun — stopping is never instant, so a pass played to the loop point captures a few ms
+ * past it, and that crumb would otherwise be a phantom bar and a phantom pass.
  *
- * The spec says "a few milliseconds". Inflating this is no longer *unsafe* the way it was
- * when the tolerance admitted audio that did not exist — `regionFor` clamps to the file, so
- * an over-large value only discards a genuinely short bar. It is a measured latency figure,
- * and the right time to tune it is against the loopback calibration in
- * `docs/platform-decision.md` §5, on real hardware.
+ * A measured figure; tune it against real hardware (`docs/platform-decision.md` §5).
  */
 export const TOLERANCE_SECONDS = 0.004;
 
@@ -84,25 +77,18 @@ export function frameOffsetInLoop(t: Timing, relativeBar: number): number {
 /**
  * Does the `localPass`-th traversal hold **at least one complete bar**? (§1.4)
  *
- * This is the one place §1.4's original formula still applies, and the question it was always
- * really asking. Stopping late overruns the loop point, and without this the overrun becomes
- * a whole numbered pass holding nothing but junk — which **renumbers every pass after it,
- * permanently**. A single pass cannot be deleted (§5.1 #2: `barSources` references pass
- * numbers, so removing one breaks every reference past it), leaving no escape but clearing
- * the entire layer. It also inflates the size projection the Library exists to show.
+ * A stop overruns the loop point, and without this the overrun becomes a numbered pass holding
+ * junk — which **renumbers every pass after it, permanently**. A single pass cannot be deleted
+ * (§5.1 #2), so the only escape would be clearing the layer.
  *
- * Gated in bars rather than in milliseconds because that is what a pass is worth: a traversal
- * that has not completed bar 1 contributes a fragment to one bar position and nothing to any
- * other, so it is near-worthless even when it *was* intended. Discarding it costs at most one
- * bar of a take the user can play again; admitting it costs a renumbering they cannot undo.
+ * **Gated in bars, not milliseconds.** A stop overrun is roughly constant in absolute time, so a
+ * percentage threshold cannot work at both 60 and 240 BPM; and a traversal that has not completed
+ * bar 1 contributes a fragment to one bar position and nothing to any other.
  *
- * **Deliberately not applied at the bar level.** A partial bar *inside* a pass is kept and
- * exposed (see `barExists`) — an overrun there is a minor annoyance the user silences with
- * one tap-and-hold, and guessing at their intent would cost more than it saves.
+ * **Not applied at the bar level**: a partial bar inside a pass is kept and exposed
+ * (`barExists`), because it is one tap-and-hold from silence and local to its slot.
  *
- * The tolerance appears here at the **far** edge of the bar, which is a completeness test and
- * is the only kind that needs it: stop latency must not lose a pass whose final bar the user
- * played to the end.
+ * The only use of the tolerance at the **far** edge of a bar, which a completeness test needs.
  */
 export function passExists(t: Timing, localPass: number, sessionFrames: number): boolean {
   const start = (localPass - 1) * loopFrames(t);
@@ -112,12 +98,9 @@ export function passExists(t: Timing, localPass: number, sessionFrames: number):
 /**
  * Total passes a session of `frames` holds, partial ones included (§1.4).
  *
- * **Derived from `passExists`, not counted separately.** This and `barExists` used to be
- * computed independently — `ceil(frames / loopFrames)` here against the tolerance formula
- * there — and they disagreed on every recording that overran the loop point. A session of two
- * complete passes plus 20 ms reported three passes to the size projection while offering two
- * to the swipe axis, so the Library over-stated the project by 50%. One derivation per
- * quantity (§1.5).
+ * **Derived from `passExists`, not counted separately** — computed independently the two disagree
+ * on every recording that overruns the loop point, offering one pass count to the size projection
+ * and another to the swipe axis. One derivation per quantity (§1.5).
  */
 export function passCount(t: Timing, frames: number): number {
   const usable = frames + toleranceFrames(t) - framesPerBar(t);
@@ -128,28 +111,17 @@ export function passCount(t: Timing, frames: number): number {
 /**
  * Does the `localPass`-th traversal of this session contain any of `relativeBar`?
  *
- * **Deliberately not §1.4's formula, which required the bar to be whole:**
+ * **A bar exists once the recording reaches into it**, which is deliberately not §1.4's formula
+ * (that required the bar to be whole). Stopping halfway through bar 9 keeps bar 9 as an ordinary
+ * selectable bar that runs out of audio partway; `regionFor` clamps to what is on disk, and the
+ * next segment starts at its own scheduled frame regardless.
  *
- *     ((localPass - 1) × loopFrames + (r - 1) × framesPerBar) + framesPerBar
- *         <= session.frames + tolerance
+ * **This reverses §5.1 #5** ("kept but not exposed"), whose reason was that padding creates
+ * silent bars that look selectable. Nothing is padded, and a bar the recording never reached is
+ * still excluded, so that failure cannot occur — and a partial pass yields usable bars instead of
+ * discarding the user's last seconds of playing. The tolerance moves to the near edge accordingly.
  *
- * A bar now exists once the recording reaches into it. Stopping halfway through bar 9 keeps
- * bar 9 as an ordinary, fully selectable bar that happens to run out of audio partway — the
- * silence at its end is not a special case, because `regionFor` clamps the region to what is
- * on disk and the next segment starts at its own scheduled frame regardless.
- *
- * This reverses §5.1 #5 ("kept but not exposed"), whose stated reason was that padding
- * "creates silent bars that look selectable". Nothing is padded here — no silence is written
- * and the region stays short — and a bar the recording never reached is still excluded, so
- * the failure that rule guarded against cannot occur. What it buys is that a partial pass
- * yields usable bars instead of discarding the user's last few seconds of playing.
- *
- * The tolerance moves to the near edge accordingly: see `TOLERANCE_SECONDS`.
- *
- * The pass gate comes first, so no bar can outlive the pass that would hold it. That also
- * keeps this in exact agreement with `passCount` at `relativeBar = 1` — the two thresholds
- * are different, but the pass floor is a whole bar and the bar floor a few milliseconds, so
- * clearing the former always clears the latter.
+ * The pass gate comes first, so no bar outlives the pass that would hold it.
  */
 export function barExists(
   t: Timing,

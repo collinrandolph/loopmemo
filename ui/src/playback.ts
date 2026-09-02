@@ -39,11 +39,9 @@ const PRESET_ICON_PX = 28; // the chips span the panel now, so the icon can be w
 /** The label column never shrinks below this, so a one-character name still holds a column. */
 const LABEL_MIN_PX = 52;
 /**
- * `.layer-name` pads itself and pulls the padding back with a negative margin, so its hover
- * and focus highlight has room without the text shifting. That makes the box it *paints* 6px
- * wider than the box it *occupies* — measure only the latter and the highlight bleeds into
- * the lane on the right. Added back here rather than by dropping the negative margins, which
- * would move every name 3px and reopen the shift they exist to prevent.
+ * `.layer-name` paints 6px wider than it occupies — it pads itself and pulls the padding back
+ * with a negative margin, so the focus highlight has room without the text shifting. Measure the
+ * occupied box only and the highlight bleeds into the lane.
  */
 const LABEL_PAINT_SLACK_PX = 6;
 /** …and never past this, so one long name cannot take the width away from every lane. */
@@ -64,17 +62,13 @@ type Row = {
 };
 
 /**
- * Playback screen (§4.4) — the layer stack, the transport, and recording.
+ * Playback screen (§4.4) — the layer stack, the transport, and recording. Layout follows
+ * `docs/mockups/playback-screen-mockup.html`; two rules come from the domain instead:
  *
- * Follows `docs/mockups/playback-screen-mockup.html`. Two things are done through the domain
- * rather than faked, because they are rules rather than presentation:
- *
- * - **A pass is not counted until it is recorded.** The mockup increments a number at each
- *   loop point. Here the badge is `recordingBadge`, which reads provisional until the
- *   traversal has earned a bar, and the session is committed by `recordSession` at the stop —
- *   which may decline it (§1.4). Stop inside the first bar and no pass appears.
- * - **Sessions are not split at the loop point.** One continuous recording is one session
- *   however many passes it spans (§1.4), so nothing is written until recording ends.
+ * - **A pass is not counted until it is recorded.** The badge is `recordingBadge`, provisional
+ *   until the traversal has earned a bar, and `recordSession` may still decline it (§1.4).
+ * - **Sessions are not split at the loop point.** One continuous recording is one session however
+ *   many passes it spans (§1.4), so nothing is written until recording ends.
  */
 export function playbackScreen(opts: {
   project: Project;
@@ -91,12 +85,9 @@ export function playbackScreen(opts: {
   onBack(): void;
   onExport(): void;
   /**
-   * A take started or ended, so the shell can dim the controls it owns.
-   *
-   * **Paint only.** What actually refuses a navigation is `takeInProgress`, which the shell
-   * asks at the moment it would tear the screen down. Caching the answer here instead would
-   * make enforcement depend on the notification having arrived, which is the derived-versus-
-   * written trap this codebase keeps undoing.
+   * A take started or ended, so the shell can dim the controls it owns. **Paint only** — what
+   * refuses a navigation is `takeInProgress`, asked at the moment of teardown, so enforcement
+   * never depends on this notification having arrived.
    */
   onBusyChange?(busy: boolean): void;
 }): { node: HTMLElement; destroy(): void; takeInProgress(): boolean } {
@@ -121,16 +112,10 @@ export function playbackScreen(opts: {
 
   /**
    * Every control that ends a take by leaving the screen — settings, Edit Layer, Projects,
-   * Export. They lock together while one is running, and this list is the only reason they
-   * cannot drift: a new way off this screen is one `exits.push` away from being covered, and
-   * forgetting it is the kind of omission that only shows up as a lost performance.
+   * Export. They lock together while one runs, and this list is why they cannot drift: a new way
+   * off the screen is one `exits.push` from being covered.
    *
-   * The kit already reads this way — "a pass in progress owns the input", which is why every
-   * other row's record dot disappears while one records. This is the same sentence about the
-   * rest of the screen.
-   *
-   * `disabled`, not `pointer-events: none`: a focused button still fires on Enter, and a rule
-   * that only holds for the mouse is not a rule. The dimming comes free with `.lr-btn:disabled`.
+   * `disabled`, not `pointer-events: none` — a focused button still fires on Enter.
    */
   const exits: HTMLButtonElement[] = [];
 
@@ -139,15 +124,12 @@ export function playbackScreen(opts: {
   const titleRow = el('div', 'lr-title-row');
 
   /**
-   * The way into project settings, and it is a **visible control** rather than a tappable header.
+   * The way into project settings — a **visible control**, not a tappable header. Tapping a layer
+   * name on this screen renames it in place, so tapping the project name to navigate away would
+   * teach the opposite lesson two rows apart.
    *
-   * Tapping the title row used to do this, which had the appeal of "the place a value is shown is
-   * the place you change it" and the problem of being invisible. It was also quietly inconsistent:
-   * tapping a *layer* name on this same screen renames it in place, so tapping the *project* name
-   * to navigate away taught the opposite lesson two rows apart. A gear says what it does.
-   *
-   * `paintTitle` rewrites the stats text, so that lives in its own span — writing `textContent` on
-   * the row would take the button with it.
+   * The stats live in their own span because `paintTitle` rewrites them, and writing
+   * `textContent` on the row would take the button with it.
    */
   const statsRow = el('div', 'lr-meta lr-stats');
   const statsText = el('span', 'stats-text');
@@ -164,17 +146,13 @@ export function playbackScreen(opts: {
   header.append(titleRow, statsRow, inputNote, transportEl);
 
   /**
-   * Two lines, because there are two kinds of number here. Tempo, bar count and time
-   * signature are what the project *is* — chosen once, and locked as soon as a pass exists
-   * (§1.2) — so they sit on the title's line. Passes and size are what it has *become*, and
-   * they move every take, so they get their own line and can change without redrawing the
-   * name.
+   * Two lines for two kinds of number. Tempo, bars and time signature are what the project *is*,
+   * locked once a pass exists (§1.2), so they sit with the title. Passes and size are what it has
+   * *become* and move every take, so they change without redrawing the name.
    */
   function paintTitle() {
-    // From the rows, not from `opts.project`. That is the snapshot the screen was built with;
-    // edits go out through `onChange` and come back on the next mount, so reading it here left
-    // the pass count and the size frozen at whatever they were when the screen opened — a
-    // recording committed and the header did not move.
+    // From the rows, not `opts.project` — that is the snapshot the screen was built with, and
+    // edits only come back on the next mount, so the numbers would freeze mid-session.
     const live: Project = { ...project, layers: rows.map((r) => r.layer) };
     const passes = projectTotalPasses(live);
     const size = sizeProjection(live);
@@ -193,12 +171,9 @@ export function playbackScreen(opts: {
   const progressBar = LR.ProgressBar({
     ticks: project.barCount,
     onSeek(fraction) {
-      // **A take in progress cannot be seeked**, and this is not conservatism. The length
-      // committed at the stop is `frameNow() - recordingFrom`, so moving the clock under a
-      // running take reports a traversal that was never played: seek forward and the take
-      // claims passes with no audio behind them, seek back and it claims none at all and the
-      // domain declines the whole thing (§1.4). Same loss as navigating away, by a control
-      // that looks harmless.
+      // **A take in progress cannot be seeked.** The length committed is `frameNow() -
+      // recordingFrom`, so moving the clock under a running take reports a traversal nobody
+      // played: forward it claims passes with no audio, back it claims none and is declined.
       if (capturingIndex() >= 0) return;
       // The engine is the clock (§2.4), so a seek moves the engine, not a private counter.
       const target = Math.round(fraction * loop);
@@ -235,17 +210,11 @@ export function playbackScreen(opts: {
   /**
    * **Pausing while a take is running commits it, exactly as the record control does.**
    *
-   * It used to stop the engine and leave the row recording, so `stopCapture` and `recordSession`
-   * were never reached and the performance was simply gone — the one outcome this app must never
-   * produce, and reachable by pressing the most obvious button on the screen. Escape already
-   * refuses to end a pass for the same reason; the transport was the hole.
-   *
-   * Delegating to `setRec` rather than duplicating the commit is what keeps the two paths from
-   * drifting, and the order is load-bearing: `setRec` reads the take's length from
-   * `frameNow()`, which falls back to `heldFrame` once the engine stops — so stopping first
-   * would commit a take of zero frames and the domain would decline it (§1.4), which is the
-   * same loss by a different route. Its own stop branch calls back here once the row is no
-   * longer recording, and that call does the transport work.
+   * It delegates to `setRec` rather than duplicating the commit, so the two paths cannot drift,
+   * and the order is load-bearing: `setRec` reads the take's length from `frameNow()`, which
+   * falls back to `heldFrame` once the engine stops — stopping first would commit a take of zero
+   * frames and the domain would decline it (§1.4). `setRec`'s stop branch calls back here once
+   * the row is no longer recording, and that call does the transport work.
    */
   function setPlaying(on: boolean) {
     if (!on) {
@@ -284,21 +253,15 @@ export function playbackScreen(opts: {
   }
 
   /**
-   * Arming is abandoned by touching anything else.
+   * Arming is abandoned by touching anything else. Armed is a held intention, not a mode, and a
+   * row left armed makes the next tap on any dot record a layer chosen minutes ago — arming is
+   * exclusive, so it blocks every other dot in the meantime.
    *
-   * Armed is a held intention, not a mode — the user has said "this layer, next", and going on
-   * to do something else says they changed their mind. Leaving a row armed after that is a trap:
-   * the next tap on any record dot starts a take on a layer chosen minutes ago, and arming is
-   * exclusive, so it also quietly blocks every other row's dot in the meantime.
+   * **Everything inside the armed row is exempt**: setting its level or opening its panel is
+   * preparation for the take. **Recording is not included** — a stray press must never end one.
    *
-   * **Everything inside the armed row is exempt**, not just its dot. Setting its level or opening
-   * its panel is preparation for the take, so it would be perverse for it to cancel one.
-   *
-   * **Recording is deliberately not included.** A stray press must never end a take in progress;
-   * that is what the dot is for, and losing a performance to a mis-tap is not a recoverable
-   * mistake. This fires on `pointerdown` so the decision is made before a click reaches whatever
-   * was pressed — which is also what lets a dot on a *different* row disarm this one and arm
-   * itself in the same gesture.
+   * On `pointerdown`, so the decision is made before a click reaches what was pressed, which is
+   * what lets a dot on another row disarm this one and arm itself in the same gesture.
    */
   const onPointerDownAnywhere = (e: PointerEvent) => {
     const armed = rows.findIndex((r) => r.rec === 'armed');
@@ -367,31 +330,24 @@ export function playbackScreen(opts: {
     });
     layersEl.classList.toggle('is-capturing', capturingIndex() >= 0);
     lockExits();
-    // The armed equivalent of `is-capturing`. The kit hints an *empty, open* layer's record dot
-    // in the record colour, so several open empty rows each looked as live as the one actually
-    // armed — see the override in `app.css`.
+    // The armed equivalent of `is-capturing`: the kit tints every empty open row's dot in the
+    // record colour, so without this they all look as live as the one actually armed.
     layersEl.classList.toggle(
       'is-arming',
       rows.some((r) => r.rec === 'armed'),
     );
 
     if (stopped) {
-      // The take ends where it ends; the loop does not carry on past it. Rewinding to the
-      // downbeat also puts the transport where the next pass will start, since recording
-      // restarts the loop anyway.
+      // The take ends where it ends, and the downbeat is where the next pass will start.
       setPlaying(false);
-      // A committed pass can widen the badge — "Pass 9" to "Pass 10" — and the badge shares
-      // the label column with the name.
+      // A committed pass can widen the badge, which shares the label column with the name.
       syncLabelWidth();
     }
   }
 
   /**
-   * Lock the ways off the screen for the length of a take, and unlock them at the stop.
-   *
-   * Armed is deliberately *not* locked. Arming is a held intention rather than a mode, and
-   * `onPointerDownAnywhere` already abandons it the moment attention moves elsewhere — there
-   * is no performance to lose yet, so locking there would be a mode with nothing to protect.
+   * Lock the ways off the screen for the length of a take. Armed is *not* locked: it holds no
+   * audio, and `onPointerDownAnywhere` already abandons it when attention moves elsewhere.
    */
   function lockExits() {
     const busy = capturingIndex() >= 0;
@@ -412,12 +368,9 @@ export function playbackScreen(opts: {
   }
 
   /**
-   * Push the layer state at the engine.
-   *
-   * Level, mute, EQ and pan are all live gestures made while the loop is running (§2.8), so
-   * they have to reach the audio graph now rather than on the next navigation. The capturing
-   * index goes with them: without it, a level nudge during a take would un-silence the layer
-   * being recorded onto, which is the one thing that must stay quiet (§2.2).
+   * Push the layer state at the engine. Level, mute, EQ and pan are live gestures (§2.8) and have
+   * to reach the graph now. The capturing index goes with them, or a level nudge during a take
+   * un-silences the layer being recorded onto (§2.2).
    */
   function syncLayers() {
     const capturing = capturingIndex();
@@ -432,18 +385,16 @@ export function playbackScreen(opts: {
   /**
    * Stop the capture and, if the domain kept the take, file its audio under the session id.
    *
-   * Async because the worklet flushes its last partial chunk before reporting done, and waiting
-   * for that is what stops the tail of a take being dropped. Nothing on screen waits for it —
-   * the pass count, the badge and the lanes are all decided by `recordSession`, which has
-   * already run against the engine's frame count.
+   * Async because the worklet flushes its last partial chunk first, which is what keeps the tail
+   * of a take. Nothing on screen waits: the pass count, badge and lanes were decided by
+   * `recordSession` against the engine's frame count.
    */
   async function commitCapture(row: Row, session: RecordingSession, keep: boolean) {
     const captured = await opts.engine.stopCapture();
     if (captured && keep) {
       opts.takes.put(session, captured.buffer);
-      // Peaks are written back onto the session the domain already committed. They are display
-      // only — no pass, region or size derives from them — so filling them late is safe, and it
-      // is the only order available, since the buffer arrives after the worklet flushes.
+      // Peaks go onto the session the domain already committed. Display only — nothing derives
+      // from them — so filling them late is safe, and the buffer arrives after the flush anyway.
       const peaks = computePeaks(captured.buffer);
       row.layer = {
         ...row.layer,
@@ -460,12 +411,9 @@ export function playbackScreen(opts: {
   }
 
   /**
-   * Say so when the microphone is unavailable, rather than recording silence in silence.
-   *
-   * The first version of capture returned a bare `false` that nothing read, so a browser which
-   * refused the input produced a take with no audio and no explanation — which is exactly the
-   * failure that got reported. The error text is shown verbatim, because the difference between
-   * a denied permission, an insecure origin and no device is the whole of what a user needs.
+   * Say so when the microphone is unavailable, rather than recording silence in silence. The
+   * error text is verbatim: the difference between a denied permission, an insecure origin and no
+   * device is the whole of what a user needs.
    */
   function paintInputState() {
     const error = opts.engine.inputError();
@@ -501,8 +449,7 @@ export function playbackScreen(opts: {
     const rule = el('div', 'rec-rule');
     wave.append(note, rule);
 
-    // Declared before the volume control, which calls `update()` inside its constructor and
-    // so reads `row.layer` immediately rather than on the next frame.
+    // Before the volume control, which calls `update()` in its constructor and reads `row.layer`.
     const row: Row = {
       layer: initial,
       rec: 'unarmed',
@@ -613,10 +560,9 @@ export function playbackScreen(opts: {
   }
 
   /**
-   * The pass badge (§3.9). While recording it shows the traversal in progress, marked
-   * provisional until that traversal has earned a bar — the same `passExists` that decides
-   * whether it survives the stop, so the badge is a preview of the gate rather than a second
-   * rule. Otherwise it names the pass about to be captured.
+   * The pass badge (§3.9). While recording it shows the traversal in progress, provisional until
+   * it has earned a bar — the same `passExists` that decides survival at the stop, so the badge
+   * previews the gate rather than restating it. Otherwise it names the pass about to be captured.
    */
   function paintBadge(row: Row) {
     if (row.rec === 'recording') {
@@ -674,14 +620,9 @@ export function playbackScreen(opts: {
 
   // ------------------------------------------------------------------- lanes --
   /**
-   * The lane is an overview of the **arrangement**, not of the last take — so a slot draws the
-   * material its `BarRef` points at. Height indexes on the source, colour on the layer: on this
+   * The lane is an overview of the **arrangement**, not of the last take, so a slot draws the
+   * material its `BarRef` points at. Height indexes on the source, colour on the layer — on this
    * screen colour is layer identity (§4.4), and the source ramp is the Edit Layer grid's job.
-   *
-   * In recorded order `src * linesPerSlot + lineInSlot` comes back to the global line index, so
-   * an unedited layer draws what it drew when the lane keyed on nothing and a slot pulled from
-   * another pass is the only thing that changes. Exactly, when the lines divide evenly into
-   * bars; within a line at the far end when they do not, which a synthetic peak can absorb.
    */
   function buildLanes() {
     const bars = project.barCount;
@@ -703,7 +644,7 @@ export function playbackScreen(opts: {
         // Real peaks when the take is behind this bar, and the synthetic generator only when
         // there is no audio at all — the demo projects, whose sessions hold frame counts and
         // nothing else. Drawing those flat would make the Library look broken rather than
-        // simulated; drawing a *recorded* bar from a generator is the lie this replaced.
+        // simulated; drawing a *recorded* bar from a generator would be a lie.
         const level =
           (ref && barAmplitude(row.layer, index, ref, lineInSlot, linesPerSlot)) ??
           amp(row.layer.index, src, lineInSlot, linesPerSlot);
@@ -724,20 +665,13 @@ export function playbackScreen(opts: {
   /**
    * Live capture, drawn from the input rather than invented.
    *
-   * **This runs every animation frame and draws a line about once a second**, and that gap is
-   * the whole difficulty. `inputPeak()` reports the loudest sample since the last call *and
-   * resets on read*, so reading it once per frame and using it only when a line happens to be
-   * due threw away roughly fifty-nine readings out of sixty. The line then showed the 16 ms
-   * before it was appended rather than the second it stands for, which is why the live waveform
-   * and the committed one disagreed about the same take — the committed one takes a true
-   * maximum across every frame of the line's span.
+   * This runs every frame and draws a line about once a second, so the peak has to be
+   * **accumulated** across frames and cleared only when a line consumes it: `inputPeak()` resets
+   * on read, so sampling it only when a line is due would throw away fifty-nine readings in sixty
+   * and the line would show the last 16 ms rather than the second it stands for. The committed
+   * waveform takes a true maximum over the same span, and the two have to agree.
    *
-   * So the maximum is accumulated here instead, and cleared only when a line consumes it. A
-   * burst of lines after a stall share one reading; there is only one number, and spreading it
-   * is more honest than drawing the rest as silence.
-   *
-   * The display gain is the same one the committed waveform uses, so a take does not change
-   * height the moment it stops recording.
+   * Same display gain as the committed waveform, so a take does not change height at the stop.
    */
   function pushLive(row: Row, upto: number) {
     const [from, to] = ramp.slice(row.layer.index, LAYER_COUNT);
@@ -760,19 +694,14 @@ export function playbackScreen(opts: {
   }
 
   /**
-   * The label column is fixed width so every lane starts at the same x — a ragged left edge
-   * across seven rows is worse than the space it costs. But it was fixed at a width chosen for
-   * the longest name a layer *could* have, not the longest one present, so eight layers named
-   * "Bass" left a column of nothing between the name and the lane.
+   * The label column is fixed width so every lane starts at the same x, but measured from the
+   * names actually present rather than the longest one a layer could have. `LABEL_MAX_PX` stops
+   * one long name spending every lane's width; past it names ellipsize.
    *
-   * Measure what the names actually need, take the widest, and give the rest to the lanes. The
-   * clamp at the top keeps one long name from spending every lane's width; past it, names
-   * ellipsize as before. Changing this changes the lane width, so the lane's `ResizeObserver`
-   * re-runs `syncSizing` on its own — nothing needs to call both.
+   * The badge takes the name's place while armed and recording, so the column holds whichever is
+   * wider — otherwise the lane shifts sideways on the row being watched most closely.
    *
-   * The pass badge takes the name's place while armed and recording, so the column has to hold
-   * whichever of the two is wider. It used to go auto-width for those states, which moved the
-   * lane sideways on the one row you were watching most closely.
+   * Changing this changes the lane width, and the lane's `ResizeObserver` re-runs `syncSizing`.
    */
   function syncLabelWidth() {
     let widest = LABEL_MIN_PX;
@@ -839,11 +768,8 @@ export function playbackScreen(opts: {
   });
 
   /**
-   * Escape unwinds one level at a time, innermost first.
-   *
-   * Disarming keeps it (§3.5), and **a pass in progress owns the input** — Escape cannot stop a
-   * recording and must not leave the screen out from under one. With neither in the way it is
-   * the keyboard's version of the Projects button.
+   * Escape unwinds one level at a time: disarm first (§3.5), then leave. A pass in progress owns
+   * the screen, so Escape does neither while one is running.
    */
   const onKey = (e: KeyboardEvent) => {
     if (e.key !== 'Escape') return;
@@ -864,13 +790,12 @@ export function playbackScreen(opts: {
     ],
   });
 
-  // Up to the Library, which is the app's entry point (§4.1) and the only place this screen was
-  // reached from. Secondary, because leaving is not the thing the screen is for.
+  // Up to the Library (§4.1). Secondary, because leaving is not what the screen is for.
   const backBtn = el(
     'button',
     'lr-btn back-btn',
-    // The Library's chevron, mirrored — same 24-unit box, same 2px stroke, same 14px. A text
-    // "‹" is a different weight at every font size and sits on the baseline rather than centred.
+    // The Library's chevron, mirrored. A text "‹" is a different weight at every font size and
+    // sits on the baseline rather than centred.
     '<svg class="chev" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg>Projects',
   );
   backBtn.addEventListener('click', () => opts.onBack());
@@ -879,8 +804,7 @@ export function playbackScreen(opts: {
   exportBtn.addEventListener('click', () => opts.onExport());
   exits.push(backBtn as HTMLButtonElement, exportBtn as HTMLButtonElement);
 
-  // Three items in a `space-between` footer: help at the left edge, then the two actions, with
-  // the pair kept together by an auto margin rather than spread across the width.
+  // Help at the left edge, the two actions kept together on the right by an auto margin.
   backBtn.style.marginLeft = 'auto';
   const footer = el('div', 'lr-footer');
   footer.append(help.node, backBtn, exportBtn);
@@ -936,12 +860,9 @@ export function playbackScreen(opts: {
 }
 
 /**
- * A preset picker: the label and the current preset's name on one line, the six icons on
- * their own below. Six icons will not share a line with both of those — they were being
- * squeezed to a couple of pixels of padding each and pushing the name off the right edge —
- * and giving the strip the full width is also what lets the icons reach a tappable size.
- *
- * The icons are all the user sees, so the name is the only place a preset is named at all.
+ * A preset picker: the label and the current preset's name on one line, the six icons on their
+ * own below. Six icons cannot share a line with both and still be tappable. The icons are all the
+ * user sees, so the name beside the label is the only place a preset is named.
  */
 function presetGroup<P extends { id: string; name: string }>(
   label: string,
@@ -961,10 +882,8 @@ function presetGroup<P extends { id: string; name: string }>(
   for (const preset of presets) {
     const chip = el('span', `lr-chip${preset.id === current() ? ' is-active' : ''}`, icon(preset));
     // **No `stopPropagation` here.** `bindChips` moves `is-active` by delegating on the enclosing
-    // `.lr-chips`, so stopping the event at the chip meant the selection never moved — the preset
-    // changed and the highlight stayed where it was. It was guarding nothing either: the only
-    // click listener above this is on the row *head*, and these chips are in the panel, which is
-    // the head's sibling rather than its ancestor.
+    // `.lr-chips`, so stopping the event at the chip leaves the preset changed and the highlight
+    // where it was. There is nothing above to guard against: the row head is the panel's sibling.
     chip.addEventListener('click', () => {
       name.textContent = preset.name;
       onPick(preset.id);

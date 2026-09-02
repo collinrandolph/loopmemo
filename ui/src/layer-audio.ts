@@ -1,27 +1,17 @@
 import type { ScheduledSegment } from '../../src/domain/schedule-plan.ts';
 
 /**
- * Segment-scheduled layer playback (§2.4), the half the domain cannot do.
+ * Segment-scheduled layer playback (§2.4), the half the domain cannot do: `segments()` decides
+ * which region of which file plays when, and this turns those frame counts into scheduled buffer
+ * sources against one shared clock.
  *
- * `segments()` has already decided *which region of which file plays when*. Everything here is
- * the other half: turning those frame counts into scheduled buffer sources against one shared
- * clock. That split is why this file is short and why the interesting decisions are all
- * testable in Node without it.
+ * **A `BaseAudioContext`, not an `AudioContext`**, so the same code runs against an
+ * `OfflineAudioContext` and a join can be measured sample by sample rather than listened for.
+ * `verify-joins.ts` is that measurement.
  *
- * **It takes a `BaseAudioContext`, not an `AudioContext`, and that is the point.** The same code
- * runs against an `OfflineAudioContext`, which renders faster than real time into a buffer that
- * can be inspected sample by sample — so "do two segments join without a gap" stops being
- * something to listen for and becomes something to measure. `verify-joins.ts` is that
- * measurement.
- *
- * ## Two players per layer turns out to be an AVFoundation problem
- *
- * §0.4 and CLAUDE.md both call for "two alternating players per layer, so segment N+1 can
- * overlap the tail of N". That is a real constraint of `AVAudioPlayerNode`, where a player is a
- * long-lived object with a queue. Web Audio has no such object: an `AudioBufferSourceNode` is
- * one-shot and disposable, so every segment simply gets its own and overlaps are free. The
- * requirement does not need solving on this API — it dissolves. Worth stating rather than
- * quietly not implementing, because on a platform without that property it comes back.
+ * **§0.4's "two alternating players per layer" is an AVFoundation constraint, not a requirement.**
+ * An `AudioBufferSourceNode` is one-shot, so every segment gets its own and overlaps are free. It
+ * comes back on a platform where a player is a long-lived queued object.
  */
 
 /**
@@ -44,20 +34,8 @@ export type ScheduledVoice = {
 };
 
 /**
- * Take a sounding segment down over one crossfade and stop it — the outgoing half of a mid-bar
- * splice (§2.5).
- *
- * `cancelAndHoldAtTime` rather than `cancelScheduledValues`: the voice may be part-way through
- * its own fade in or out, and holding the value it has reached at `at` is what makes the
- * hand-off continuous. Cancelling outright would snap it back to whatever was last set
- * explicitly, which is a click at the exact moment the splice is trying not to make one.
- */
-/**
- * Drop a segment that has not started yet — the queued half of a re-plan.
- *
- * No fade, because there is nothing to fade: it is silent until its start time, so cancelling it
- * outright is inaudible. Only ever call it on a voice whose `at` is still in the future;
- * `retire` is what a *sounding* segment needs.
+ * Drop a segment that has not started yet — the queued half of a re-plan. No fade, because it is
+ * silent until its start time. `retire` is what a *sounding* segment needs.
  */
 export function cancel(voice: ScheduledVoice): void {
   try {
@@ -73,6 +51,14 @@ export function cancel(voice: ScheduledVoice): void {
   }
 }
 
+/**
+ * Take a sounding segment down over one crossfade and stop it — the outgoing half of a mid-bar
+ * splice (§2.5).
+ *
+ * `cancelAndHoldAtTime`, not `cancelScheduledValues`: the voice may be part-way through its own
+ * fade, and holding the value it has reached is what makes the hand-off continuous. Cancelling
+ * snaps back to whatever was last set explicitly, which is a click.
+ */
 export function retire(voice: ScheduledVoice, at: number, fadeSeconds: number): void {
   voice.gain.gain.cancelAndHoldAtTime(at);
   voice.gain.gain.setValueCurveAtTime(FADE_OUT, at, fadeSeconds);
@@ -84,15 +70,9 @@ export function retire(voice: ScheduledVoice, at: number, fadeSeconds: number): 
 }
 
 /**
- * Equal-power fade curves.
- *
- * `cos` out against `sin` in, so the two sum to constant power through the overlap. Linear
- * ramps are the obvious thing and they are wrong: two linear ramps sum to 0.5 at the midpoint
- * rather than to unity power, which is a 3 dB dip on every bar line — the same argument that
- * makes the pan law equal-power in `effects.ts`.
- *
- * Built as curves rather than as ramps because `AudioParam` has no equal-power ramp;
- * `setValueCurveAtTime` takes an arbitrary shape, which is exactly what this needs.
+ * Equal-power fade curves: `cos` out against `sin` in, so the two sum to constant power through
+ * the overlap. Two linear ramps sum to 0.5 at the midpoint — a 3 dB dip on every bar line.
+ * Curves rather than ramps because `AudioParam` has no equal-power ramp.
  */
 const CURVE_POINTS = 64;
 
@@ -111,24 +91,18 @@ const FADE_OUT = fadeCurve(false);
 /**
  * Schedule one layer's segments.
  *
- * `anchorTime` is the context time that arrangement frame 0 sits on, and every segment derives
- * from it rather than from "now" — one shared anchor is what keeps seven layers together
- * (§0.4), and it is also what makes an offline render reproducible.
+ * `anchorTime` is the context time arrangement frame 0 sits on, and every segment derives from it
+ * rather than from "now" — one shared anchor keeps seven layers together (§0.4) and makes an
+ * offline render reproducible.
  *
- * **A segment plays `crossfadeFrames` past its own bar and the next one starts exactly on the
- * boundary.** That is what produces a real overlap without moving any bar off its beat: the
- * extra frames come from the outgoing region's own source, which in a live recording is simply
- * the next bar the player played, so the tail is real material rather than padding. Clamped to
- * what the file holds, so the last bar of a recording fades against silence instead of reading
- * past the end.
+ * **A segment plays `crossfadeFrames` past its own bar and the next starts on the boundary**, so
+ * the overlap is real material — the next bar the player actually played — and no bar moves off
+ * its beat. Clamped to what the file holds.
  *
- * **The crossfade is unconditional** (§2.4), including a splice into the same source. Bar
- * boundaries in a live recording almost never land on silence, so an unfaded join is a step
- * discontinuity — audible as a click even when both sides come from one continuous take.
- *
- * `crossfadeFrames` of 0 disables it entirely and joins the segments butt-to-butt. That is not
- * a mode anyone should play in; it exists so the join can be measured against the source
- * without a fade in the way.
+ * **The crossfade is unconditional** (§2.4), including a splice into the same source: bar
+ * boundaries in a live recording rarely land on silence, so an unfaded join is a step
+ * discontinuity. `crossfadeFrames` of 0 joins butt-to-butt, which exists only so a join can be
+ * measured against the source without a fade in the way.
  */
 export function scheduleSegments(
   ctx: BaseAudioContext,
@@ -160,20 +134,14 @@ export function scheduleSegments(
     segs[i + 1]!.startFrame === segs[i]!.startFrame + segs[i]!.region.frameCount;
 
   /**
-   * Where the crossfade for the join after segment `i` sits, relative to the boundary.
+   * Where the crossfade after segment `i` sits, relative to the boundary.
    *
-   * **After the boundary when the outgoing segment has a tail**, which is the common case and
-   * the better one: the tail is the next bar the player actually played, so the overlap is real
-   * material and the incoming bar is heard from its first frame.
+   * **After it when the outgoing segment has a tail** — the common case, and the better one: the
+   * overlap is real material and the incoming bar is heard from its first frame.
    *
-   * **Before the boundary when it does not** — the outgoing bar is the last in its recording, so
-   * there is nothing after it to fade. The outgoing then fades out inside its own final
-   * milliseconds and the incoming starts early on its pre-roll, arriving at full gain exactly on
-   * the beat. Timing is preserved either way, because the incoming's offset moves with its start.
-   *
-   * Zero when neither has room, which is only reachable when a recording's last bar is followed
-   * by the very first bar of a recording. There is then nothing to fade against and the join is
-   * a butt join; that is a real limit of the material rather than something to paper over.
+   * **Before it when there is no tail**, i.e. the outgoing bar is last in its recording. The
+   * incoming then starts early on its pre-roll and reaches full gain on the beat, so timing holds
+   * either way. Zero when neither has room, which is a butt join and a limit of the material.
    */
   function joinWindow(i: number): { after: number; before: number } {
     if (!abuts(i)) return { after: room[i]?.after ?? 0, before: 0 };

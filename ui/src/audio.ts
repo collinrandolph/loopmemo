@@ -36,31 +36,20 @@ import { type Transport, playLoopFrom, playheadAt, slotAt } from '../../src/doma
 import type { Engine } from './engine.ts';
 
 /**
- * A **sounding** engine for the browser build: the backing tracks, synthesised live.
+ * The `Engine` seam with audio behind it: the backing tracks synthesised live, and the recorded
+ * layers scheduled as regions (§2.4). The frame position screens read comes from the audio clock,
+ * which is what makes it authoritative.
  *
- * This is `sim.ts`'s `Engine` with audio behind it, which is the point — that type was written as
- * the seam a real engine would replace, so this is the substitution actually happening rather than
- * a second thing bolted alongside. Screens keep asking for a frame position and get one; the
- * difference is that the position now comes from an audio clock that something is audibly playing
- * against, which is what §2.4 means by the engine's position being authoritative.
+ * It reads onset frames, frequencies and envelope lengths from `src/domain` and does the two
+ * things a domain cannot: convert to the platform's unit, and build nodes. **Frames become seconds
+ * in exactly one place** (`frameToTime`). Oscillator graphs, waveshaper curves and the compressor
+ * are platform-bound and live here; the parameters that shape them are domain data.
  *
- * **`src/domain` is untouched and stays pure.** Everything here reads `backingSchedule()` — onset
- * frames, frequencies, envelope lengths — and does the two things a domain cannot: converts to the
- * platform's unit, and builds nodes. Frames become seconds in exactly one place (`frameToTime`).
- *
- * **This is browser-only and disposable**, like the rest of `ui/`. It is a port of
- * `prototype/backing-tracks/audio.js`, the sketch the kit and tone decisions were made against;
- * when a platform is chosen, that prototype and this file are both references to translate from,
- * not code to carry over. The recipes live here rather than in the domain deliberately: oscillator
- * graphs, waveshaper curves and the compressor are platform-bound, while the parameters that
- * *shape* them are domain data and come from `DrumKit` and `ChordTone`.
+ * Browser-only and disposable, like the rest of `ui/`. When a platform is chosen this file and
+ * `prototype/backing-tracks/` are both references to translate from, not code to carry over.
  */
 
-/**
- * The crossfade on every segment join (§2.4), in seconds because it is a physical duration —
- * the same argument that keeps `TOLERANCE_SECONDS` and the envelope times out of frames.
- * 7 ms sits in the middle of the spec's 5–10.
- */
+/** The crossfade on every segment join (§2.4). Seconds, because it is a physical duration. */
 const CROSSFADE_SECONDS = 0.007;
 
 /** Scheduled this far ahead of the playhead, topped up on an interval. */
@@ -71,67 +60,48 @@ const LEAD_SECONDS = 0.08;
 
 export type BackingEngine = Engine & {
   /**
-   * What to play. Safe while running: a change to the tracks is picked up by the next bar
-   * scheduled, so swapping a kit or a chord is heard within a bar and never clicks. A change to
-   * *timing* re-anchors instead, because every future bar time is derived from the tempo.
+   * What to play. Safe while running: a track change is picked up by the next bar scheduled, so a
+   * kit or chord swap is heard within a bar and never clicks. A *timing* change re-anchors,
+   * because every future bar time is derived from the tempo.
    */
   setBacking(backing: BackingTracks, t: Timing): void;
   /**
-   * Which traversal of the arrangement is playing (§3.6). **The backing follows the transport**,
-   * so the bar being generated is the bar the sweep is over — in bar mode that is one slot held,
-   * which is what makes previewing bar 7 sound like bar 7 (§2.6) instead of walking the
-   * progression underneath a sweep that is not moving.
+   * Which traversal of the arrangement is playing (§3.6). The backing follows the transport, so
+   * the bar generated is the bar the sweep is over — in bar mode, one slot held, which is what
+   * makes previewing bar 7 sound like bar 7 (§2.6).
    *
-   * Defaults to the whole arrangement from slot 1, which is what every screen without a transport
-   * means by "play". Safe while running: already-scheduled bars that have not sounded yet are
-   * dropped and rebuilt, so the change is heard at the next bar rather than after the lookahead.
+   * Defaults to the whole arrangement from slot 1. Safe while running: scheduled bars that have
+   * not sounded are rebuilt, so the change lands at the next bar rather than after the lookahead.
    */
   setTransport(transport: Transport): void;
   /**
-   * The recorded layers, and which one (if any) is being recorded onto right now.
+   * The recorded layers, and which one (if any) is being recorded onto. Called whenever a take
+   * commits, a level or mute changes, or arming moves; the engine re-reads on the next bar.
    *
-   * Called whenever a take commits, a level or mute changes, or arming moves — the engine holds
-   * no opinion about any of that and simply re-reads what it is given on the next bar.
-   *
-   * The layer being captured into is silent for the take (§2.2), and that is *derived* here
-   * through `isLayerAudible` rather than written into `layer.muted`, because writing it through
-   * would make our state indistinguishable from the user's and stopping could not restore
-   * theirs.
+   * The layer being captured into is silent for the take (§2.2), *derived* through
+   * `isLayerAudible` rather than written into `layer.muted` — writing it through would make our
+   * state indistinguishable from the user's, so stopping could not restore theirs.
    */
   setLayers(project: Project, takes: TakeStore, recordingIntoLayerIndex?: number): void;
   /**
-   * Open the microphone, ahead of needing it. **Call this when arming, not when recording.**
+   * Open the microphone. **Call this when arming, not when recording**: the first call raises the
+   * permission prompt, and one raised at the downbeat is answered seconds into a running take.
    *
-   * The first call is what raises the browser's permission prompt, and a prompt raised at the
-   * downbeat gets answered several seconds into a take that is already running — so the take
-   * captures nothing and nothing says why. Arming is the moment the user has declared intent and
-   * is not yet counting bars, which makes it the right place to pay for the prompt.
-   *
-   * Resolves false rather than throwing: a refusal is a state to render, since a take that
-   * captures nothing still traverses bars and the transport should not care.
-   *
-   * Capture lives on the engine because the engine owns the `AudioContext`. Handing the context
-   * out instead would put the platform's most replaceable object into every screen that records.
+   * Resolves false rather than throwing — a refusal is a state to render, not an exception. It
+   * lives on the engine because the engine owns the `AudioContext`.
    */
   openInput(): Promise<boolean>;
   /** Why the input is unavailable, for a screen to show. Undefined once it opens. */
   inputError(): string | undefined;
-  /**
-   * Loudest input sample since the last call, for a meter or a live waveform. Resets on read.
-   * 0 when nothing is capturing, which draws as silence rather than as invention.
-   */
+  /** Loudest input sample since the last call; resets on read. 0 when nothing is capturing. */
   inputPeak(): number;
   /**
-   * Schedule `bars` bars from frame 0 in one go, for an offline render (§2.7's export).
+   * Schedule `bars` bars from frame 0 at once, for an offline render (§2.7's export).
    *
-   * The live scheduler tops up against a clock that is running; an `OfflineAudioContext` does not
-   * advance until `startRendering` is called, so a lookahead loop would schedule the first
-   * horizon and then wait forever. This lays the whole thing down at once instead.
-   *
-   * **It is the same engine, which is the reason to do it this way.** An export rendered by a
-   * second code path is a second set of decisions about crossfades, splices, pan law, the
-   * compressor and which bar carries which chord — and every one of them is a chance for the
-   * file to disagree with what the user heard.
+   * An `OfflineAudioContext` does not advance until `startRendering`, so the live lookahead loop
+   * would schedule one horizon and wait forever. Rendering through **this** engine is the point:
+   * a second path would be a second set of decisions about crossfades, splices, pan law and the
+   * compressor, and every one is a chance for the file to disagree with what was heard.
    */
   prerender(bars: number): void;
   /** Begin capturing. Opens the input first if arming did not. */
@@ -163,11 +133,7 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
   /** Longest a chord voice may ring, by onset index — see `chordRingCaps`. */
   let chordCaps: readonly number[] = [];
 
-  /**
-   * One entry per recorded layer, resolved once per `setLayers` rather than per bar.
-   * `layerPassIndex` walks every session's frame count, which is not work for the scheduler to
-   * repeat 344 times a second.
-   */
+  /** One per recorded layer, resolved on `setLayers` — `layerPassIndex` walks every session. */
   type LayerVoice = {
     layer: Layer;
     index: PassIndex;
@@ -178,11 +144,9 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
   };
   let layerVoices: LayerVoice[] = [];
   /**
-   * The recording offset in frames (§2.3), read off the project on every `setLayers`.
-   *
-   * It shifts where recorded layers are *read from* and nothing else — not the transport, and
-   * not the backing, which is generated on the shared anchor and already on time. Offsetting
-   * the backing too would move the reference the user is correcting against.
+   * The recording offset in frames (§2.3), read off the project on every `setLayers`. It shifts
+   * where recorded layers are *read from* and nothing else — not the transport, and not the
+   * backing, which is already on time and is the reference being corrected against.
    */
   let latencyFrames = 0;
 
@@ -202,21 +166,14 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
   function ensure(): BaseAudioContext {
     if (!ctx) {
       /**
-       * **At the project's rate, not the device's.** Omitting this takes the hardware default —
-       * 48 kHz on this machine — while `Timing` computes every frame count at the project's
-       * quality, 44.1 kHz. The engine then holds two rates: `frameToTime` converts with the
-       * domain's, so the backing stays correct, and `scheduleSegments` converts with the
-       * context's, so the recorded layers run 8.8% fast against the drums.
-       *
-       * It was invisible until layers had audio to play, which is the whole reason to close the
-       * record-to-playback loop early. One rate, named once, and every conversion agrees.
+       * **At the project's rate, never the device's.** Omitting it takes the hardware default
+       * while `Timing` computes frame counts at the project's quality, and the engine then holds
+       * two rates: `frameToTime` converts with the domain's, `scheduleSegments` with the
+       * context's, so recorded layers run 8.8% fast against the drums.
        */
       ctx = context ?? (owned = new AudioContext({ sampleRate }));
-      // A chord is three or four notes, some tones use three oscillators each, and tails overlap
-      // — a dense pattern easily has a dozen oscillators sounding at once. Summed straight into
-      // `destination` that clips, and hard digital clipping is exactly a harsh arrhythmic screech,
-      // because distortion respects neither envelopes nor timing. **Every voice goes through
-      // this**, never to the destination.
+      // Every voice goes through this, never straight to `destination`. A dense pattern easily has
+      // a dozen oscillators sounding at once, and summing those into the destination clips.
       const comp = ctx.createDynamicsCompressor();
       comp.threshold.value = -20;
       comp.knee.value = 12;
@@ -224,17 +181,9 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
       comp.attack.value = 0.003;
       comp.release.value = 0.25;
       /**
-       * Unity, not the 0.5 it was.
-       *
-       * The halving was added alongside the compressor when this bus carried nothing but
-       * synthesised backing, and it was belt and braces even then: a `DynamicsCompressorNode`
-       * applies **no makeup gain**, so with a −20 dB threshold at 14:1 a full-scale input already
-       * leaves around −18 dBFS. There was never 6 dB of clipping risk to spend.
-       *
-       * It stopped being harmless when recorded layers started passing through here, because
-       * they inherited an attenuation chosen for a stack of oscillators they are not part of —
-       * and a quiet microphone had no headroom to give away. Reported as "working but very
-       * quiet"; this was our share of it.
+       * Unity. The compressor applies no makeup gain, so at −20 dB and 14:1 a full-scale input
+       * already leaves around −18 dBFS — there is no clipping headroom left to spend, and a
+       * recorded layer passing through here has none to give.
        */
       const headroom = ctx.createGain();
       headroom.gain.value = 1;
@@ -242,9 +191,8 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
       headroom.connect(ctx.destination);
       bus = comp;
 
-      // One gain per track, so `level` is a property of the track rather than something baked
-      // into every voice's peak. Mute is not here — `backingSchedule` omits a muted track's
-      // onsets entirely, so there is nothing to turn down.
+      // One gain per track, so `level` is not baked into every voice's peak. Mute is not here:
+      // `backingSchedule` omits a muted track's onsets, so there is nothing to turn down.
       drumGain = ctx.createGain();
       chordGain = ctx.createGain();
       drumGain.connect(comp);
@@ -262,10 +210,8 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
 
   // ------------------------------------------------------------ bookkeeping --
   /**
-   * Cleanup is anchored to the voice's scheduled end **in context time**, not to a wall clock at
-   * the moment it was scheduled. Scheduling runs up to `AHEAD_SECONDS` ahead, so "now" when a
-   * voice is created can be a second before it starts — anchoring to the wrong one disconnects
-   * voices before they ever sound.
+   * Cleanup is anchored to the voice's scheduled end **in context time**, not to now. Scheduling
+   * runs `AHEAD_SECONDS` ahead, so "now" can be a second before the voice starts.
    */
   function track(nodes: AudioNode[], startTime: number, seconds: number) {
     voices.push({ nodes, startsAt: startTime, endsAt: startTime + seconds + 0.2 });
@@ -307,13 +253,9 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
     voices = [];
     lastHat = undefined;
 
-    // **And the layers.** They are not in `voices` — they are held per layer so a splice can
-    // reach them — so nothing here reached them, and `stop()` left up to `AHEAD_SECONDS` of
-    // layer audio still running. The next `start()` then laid a fresh plan on top of it, which
-    // is how tapping a playing slot and immediately tapping again produced three copies at once.
-    //
-    // Sounding segments fade over the crossfade rather than cutting: this is what a stop button
-    // does, and the drums having always cut is not a reason for the layers to.
+    // **And the layers, which are not in `voices`** — they are held per layer so a splice can
+    // reach them, so every teardown path has to walk both lists. Sounding segments fade over the
+    // crossfade rather than cutting; the drums having always cut is not a reason for these to.
     const now = ctx?.currentTime ?? 0;
     for (const voice of layerVoices) {
       for (const v of voice.scheduled) {
@@ -325,17 +267,14 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
   }
 
   /**
-   * Drop what is scheduled but not yet sounding, and rebuild the horizon from where we are.
+   * Drop what is scheduled but not yet sounding, and rebuild the horizon from here.
    *
-   * Scheduling runs `AHEAD_SECONDS` in front of the playhead, so a change to *which bar plays
-   * next* would otherwise be heard up to a second and a bit late while the sweep moved at once —
-   * long enough to read as the backing being on a different loop from the arrangement, which is
-   * exactly the bug this exists to close.
+   * A change to *which bar plays next* would otherwise be heard `AHEAD_SECONDS` after the sweep
+   * moved — long enough to read as the backing being on a different loop.
    *
-   * **Voices that have already started are left alone.** They were correct when they began, and
-   * cutting a chord mid-decay is a click. The current bar is rescheduled rather than skipped —
-   * `scheduleBar` drops onsets already in the past, so its remaining beats come back rather than
-   * leaving most of a bar silent.
+   * **Voices already started are left alone**: they were correct when they began, and cutting a
+   * chord mid-decay is a click. The current bar is rescheduled rather than skipped, and
+   * `scheduleBar` drops the onsets of it that are already past.
    */
   function rescheduleFuture() {
     if (anchorTime === undefined || !ctx || !timing) return;
@@ -347,11 +286,8 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
     });
     lastHat = undefined; // it may well have been one of those
 
-    // **And the layers, which are not in `voices`.** Backing voices are tracked by `track()`;
-    // layer segments are held per layer so a splice can find them, and dropping only the first
-    // list left every queued bar of the old plan in place while `topUp` scheduled the new one
-    // beside it. Two copies of the layer, a bar apart in content, until both ran out — which is
-    // what a swipe late in a bar and a double tap out of bar mode both produced.
+    // The layers again — dropping only `voices` leaves every queued bar of the old plan running
+    // while `topUp` schedules the new one beside it.
     for (const voice of layerVoices) {
       voice.scheduled = voice.scheduled.filter((v) => {
         if (v.at <= now) return true; // sounding: `spliceCurrentBar` decides its fate, not this
@@ -699,9 +635,8 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
     const b = backing!;
     const barStartFrame = absoluteBar * framesPerBar(t);
     // **Which slot this bar is** comes from the transport, through the same resolver the sweep
-    // reads (§3.6). A private `absoluteBar % bars.length` is a second answer to the question the
-    // playhead already answers, and it was wrong the moment the two disagreed: bar preview held
-    // one slot on screen while this walked the chord progression underneath it.
+    // reads (§3.6). A private `absoluteBar % bars.length` would be a second answer to a question
+    // the playhead already answers, and the two disagree in bar preview.
     const head = playheadAt(transport, barStartFrame, t);
     const bar = head ? bars[slotAt(head)] : bars[absoluteBar % bars.length];
     if (!bar) return;
@@ -714,18 +649,17 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
       const frame = barStartFrame + onset.frameOffset;
       if (frame < originFrame) continue; // started mid-loop; this one already went past
       const at = frameToTime(frame);
-      // And this one went past while we were running: `rescheduleFuture` rewinds into the bar in
-      // progress to recover its remaining beats, so its earlier ones have to be dropped here.
+      // And this one went past while running: `rescheduleFuture` rewinds into the bar in progress
+      // to recover its remaining beats, so its earlier ones are dropped here.
       if (at < c.currentTime) continue;
       if (onset.voice === 'kick') kick(c, drumGain!, at, kit.kick);
       else if (onset.voice === 'snare') snare(c, drumGain!, at, kit.snare);
       else hat(c, drumGain!, at, kit.hat, onset.voice === 'hatOpen');
     }
 
-    // The recorded layers, on the same anchor and the same bar grid as the backing (§0.4). What
-    // plays is `segments()`'s decision, taken for the slot the transport resolved and then
-    // placed at *this* bar's frame — so bar preview repeats one slot's audio the same way it
-    // repeats one slot's chord, and neither knows about the other.
+    // The recorded layers, on the same anchor and bar grid as the backing (§0.4). `segments()`
+    // decides what plays for the slot the transport resolved, placed at *this* bar's frame — so
+    // bar preview repeats one slot's audio the same way it repeats one slot's chord.
     const crossfade = Math.round(CROSSFADE_SECONDS * t.sampleRate);
     for (const voice of layerVoices) {
       const slotIndex = head ? slotAt(head) : absoluteBar % Math.max(1, t.barCount);
@@ -738,13 +672,11 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
         latencyFrames,
       )
         .map((s) => ({ ...s, startFrame: barStartFrame }))
-        // A bar already under way is never re-scheduled from its downbeat. `start` treats a past
-        // time as "now", so this would restart the bar from its beginning on top of the copy
-        // already playing — which is what a re-plan mid-bar used to do. Entering an in-progress
-        // bar is a splice, and `spliceCurrentBar` is where that happens.
+        // A bar already under way is never re-scheduled from its downbeat: `start` treats a past
+        // time as "now", which restarts it on top of the copy already playing. Entering an
+        // in-progress bar is `spliceCurrentBar`'s job.
         .filter((s) => frameToTime(s.startFrame) >= c.currentTime);
-      // `frameToTime(0)` as the anchor, because `scheduleSegments` adds a frame count to it and
-      // the engine's own anchor is offset by wherever playback started.
+      // `frameToTime(0)` is the anchor because `scheduleSegments` adds a frame count to it.
       voice.scheduled.push(
         ...scheduleSegments(c, voice.chain.input, segs, voice.buffers, frameToTime(0), crossfade),
       );
@@ -765,21 +697,14 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
   }
 
   /**
-   * Enter a slot's new source part-way through the bar it is already playing (§2.5).
+   * Enter a slot's new source part-way through the bar it is already playing (§2.5), which is
+   * what makes hunting viable — swiping the bar that IS playing has to be heard on that bar.
    *
-   * **This is what makes hunting viable.** Committing at the boundary would force the user to
-   * wait out the rest of every bar before hearing a comparison, and the whole Edit Layer screen
-   * is a comparison being made repeatedly. Swiping the bar that IS playing has to be heard on
-   * that bar.
+   * The entry point is one crossfade ahead of the playhead (never `now`, which is already past by
+   * the time the graph acts on it) and the outgoing segment comes down over exactly that window.
    *
-   * The entry point is one crossfade ahead of the playhead — never `now`, which would be in the
-   * past by the time the graph acted on it — and the outgoing segment is taken down over exactly
-   * that window, so the two are a crossfade rather than a cut plus a gap.
-   *
-   * `splice()` decides whether it is worth doing at all, and returns undefined for the two cases
-   * that are not: a bar with no audio, and a playhead inside the tail guard where the remaining
-   * region would be shorter than the crossfade. Both then fall through to the natural boundary,
-   * which is a bar away at most.
+   * `splice()` declines the two cases not worth it — no audio, and a playhead inside the tail
+   * guard — and both fall through to the natural boundary, a bar away at most.
    */
   function spliceCurrentBar(voice: LayerVoice, was: Layer) {
     if (anchorTime === undefined || !ctx || !timing) return;
@@ -814,8 +739,7 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
     }
     if (!ref || muted) return;
 
-    // The offset goes here too: a mid-bar entry has to read the same shifted audio the bar it
-    // replaces would have, or a splice would land at a different place in the take than a join.
+    // The offset applies here too, or a splice lands at a different place in the take than a join.
     const region = splice(ref, voice.index, offsetInBar, crossfade, latencyFrames);
     if (!region) return;
 
@@ -920,18 +844,16 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
         if (!stream) {
           stream = await navigator.mediaDevices.getUserMedia({ audio: MUSIC_CONSTRAINTS });
         }
-        // The stream is held across takes rather than reopened. Reopening re-negotiates the
-        // input route, and the route is what a latency calibration is measured against (§2.3) —
-        // a new one per take would invalidate the number every time.
+        // Held across takes: reopening re-negotiates the input route, and that route is what the
+        // recording offset was set against (§2.3).
         if (!recorder) {
           recorder = await createRecorder(c, c.createMediaStreamSource(stream));
         }
         inputError = undefined;
         return true;
       } catch (e) {
-        // No device, no permission, or an insecure origin. Kept rather than swallowed: the first
-        // version returned a bare false and the screen ignored it, so a browser that refused the
-        // microphone recorded a silent take and said nothing at all.
+        // No device, no permission, or an insecure origin. Kept, not swallowed: a browser that
+        // refuses the microphone otherwise records a silent take and says nothing.
         inputError = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
         return false;
       }
@@ -944,8 +866,8 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
     prerender(bars) {
       ensure();
       killAll();
-      // Anchored at exactly 0, not at `LEAD_SECONDS`: there is no clock to race offline, and a
-      // lead would put silence at the head of every exported file.
+      // Anchored at exactly 0: there is no clock to race offline, and a lead would put silence
+      // at the head of every exported file.
       originFrame = 0;
       anchorTime = 0;
       nextBar = 0;
@@ -955,8 +877,7 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
     },
 
     async startCapture() {
-      // Opening here too, for a caller that never armed. It is a no-op once open, so the normal
-      // path — armed first — has already paid for the permission prompt by now.
+      // For a caller that never armed. A no-op once open, so the armed path has already paid.
       if (!(await engine.openInput())) return false;
       recorder!.start();
       return true;
@@ -970,11 +891,8 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
     setLayers(project, takes, recordingIntoLayerIndex) {
       const c = ensure();
       const t = timing ?? projectTiming(project);
-      // Gains are kept across calls, keyed by layer index, so changing a level does not rebuild
-      // a node underneath audio that is already sounding — the same reason the pan presets ramp
-      // a wet gain rather than rebuilding the delay.
-      // The whole voice is carried across, not just its chain: what it has already handed to the
-      // graph is what a splice has to be able to retire.
+      // The whole voice is carried across, keyed by layer index: a level change must not rebuild
+      // a node under sounding audio, and what the voice handed the graph is what a splice retires.
       const previous = new Map(layerVoices.map((v) => [v.layer.index, v]));
       const wasLayer = new Map(layerVoices.map((v) => [v.layer.index, v.layer]));
       const replaced = new Map(wasLayer);
@@ -1041,9 +959,8 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
       if (wasLayer.size > 0) replan = true; // a layer went silent; its bars must stop
       if (!replan) return;
 
-      // Order matters. Dropping the future first means the bar under the playhead is the only
-      // thing still sounding, so the splice has one clear thing to hand over from — and the
-      // rebuilt horizon it leaves behind already carries the new arrangement.
+      // Order matters: dropping the future first leaves the bar under the playhead as the only
+      // thing sounding, so the splice has one clear thing to hand over from.
       rescheduleFuture();
       for (const voice of layerVoices) {
         const was = replaced.get(voice.layer.index);

@@ -19,19 +19,15 @@ import { formatBytes, renderLoop } from './screen.ts';
 import type { TakeStore } from './takes.ts';
 
 /**
- * Export (§4.5, extended).
+ * Export (§4.5, extended). §4.5's one deliverable — "exactly as it currently sounds" — is the
+ * Full Loop and stays on by default; the two stem sets and the recorded passes are opt-in.
  *
- * §4.5 gives format, quality, preview and share, and one deliverable — "it exports the project
- * exactly as it currently sounds". That is the Full Loop, and it stays on by default. The two
- * stem sets and the recorded passes are opt-in additions, and what each one contains is decided
- * in `src/domain/export.ts` rather than here, so the file list and the sizes cannot drift from
- * it — including which files are stereo, which is now a per-file fact rather than a per-kind one.
+ * What each file contains is decided in `src/domain/export.ts`, so the list and the sizes here
+ * cannot drift from it — including which files are stereo, a per-file fact rather than per-kind.
  *
- * **No mute controls** (§4.5). Muting happens on the Playback screen, where the result is
- * audible. What this screen decides is which *kinds* of file come out, not what is in them.
- *
- * The size of a selection is the fact that decides it — the same reasoning as Compress showing
- * its projection (§4.1) — so every toggle carries its own file count and total.
+ * **No mute controls** (§4.5): muting happens on Playback, where the result is audible. This
+ * screen decides which *kinds* of file come out, not what is in them. Every toggle carries its
+ * own count and total, because size is the fact that decides a selection (§4.1).
  */
 export function exportScreen(opts: {
   project: Project;
@@ -53,14 +49,12 @@ export function exportScreen(opts: {
   let bitrate: Mp3Bitrate = 192;
 
   /**
-   * **The browser cannot encode MP3.** `AudioEncoder` reports it unsupported while offering AAC
-   * and Opus, and this repo carries no runtime dependencies, so a LAME-class encoder is not on
-   * the table either. §2.7's format list stays as it is — a native platform has MP3 available —
-   * and the refusal lives here, in the build that cannot honour it.
+   * **The browser cannot encode MP3**: `AudioEncoder` reports it unsupported, and this repo has no
+   * runtime dependencies for a LAME-class encoder. §2.7 keeps the format because a native platform
+   * has it, so the refusal lives here.
    *
-   * Shown as an unavailable choice rather than removed: the option existing and being greyed
-   * says "not here", where a missing option says "never", and only one of those is true. What is
-   * not acceptable is offering it and writing a WAV with an `.mp3` name.
+   * Greyed rather than removed — greyed says "not here", missing says "never", and only one is
+   * true. What is unacceptable is writing a WAV with an `.mp3` name.
    */
   const MP3_AVAILABLE = false;
 
@@ -234,29 +228,20 @@ export function exportScreen(opts: {
   }
 
   /**
-   * Reserve somewhere to put it, then render, then write.
-   *
-   * **The order is the fix.** `showSaveFilePicker` needs transient user activation and Chrome's
-   * expires about five seconds after the click, so asking for it *after* rendering threw
-   * `SecurityError` on every export slow enough to matter — which is most of them — and the old
-   * save swallowed it. Asking first also means cancelling costs nothing, because the render has
-   * not happened yet.
+   * **Reserve somewhere to put it, then render, then write** — the order is load-bearing.
+   * `showSaveFilePicker` needs transient user activation, which expires about five seconds after
+   * the click, so asking after rendering throws `SecurityError` on any export slow enough to
+   * matter. Asking first also means a cancel costs nothing, because nothing has been rendered.
    *
    * **The plan decides the container, not the outcome.** The name is chosen before anything is
-   * rendered, so a file that turns out to have nothing behind it — a pass whose take is not in
-   * this session's store — must not turn a `.zip` into a lone `.wav` after the user has already
-   * named it. Several planned files stay an archive even if fewer arrive, and the shortfall is
-   * said out loud rather than left to be noticed.
+   * rendered, so several planned files stay an archive even when fewer arrive — otherwise a lone
+   * `.wav` is written into a file the user already named `.zip`. The shortfall is said out loud.
    *
-   * One file is saved as itself; several are zipped, because a browser has no good way to give
-   * someone a handful of files at once — a loop of download clicks trips Chrome's
-   * multiple-download prompt and arrives as an unordered pile.
+   * One file saves as itself; several are zipped, because a loop of download clicks trips
+   * Chrome's multiple-download prompt and arrives as an unordered pile. The button counts rather
+   * than spins, since a project with every pass selected is a couple of dozen renders.
    *
-   * The button counts rather than spins. A full loop is a few hundred milliseconds, but a project
-   * with every pass selected is a couple of dozen renders, and a count says which one is running.
-   *
-   * `onShare` fires only when a file was actually written. Cancelling the save dialog is a
-   * decision, not a failure, and leaving the screen on it would discard the selection for nothing.
+   * `onShare` fires only when a file was written: cancelling is a decision, not a failure.
    */
   let exporting = false;
   shareBtn.addEventListener('click', async () => {
@@ -307,7 +292,7 @@ export function exportScreen(opts: {
       // user needs to be told about.
       else if (short === 0) opts.onShare();
     } catch (e) {
-      // Never swallowed. A render that throws used to reset the button and say nothing, which is
+      // Never swallowed: a render that throws and resets the button silently is
       // indistinguishable from an export that worked and went somewhere unexpected.
       fail(`Export failed — ${e instanceof Error ? `${e.name}: ${e.message}` : String(e)}`);
     } finally {

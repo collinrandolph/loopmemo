@@ -5,20 +5,15 @@ import type { SessionBuffers } from './layer-audio.ts';
 /**
  * Where captured audio lives, since in a browser there is no file to point at.
  *
- * `RecordingSession.audioFileURL` is the domain's handle on a take, and the domain never opens
- * it — `regionFor` returns a session index and a frame range and stops there, which is exactly
- * what lets all of `src/domain` be tested in Node. So the URL is free to be whatever the
- * platform can resolve: a path on iOS, and here a key into this map.
+ * The domain never opens `RecordingSession.audioFileURL` — `regionFor` returns a session index
+ * and a frame range and stops — so the URL can be whatever the platform resolves: a path on iOS,
+ * a key into this map here.
  *
- * **Keyed by session id rather than by array position.** A layer's `sessions` array is appended
- * to and, after a compress, replaced wholesale — so position is not stable identity, and a store
- * indexed on it would hand back the wrong take the first time a project was compressed. The id
- * is what `recordSession` already treats as the take's name.
+ * **Keyed by session id, not array position.** `sessions` is appended to and, after a compress,
+ * replaced wholesale, so position is not stable identity.
  *
- * Nothing here persists. A reload loses every take, which is honest for a browser build whose
- * purpose is to prove the architecture rather than to keep anyone's music; §4.1's storage
- * question is a real one and it is not answered by putting hundreds of megabytes in IndexedDB
- * on a whim.
+ * **Nothing persists**: a reload loses every take. §4.1's storage question is a real one and is
+ * not answered by putting hundreds of megabytes in IndexedDB on a whim.
  */
 export type TakeStore = {
   put(session: RecordingSession, buffer: AudioBuffer): void;

@@ -1,31 +1,17 @@
 /**
  * PCM capture into one recording session (§1.4, §2.3).
  *
- * The domain already owns what a take *means* — `recordSession` decides whether a traversal
- * earned a pass, `passIndex` numbers them, `regionFor` resolves a bar to frames. None of that
- * needs audio. What is left here is genuinely platform-bound and small: get float samples out of
- * an input, stamp them against the engine's clock, and hand back a buffer.
+ * What a take *means* is already the domain's — `recordSession` decides whether a traversal
+ * earned a pass, `regionFor` resolves a bar to frames. What is left here is platform-bound and
+ * small: get float samples out of an input, stamp them against the engine's clock, hand back a
+ * buffer.
  *
- * **It takes an `AudioNode`, not a `MediaStream`.** A microphone is one way to produce one, and
- * making that the parameter would mean the capture path could only ever be exercised by speaking
- * into a device. Taking a node instead means a known signal can be recorded and compared sample
- * for sample, which is how `verify-capture.ts` checks this without a microphone, a permission
- * prompt, or a human.
+ * **It takes an `AudioNode`, not a `MediaStream`**, so a known signal can be recorded and
+ * compared sample for sample — `verify-capture.ts` checks this without a microphone or a human.
  *
- * ## Latency compensation is NOT applied here, deliberately
- *
- * This used to subtract a `latencyFrames` round trip from the capture's anchor, and **nothing
- * ever read the result** — the compensated `startFrame` was consumed only by its own test, so
- * the setting had no audible effect at any value. That is the "computed and then discarded"
- * failure `docs/platform-decision.md` records from this app's first attempt, repeated.
- *
- * It is not fixed here, because here is the wrong place. §2.3 makes the offset a control applied
- * when audio is **scheduled**: that is what lets it be changed after the fact, keeps it out of
- * the pass count, and makes it judgeable by ear against a loop that is playing. Compensating at
- * capture as well would apply the same correction twice.
- *
- * So a capture is exactly what arrived, stamped with when it arrived, and `regionFor` decides
- * where to read it from.
+ * **The recording offset is not applied here** (§2.3). It belongs where audio is *scheduled*,
+ * which is what lets it be changed after the fact, keeps it out of the pass count, and makes it
+ * judgeable by ear. A capture is exactly what arrived, stamped with when it arrived.
  */
 
 export type Capture = {
@@ -41,12 +27,9 @@ export type Recorder = {
   stop(): Promise<Capture>;
   recording(): boolean;
   /**
-   * Loudest sample since this was last called, and **reading it resets the running maximum**.
-   *
-   * Taken from the captured chunks rather than from an `AnalyserNode`, so it sees every sample.
-   * An analyser reports whatever happens to be in its window at the instant it is polled, and
-   * the live waveform polls roughly once a second — it would miss most of the take and, worse,
-   * miss it *unpredictably*. A running maximum between reads cannot skip a transient.
+   * Loudest sample since this was last called; **reading it resets the running maximum**. Taken
+   * from the captured chunks rather than an `AnalyserNode`, which reports only what is in its
+   * window at the instant it is polled and would unpredictably miss transients.
    */
   peak(): number;
   destroy(): void;

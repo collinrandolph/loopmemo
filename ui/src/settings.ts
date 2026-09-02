@@ -30,22 +30,16 @@ import type { TakeStore } from './takes.ts';
 /**
  * Project setup and project settings (§4.5) — **one screen**, because they are one screen.
  *
- * The fields are identical; what differs is which of them are still editable, and that is
- * *derived* rather than moded. `isConfigurationLocked` already says whether BPM and bar count
- * have set (§5.1 #4), and a project being created is simply one with no recordings yet, so it
- * answers `false` and everything is open. Backing tracks never lock at all (§1.2), and they are
- * not here — the Playback rows own them, and a second editor for one piece of state is the drift
- * this codebase keeps having to undo.
+ * The fields are identical and which of them are editable is *derived*, not moded:
+ * `isConfigurationLocked` says whether BPM and bar count have set (§5.1 #4), and a project being
+ * created is one with no recordings, so it answers false and everything is open.
  *
- * **One genuine mode bit**: recording quality. It is snapshotted at creation and immutable after
- * (§2.7), and that is not derivable from a `Project` value — an existing project cannot tell you
- * whether it is being created. So `mode` exists, and it decides exactly that one field and the
- * commit verb.
+ * **One genuine mode bit**: recording quality, snapshotted at creation and immutable after
+ * (§2.7). A `Project` cannot say whether it is being created, so `mode` decides that one field
+ * and the commit verb.
  *
- * **The preview is part of the tempo control, not a transport.** §4.5 asks for a preview at the
- * project tempo; with the backing engine that is real now, so the play button sits on the tempo
- * row and loops a single bar of drums. Its only job is to turn a BPM into something you can judge
- * by ear, which is the one thing the number cannot do.
+ * **No backing pickers here.** The Playback rows own those, and a second editor for one piece of
+ * state is the drift this codebase keeps undoing.
  */
 export function projectSettingsScreen(opts: {
   /** The project being edited. For `new`, a throwaway used only for its defaults. */
@@ -100,15 +94,11 @@ export function projectSettingsScreen(opts: {
   nameRow.appendChild(nameInput);
 
   // --------------------------------------------------------------------- bpm --
-  // §4.5's "preview at the project tempo", and it lives **on the tempo row** because that is the
-  // only thing it is for: a tempo is a number you cannot judge by looking at it, so this plays
-  // one bar of drums until you can. It is not a transport for the project.
+  // §4.5's "preview at the project tempo", **on the tempo row** because that is all it is for: a
+  // tempo cannot be judged by looking at it. It is not a transport for the project.
   //
-  // **It dims with the row on a recorded project, and that is deliberate.** Being inside the
-  // tempo control means it inherits `is-inert` when the tempo locks — which is right, because
-  // the preview exists to help choose a tempo and there is nothing left to choose. Hearing a
-  // finished project is what the Playback transport is for. A greyed-out play button looks like
-  // a bug and is not one; do not exempt it.
+  // **It dims with the row once the tempo locks, deliberately** — the preview exists to help
+  // choose a tempo and there is nothing left to choose. Do not exempt it from `is-inert`.
   let playing = false;
   const playBtn = LR.PlayButton(() => {
     playing = !playing;
@@ -127,9 +117,8 @@ export function projectSettingsScreen(opts: {
   bpmSlider.min = String(BPM_MIN);
   bpmSlider.max = String(BPM_MAX);
   bpmSlider.value = String(bpm);
-  // The number follows the drag; the audio follows the release. Re-anchoring the engine is a
-  // stop and a restart, and `input` fires many times a second — retempoing on it would machine-gun
-  // the loop into silence and you would never hear a whole bar of the tempo you were choosing.
+  // The number follows the drag, the audio the release: re-anchoring is a stop and a restart, and
+  // doing that on every `input` would never let a whole bar of the chosen tempo through.
   bpmSlider.addEventListener('input', () => {
     bpm = Number(bpmSlider.value);
     paint();
@@ -140,9 +129,8 @@ export function projectSettingsScreen(opts: {
   bpmRow.append(bpmSlider, bpmValue, playBtn);
 
   // --------------------------------------------------------------- bar count --
-  // Four across, two down. Eight values wrapped as a flex row gave a ragged second line and
-  // chips too small to be a comfortable target; a fixed four-column grid makes both rows the
-  // same shape and lets each button be worth tapping.
+  // Four across, two down. Wrapped as a flex row the eight values give a ragged second line and
+  // chips too small to tap.
   const barsChips = el('div', 'lr-chips setting-bars');
   for (const count of VALID_BAR_COUNTS) {
     const chip = el('span', `lr-chip${count === barCount ? ' is-active' : ''}`, String(count));
@@ -158,9 +146,8 @@ export function projectSettingsScreen(opts: {
   bindChips(barsRow);
 
   // ----------------------------------------------------------------- quality --
-  // Two words, not two specifications. The full format and what it costs go on one line below,
-  // for the chosen setting only — spelling both out on the chips wrapped them onto two rows and
-  // put the numbers where they had to be compared rather than read.
+  // Two words, not two specifications. The format and its cost go below, for the chosen setting
+  // only — on the chips they wrap, and put the numbers where they must be compared to be read.
   const qualityChips = el('div', 'lr-chips');
   for (const id of ['standard', 'high'] as const) {
     const chip = el('span', `lr-chip${id === quality ? ' is-active' : ''}`, id === 'high' ? 'High' : 'Standard');
@@ -177,15 +164,10 @@ export function projectSettingsScreen(opts: {
   const qualityFigure = el('div', 'setting-figures');
 
   /**
-   * The preview is **one bar of drums, looping** — not the arrangement.
-   *
-   * Bar count is deliberately not passed through: the drum pattern is one bar and repeats
-   * identically, so a sixteen-bar loop would sound exactly like a one-bar loop while taking
-   * sixteen times as long to come round. Previewing one bar also means changing the bar count
-   * cannot disturb the preview, because it is not part of it.
-   *
-   * Chords are muted for the same reason. The question this control answers is "how fast is
-   * that", and a chord bed is not part of the answer.
+   * **One bar of drums, looping** — not the arrangement. The pattern is one bar and repeats
+   * identically, so a sixteen-bar loop sounds the same and takes sixteen times as long to come
+   * round; bar count is therefore not part of the preview and cannot disturb it. Chords are muted
+   * for the same reason: the question here is "how fast is that".
    */
   function retempo() {
     const backing = creating ? defaultBacking() : opts.project.backing;
@@ -197,16 +179,10 @@ export function projectSettingsScreen(opts: {
 
   // ------------------------------------------------------------------- notes --
   /**
-   * One note for everything that stops being editable, rather than a caption under each control
-   * saying so separately.
-   *
-   * **The two rules are genuinely different and the note says so.** Tempo and bar count are open
-   * until the first recording, because it is recorded audio that they stop matching. Quality is
-   * settled the moment the project exists, because layers have to agree on a sample rate from the
-   * first one. Collapsing that into "these lock later" would be shorter and wrong.
-   *
-   * Always shown, in both modes. Before there is audio it says what is about to become permanent,
-   * which is when it is most worth knowing; afterwards it explains the controls that are dimmed.
+   * One note for everything that stops being editable. **The two rules differ and it says so**:
+   * tempo and bars are open until the first recording, quality from the moment the project
+   * exists. Always shown — before there is audio it says what is about to become permanent,
+   * afterwards it explains the dimmed controls.
    */
   const lockNote = el(
     'div',
@@ -225,19 +201,13 @@ export function projectSettingsScreen(opts: {
   /**
    * The recording offset (§2.3): how far earlier a take plays than it arrived.
    *
-   * **It is a control rather than a measurement**, because a microphone cannot hear headphones
-   * and §2.2 makes headphones the correct setup — so a loopback calibration measures an output
-   * route nobody records against. What it can be is *judged*, and that is what this row is for.
+   * **A control, not a measurement** — a microphone cannot hear headphones, and §2.2 makes
+   * headphones the correct setup, so a loopback calibration measures a route nobody records
+   * against. It can be *judged*, which is what this row is for, and its preview plays the **loop**
+   * rather than a bar of drums: an offset is only audible as a recorded layer landing late.
    *
-   * **Its preview plays the loop, not a bar of drums**, unlike the tempo preview above it. A
-   * tempo can be judged from one bar; an offset can only be judged by hearing a recorded layer
-   * land against the backing. A control that cannot be judged where it is presented is worse
-   * than one that is hard to find.
-   *
-   * **Never locked.** `isConfigurationLocked` covers tempo and bar count because recorded frames
-   * are laid out against them. Nothing recorded depends on this, and changing it rewrites
-   * nothing — it is exactly the setting a user needs *after* the first take, when they can
-   * finally hear that it is wrong.
+   * **Never locked.** Nothing recorded is laid out against it, and it is exactly the setting a
+   * user needs *after* the first take.
    */
   let latencyMs = Math.round(opts.project.latencyOffsetSeconds * 1000);
 
@@ -268,13 +238,9 @@ export function projectSettingsScreen(opts: {
   latencySlider.value = String(latencyMs);
 
   /**
-   * Applied a beat after the drag stops, not on every pixel.
-   *
-   * The offset is baked into each scheduled buffer's read position, so changing it re-plans the
-   * lookahead — cheap once, wasteful sixty times a second, and re-creating a segment that was
-   * about to start is a way to make a click out of a control that exists to remove one. The
-   * number on screen still follows the drag; only the audio waits, and it waits less than the
-   * 1.2 s horizon it is about to be heard through anyway.
+   * Applied a beat after the drag stops. The offset is baked into each scheduled buffer's read
+   * position, so changing it re-plans the lookahead — and re-creating a segment about to start is
+   * a way to make a click out of a control that exists to remove one.
    */
   let applyLatencyTimer: number | undefined;
   latencySlider.addEventListener('input', () => {
@@ -302,19 +268,14 @@ export function projectSettingsScreen(opts: {
 
   // ---------------------------------------------------------------- actions --
   /**
-   * Export, bounce, compress and delete — the whole of what used to be a per-row panel on the
-   * Projects screen.
+   * Export, bounce, compress and delete. **They belong to a project, so they live on the
+   * project's own screen** rather than in a browsing list.
    *
-   * **They belong to a project, so they live on the project's own screen.** In the Library they
-   * were behind a chevron on a row, which made a browsing list carry every operation the app can
-   * perform on a project; here they sit under the settings for the thing they act on.
+   * **Only in edit mode** — a project that does not exist yet has nothing to act on, so
+   * `creating` gets no actions rather than four disabled buttons.
    *
-   * **Only in edit mode.** A project that does not exist yet cannot be exported, bounced,
-   * compressed or deleted, so `creating` gets no actions rather than four disabled buttons.
-   *
-   * **Every one of them acts on `commit()`, not on `opts.project`** — pending edits included. A
-   * rename typed just above and then exported has to reach the filenames, and it would be a
-   * strange screen where an action ignored the field directly above it.
+   * **Every one acts on `commit()`, not `opts.project`**, so a rename typed just above reaches
+   * the exported filenames.
    */
   const acts = el('div', 'acts');
   const confirmBox = el('div', 'confirm');
@@ -439,13 +400,9 @@ export function projectSettingsScreen(opts: {
     );
   }
 
-  // **No section labels.** "Project" over a Name field and "Timing" over Tempo and Bars name what
-  // the rows already say. The grouping they were carrying is real, so it is kept as a gap before
-  // the recording block rather than as three words.
-  //
-  // The lock note goes last of the settings, below everything it describes, because it now
-  // describes all of it. A note that covers four rows cannot caption any one of them. The actions
-  // follow it, separated, because they do things rather than set things.
+  // **No section labels**: "Project" over a Name field names what the row already says. The
+  // grouping is kept as a gap before the recording block instead. The lock note goes last of the
+  // settings because it describes all of them, then the actions, which do rather than set.
   body.append(
     nameRow,
     bpmRow,
@@ -548,8 +505,8 @@ export function projectSettingsScreen(opts: {
       chip.classList.toggle('is-active', (['standard', 'high'] as const)[i] === quality);
     }
 
-    // A pass is the unit the Library counts and the unit storage is spent in, so the cost of a
-    // quality choice is stated in passes of *this* project rather than in minutes of audio.
+    // A pass is the unit the Library counts and storage is spent in, so the cost of a quality
+    // choice is stated in passes of *this* project rather than in minutes of audio.
     const spec = QUALITY_SPEC[quality];
     const perPass = seconds * bytesPerSecond(quality);
     qualityFigure.textContent =

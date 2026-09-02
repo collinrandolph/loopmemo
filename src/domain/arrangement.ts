@@ -22,21 +22,16 @@ export type Arrangement = readonly BarRef[];
 /**
  * Slots silenced on this layer — a rest in the pattern (§3.7, tap and hold).
  *
- * Stored as sparse slot indices rather than a boolean per slot. A parallel array would have
- * to stay exactly `barCount` long forever, and two arrays with a shared length invariant is
- * how they drift apart; a sparse list has no invariant to break. Every slot being muted at
- * once is a legitimate state and costs 32 numbers at the very worst.
+ * **Sparse slot indices, not a boolean per slot.** A parallel array would have to stay exactly
+ * `barCount` long forever, and two arrays sharing a length invariant is how they drift apart.
+ * Every slot muted at once costs 32 numbers at worst.
  *
- * Deliberately **not** folded into `BarRef`. A BarRef says where audio came from and is used
- * to look up regions; muting is an arrangement decision about a slot. Different questions.
+ * **Not folded into `BarRef`**: a BarRef says where audio came from and is used to look up
+ * regions; muting is a decision about a slot. **Scope is the slot, not the source** — swiping is
+ * locked while a bar is muted, so no gesture can move a mute onto different audio.
  *
- * **Scope is the slot, not the source.** Since swiping is locked while a bar is muted, no
- * gesture can ever move a mute onto different audio, so the two readings are not even
- * distinguishable in use — slot is the one that matches the grid the user is looking at.
- *
- * **Layer mute is separate and composes at read time** (see `isSilentAt`). Writing a layer
- * mute through into these would destroy the record of which bars the user muted on purpose,
- * so unmuting the layer could not restore them.
+ * **Layer mute is separate and composes at read time** (`isSilentAt`). Writing it through would
+ * destroy the record of which bars the user muted deliberately.
  */
 export type MutedSlots = readonly number[];
 
@@ -56,32 +51,19 @@ export type InitialArrangement = {
 /**
  * The arrangement a layer starts with, once its first pass exists.
  *
- * Recorded order, except where pass 1 never reached: a first pass that stopped after 9 bars
- * of a 16-bar loop leaves slots 9..15 with nothing behind them. Those slots **point at
- * `P1/1` and start muted**.
+ * Recorded order, except where pass 1 never reached — those slots **point at `P1/1` and start
+ * muted**, and both halves matter:
  *
- * Both halves of that matter, and neither works alone:
+ * - **Pointing somewhere real** keeps the slot swipeable. Dangling, the tile draws blank and the
+ *   vertical axis has no available set to wrap through, so the user cannot select their way out.
+ * - **Starting muted** stops the placeholder claiming to be a performance.
  *
- * - **Pointing somewhere real** keeps the slot swipeable. Left pointing at `P1/13`, which
- *   does not exist, the tile would draw blank and the vertical axis would have no available
- *   set to wrap through — the user could not select their way out of the hole. `P1/1` is
- *   audio that is guaranteed to exist the instant any of the pass does.
- * - **Starting muted** is what stops that placeholder from lying. An unmuted slot silently
- *   playing bar 1 in slot 13 would be the app inventing an arrangement the user never
- *   performed. Muted, the slot reads honestly as "nothing here yet".
+ * Together they hand the decision back through gestures that already exist, and the swipe lock
+ * (§3.7) composes: unmuting is the step where the user decides the slot should sound. **Nothing
+ * ever reaches back to unmute them** — by then they are ordinary muted slots, and our guesses
+ * would be indistinguishable from the user's choices.
  *
- * Together they hand the decision back: unmute, then swipe, using nothing but the gestures
- * that already exist. The app never resolves the gap on the user's behalf — including later.
- * Recording a second, complete pass does **not** reach back and unmute these; by then they
- * are ordinary muted slots and the user's own choices are indistinguishable from ours.
- *
- * The swipe lock (§3.7) composes rather than conflicts: unmuting is simply the first step,
- * and it is the step that means the user has decided the slot should sound.
- *
- * When pass 1 is complete this is exactly `recordedOrder(barCount)` with nothing muted.
- *
- * Bar count comes from the index's own timing rather than a parameter: the two must agree,
- * and taking it separately is just an opportunity for them not to.
+ * Bar count comes from the index's own timing: taking it separately is an opportunity to disagree.
  */
 export function initialArrangement(index: PassIndex): InitialArrangement {
   const barCount = index.timing.barCount;

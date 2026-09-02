@@ -3,47 +3,24 @@ import { type Timing, framesPerBar } from './timing.ts';
 /**
  * Playback position on the **edited** timeline (§3.6).
  *
- * Progress indexes on the slot — where a bar sits in the arrangement — never on the source
- * it came from (§1.1). A reordered arrangement still sweeps left to right.
+ * Progress indexes on the slot — where a bar sits in the arrangement — never on the source it
+ * came from (§1.1), so a reordered arrangement still sweeps left to right.
  *
- * ## The cycle
+ * **The unit is the cycle**: `origin → end of arrangement → wrap to slot 0 → back to origin`.
+ * Playback begins wherever the user tapped, so the natural period is a rotation; releasing at the
+ * arrangement end instead fires mid-cycle and reads as a flash.
  *
- * The unit of everything here is the cycle: `origin → end of arrangement → wrap to slot 0 →
- * back to origin`. Not "arrangement start to arrangement end". Playback begins wherever the
- * user tapped, so the natural period is a rotation, and §3.6's rule is explicit that
- * releasing at the arrangement end fires mid-cycle whenever playback began somewhere other
- * than slot 0 — which reads as a flash.
- *
- * ## Six rules, one comparison
- *
- * §3.6 lists six rules, each arrived at by fixing a visible defect. Four of them are the
- * same rule seen from different angles: index on **position within the cycle** rather than
- * on raw slot, and they stop being special cases.
+ * **Four of §3.6's six rules are one comparison.** Index on position within the cycle and gating
+ * to the origin, releasing at the wrap, holding while wrapped and releasing at the origin
+ * crossing all stop being special cases:
  *
  *     isPlayed(slot)  ⟺  cyclePosition(slot) < phase
  *
- * - *Gate activation to the origin* — a slot before the origin has a high cycle position, so
- *   at cycle start it is not below the phase. Falls out.
- * - *Release the gate at the wrap* — the phase keeps growing past it. Falls out.
- * - *Hold from the origin onward while wrapped* — the origin's cycle position is 0, still
- *   below the phase. Falls out.
- * - *Release at the origin crossing* — the phase wraps to 0 and everything releases in one
- *   frame. Falls out.
+ * The fifth — the release floor is per slot, never global — falls out of bar mode being a cycle of
+ * length 1. The sixth, selection clearing on stop, is UI state and lives in the caller.
  *
- * The fifth, *the release floor is per slot, never global*, falls out of bar mode being a
- * cycle of length 1: no other slot can enter the played set, so no other slot can flash.
- *
- * The sixth, *selection clears on stop*, is the caller's — selection is UI state, and this
- * module deliberately holds none.
- *
- * ## This module owns no clock
- *
- * The audio engine's frame position is authoritative (§2.4 — all layers derive from one
- * shared sample-frame anchor). A transport that ran its own timer would free-run against
- * the audible playhead: on a 40-second loop, 1% drift is 400 ms.
- *
- * The kit's `LR.Transport` does own a clock, and that is a fair simplification in a mockup
- * with no audio to sync to. It is not one here.
+ * **This module owns no clock.** The engine's frame position is authoritative (§2.4); a private
+ * timer free-runs against the audible playhead, and 1% on a 40-second loop is 400 ms.
  */
 export type TransportMode = 'idle' | 'bar' | 'loop';
 

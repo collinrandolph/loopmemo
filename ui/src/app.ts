@@ -12,11 +12,11 @@ import { demoLibrary } from './demo.ts';
 import { takeStore } from './takes.ts';
 
 /**
- * Shell for the UI pass: the screens over the real domain and a simulated engine.
+ * Shell for the UI pass: the screens, over the real domain and a sounding engine.
  *
- * Project state lives here as immutable values, replaced on every edit — the same shape the
- * domain functions already take and return, so nothing needs an adapter. The Library is the
- * entry point (§4.1); everything else is reached from a project.
+ * Project state lives here as immutable values, replaced on every edit — the same shape the domain
+ * functions take and return, so nothing needs an adapter. The Library is the entry point (§4.1);
+ * everything else is reached from a project.
  */
 let projects: readonly Project[] = demoLibrary();
 // The most recently modified, which is what the Library puts at the top and what a user
@@ -52,23 +52,16 @@ let current: Screen | undefined;
 let currentEngine: BackingEngine | undefined;
 
 /**
- * Captured audio, held here rather than on a screen or an engine.
- *
- * Both of those are rebuilt on every navigation, and a take has to outlive them — recording on
- * Playback and then opening Edit Layer to hunt through the passes is the app's central loop, and
- * it would be pointless if the audio went with the screen. It is deliberately not in the
- * `Project` either: a project is a value that gets copied on every edit, and copying it should
- * not mean copying tens of megabytes of samples.
+ * Captured audio, held here rather than on a screen or an engine — both are rebuilt on every
+ * navigation, and record-then-edit is the app's central loop. Not in the `Project` either: that is
+ * copied on every edit, and copying it should not mean copying tens of megabytes of samples.
  */
 const takes = takeStore();
 
 /**
- * The recording offset a new project starts on (§2.3).
- *
- * Latency is a property of the audio route rather than of the music, so the number that was
- * right for the last project is right for the next one on the same hardware. It is remembered
- * rather than made a global *setting*: a setting would be a second editor for one piece of
- * state, and what this is is a default.
+ * The recording offset a new project starts on (§2.3). Latency belongs to the audio route, not to
+ * the music, so last project's number is right for the next one on the same hardware. A default,
+ * not a global setting — a setting would be a second editor for one piece of state.
  */
 let lastLatencyOffsetSeconds = 0;
 
@@ -91,15 +84,12 @@ function replaceLayer(layer: Layer) {
 /**
  * The only way the route changes, and the only place a change can be refused.
  *
- * Navigating runs `current.destroy()` and then closes the `AudioContext`, which takes the
- * capture worklet with it — so leaving Playback mid-take does not pause the performance, it
- * deletes it. Every route out of a screen funnels through here (the tab bar included), so the
- * rule is stated once rather than repeated at each caller, where the next one added would
- * simply forget it.
+ * Navigating destroys the screen and closes the `AudioContext`, which takes the capture worklet
+ * with it, so leaving Playback mid-take deletes the performance rather than pausing it. Every
+ * route out funnels through here, the tab bar included, so the rule is stated once.
  *
- * A screen refusing is not an error to report: the controls that could get here are already
- * disabled, so reaching this is either the keyboard or a race, and in both cases the right
- * answer is that nothing happens.
+ * A refusal is not an error to report: the controls that reach here are already disabled, so this
+ * is a keyboard or a race, and nothing happening is the right answer.
  */
 function navigate(next: Route) {
   if (current?.takeInProgress?.()) return;
@@ -134,25 +124,17 @@ function render() {
     nav.appendChild(button);
   }
 
-  // Screens own a render loop and document-level listeners, so the outgoing one is torn down
-  // before the next is built. Without it every navigation leaves a pass running over nodes
-  // that are no longer on the page.
-  //
-  // The engine goes with it, and now that matters: an `AudioContext` is a real resource and
-  // browsers cap how many a page may hold, so leaking one per navigation used to be free and is
-  // not any more. Screen first, then engine — a screen's `destroy` stops the transport.
+  // Screens own a render loop and document listeners, so the outgoing one is torn down first, or
+  // every navigation leaves a pass running over detached nodes. The engine goes with it — an
+  // `AudioContext` is a capped resource. Screen first: its `destroy` stops the transport.
   current?.destroy();
   current = undefined;
   currentEngine?.destroy();
   host.innerHTML = '';
 
-  // One engine per mount, at the open project's capture rate, so frame arithmetic on the
-  // Playback and Edit screens is in the same units the domain computes in.
-  //
-  // A **sounding** engine, and it is the same `Engine` the simulated one implements — that type
-  // was written as the seam a real engine would replace, so this is the swap happening rather
-  // than a second path beside it. It plays the backing tracks it synthesises and the layers it
-  // has been given audio for; the demo projects have none, so those stay silent until recorded.
+  // One engine per mount, at the open project's capture rate, so frame arithmetic on the screens
+  // is in the units the domain computes in. It plays the backing it synthesises and the layers it
+  // has audio for; the demo projects have none, so those stay silent until recorded.
   const engine = audioEngine(QUALITY_SPEC[project.audioQuality].sampleRate);
   engine.setBacking(project.backing, projectTiming(project));
   // A fresh engine on every navigation, so it has to be told what the layers hold each time.
@@ -172,16 +154,10 @@ function render() {
       ? libraryScreen({
           projects,
           /**
-           * An engine loaded with the project about to be previewed.
-           *
-           * The Library is the one screen that plays something other than the open project, so
-           * the engine built above is loaded with the wrong one for every row but at most one.
-           * Reconfiguring is enough while the rate matches — a context cannot change its sample
-           * rate, so a project at the other quality needs a new one, and `Timing` computes every
-           * frame count at the project's rate rather than the device's.
-           *
-           * Stopped before it is reloaded: `setBacking` re-anchors a running engine on a tempo
-           * change, which would start the new project playing a beat before `start(0)` says so.
+           * An engine loaded with the project about to be previewed. Reconfiguring is enough while
+           * the rate matches; a context cannot change its sample rate, so the other quality needs
+           * a new one. Stopped first, because `setBacking` re-anchors a running engine on a tempo
+           * change and would start the new project a beat before `start(0)` says so.
            */
           engineFor(previewed) {
             const rate = QUALITY_SPEC[previewed.audioQuality].sampleRate;
@@ -265,9 +241,8 @@ function render() {
                   navigate({
                     screen: route.screen === 'settings' && route.mode === 'new' ? 'library' : 'playback',
                   }),
-                // The project actions, which used to live in the Library's per-row panel. Each
-                // arrives with pending edits already applied, so the screen persists what it is
-                // handed rather than re-deriving it.
+                // Each action arrives with pending edits already applied, so the shell persists
+                // what it is handed rather than re-deriving it.
                 onExport(next) {
                   replaceProject(next);
                   navigate({ screen: 'export', from: 'settings' });
@@ -293,9 +268,7 @@ function render() {
           : exportScreen({
               project,
               engine,
-              // Read off the project, so muting a backing track on the Playback screen reaches
-              // the export. These used to be hardcoded here — which meant the export always wrote
-              // both stems no matter what the user had muted.
+              // Read off the project, so muting a backing track on Playback reaches the export.
               backing: backingMixSources(project.backing),
               tracks: project.backing,
               takes,

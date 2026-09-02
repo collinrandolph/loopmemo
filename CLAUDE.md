@@ -66,10 +66,10 @@ platform is chosen and there is something that can build it.
 
 **`ui/src/audio.ts` makes the browser build audible, and that is allowed.** The deferral protects
 `src/domain` — pure, no platform APIs, so it survives whichever platform wins. `ui/` was always
-browser-specific and always disposable, and `sim.ts`'s `Engine` was written as *the seam a real
-engine replaces*, so a sounding engine implementing that same type is the substitution working
-rather than a second path beside it. It plays `backingSchedule()`; layers stay silent because
-there is no recorded audio to play. **Frames become seconds in exactly one function.**
+browser-specific and always disposable, and `engine.ts`'s `Engine` is *the seam a real engine
+replaces*, so a sounding engine implementing that type is the substitution working rather than a
+second path beside it. It plays `backingSchedule()` and the recorded layers.
+**Frames become seconds in exactly one function.**
 
 **`prototype/backing-tracks/` is where the synthesis decisions were made by ear**, and `audio.ts`
 is the port of it. Standalone, plain scripts, no build step; nothing imports it either way. Keep
@@ -137,11 +137,13 @@ owns the `down` flag, the `e.buttons === 0` bail that catches the missed release
 drag, and `consume()` to say the release was not a tap.
 
 **A screen owns its screen; everything reusable is beside it.** `playback.ts`, `edit-layer.ts`,
-`library.ts`, `export.ts` and `settings.ts` are the screens. `gesture.ts` (the press guard above), `controls.ts`
-(`swipeWheel`, `bindChips`), `icons.ts` (inline Lucide paths — take new ones from that set),
-`backing-rows.ts` (the two backing rows, which edit `project.backing` and report upward like a
-layer row) and `help.ts` are shared. **There are no tests over `ui/`** — only `src/domain` is
-covered, so a change here is verified by driving the browser.
+`library.ts`, `export.ts` and `settings.ts` are the screens. Shared: `gesture.ts` (the press guard
+above), `controls.ts` (`swipeWheel`, `bindChips`), `screen.ts` (`renderLoop`, `formatBytes`,
+`confirmPanel`, `annotationRow` — each of these had been written out per screen and drifted),
+`icons.ts` (inline Lucide paths — take new ones from that set), `backing-rows.ts` (the two backing
+rows, which edit `project.backing` and report upward like a layer row) and `help.ts`.
+**There are no tests over `ui/`** — only `src/domain` is covered, so a change here is verified by
+driving the browser.
 
 **`bindChips` delegates on the `.lr-chips` group, so no chip may call `stopPropagation`.** The EQ
 and Pan pickers did, and the consequence was quiet: the preset changed and the highlight stayed
@@ -184,10 +186,11 @@ mode bit remains, recording quality, because "does this project exist yet" is no
 `Project` can report about itself. **It deliberately has no backing pickers**: the Playback rows
 own those, and a second editor for one piece of state is the drift this codebase keeps undoing.
 
-**`ui/src/sim.ts` is the fake part, and that is the test.** It provides a frame counter
-and synthetic waveform peaks — exactly what a real engine provides. If a screen ever needs
-something from it that a real audio engine could not give, the platform-bound surface has
-grown past what the deferral assumed, and that is worth stopping for.
+**`ui/src/demo.ts` is the only invented data left**, and that is the test. It is the fixture
+shelf plus `amp`, the synthetic peaks that stand in for the demo projects' missing audio; a real
+take draws its own through `peaks.ts`. `engine.ts` holds the seam itself — if a screen ever needs
+something from an engine that a real one could not give, the platform-bound surface has grown
+past what the deferral assumed, and that is worth stopping for.
 
 **No build step and no runtime dependencies.** Node 22.6+ runs the TypeScript directly by
 stripping types, so `tsconfig.json` sets `erasableSyntaxOnly` — enums, namespaces and
@@ -468,16 +471,13 @@ lines, `recorder.ts` and `effects-chain.ts` not much more.
 there is a long-lived queued object. An `AudioBufferSourceNode` is one-shot, so each segment
 gets its own and overlap is free. It returns on a platform without that property.
 
+- **Mid-bar splice**, through `spliceCurrentBar`, so a swipe is heard on the bar it was made on.
+- **The recording offset**, applied at scheduling — see below.
+
 Still owed:
 
-- **Latency compensation, which is not built.** `recorder.ts` computes `Capture.startFrame` and
-  **nothing reads it** — only its own sign test does — so setting `latencyFrames` to any value
-  changes nothing audible. This is exactly the "computed and then discarded" trap
-  `docs/platform-decision.md` records from the first attempt at this app, and it was described here
-  as done when it was half done. See below for what replaces it.
 - **Beat-sized segments**, so the committed horizon stays short and a splice is never far
   behind the gesture. Currently one bar at a time.
-- **Mid-bar splice.** `splice()` exists and nothing calls it.
 - **Nothing on the render thread** — no allocation, no locks, no file I/O. The worklet holds
   to this; the scheduler runs on the main thread and allocates per bar, which a browser
   tolerates and a phone may not.

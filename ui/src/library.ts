@@ -16,45 +16,33 @@ import { formatBytes, renderLoop } from './screen.ts';
 
 const THUMB_LINES = 26; // enough to read a shape at 84px, few enough to stay legible
 /**
- * Lane height, in px. Six rather than the kit's five, and built heights are snapped **even**,
- * because `paint` runs every line through `snapEven` — which rounds to even and would round a
- * 3px line up to 4 the moment a preview started, popping every lane taller. Even at rest, even
- * while playing, and `playScale(0)` is 1, so the first painted frame is identical to the
- * unplayed one. Six leaves three levels where five leaves two.
+ * Lane height, in px. Six, and built heights are snapped **even**: `paint` runs every line through
+ * `snapEven`, so an odd height would round up the moment a preview started and pop every lane
+ * taller. Six also leaves three levels where five leaves two.
  */
 const THUMB_HEIGHT = 6;
 
 /**
- * Project Library (§4.1) — the app's entry point.
+ * Project Library (§4.1) — the app's entry point, and a list you open a project from. The project
+ * actions live on `settings.ts`, so a row here carries no second control.
  *
- * **The thumbnail is the progress display.** One `thumb` lane per recorded layer, each in that
- * layer's `ramp.slice`, so a project is recognisable by its colour signature and stripe count
- * before the name is read — and playing a row recedes its lines rather than putting a separate
- * progress bar over the artwork. The size readout swaps to a position readout while playing, so
- * the row does not change width.
+ * **The thumbnail is the progress display.** One `thumb` lane per recorded layer in that layer's
+ * `ramp.slice`, so a project is recognisable by its colour signature and stripe count before the
+ * name is read, and playing a row recedes its lines rather than covering the artwork. The size
+ * readout swaps to a position readout while playing, so the row does not change width.
  *
- * **Preview is a rendered mix, not the scheduling engine.** §4.1 is explicit: the list may show
- * dozens of projects and standing up seven players per row to audition a sketch is wasteful. The
- * simulated engine here is one frame counter for the whole screen, which is the same shape.
- *
- * **Destructive actions confirm in place and state the outcome.** Compress shows the real
- * projection, because a projected saving is the entire reason to do it and a generic prompt
- * hides the only fact that would inform the decision.
+ * **One preview at a time**, on one engine — §4.1 rules out standing up players per row.
  */
 export function libraryScreen(opts: {
   projects: readonly Project[];
   /**
    * An engine already loaded with `project` and matched to its capture rate.
    *
-   * **This screen is the only one that plays a project other than the open one**, which is why
-   * it asks for an engine per preview instead of being handed the shell's. The shell's is
-   * configured for whatever project is open, so a row's play button used to start it and hear
-   * that project — a list of seven sketches previewing as one.
-   *
-   * It is a callback rather than a constructor because the sample rate is the project's, not the
-   * device's, and a list holds both qualities: a 48 kHz project previewed on a 44.1 kHz context
-   * runs its layers 8.8% fast against its own drums. The shell owns engine lifetime, so the
-   * decision to reuse or rebuild belongs there.
+   * **This is the only screen that plays a project other than the open one**, so it asks per
+   * preview rather than taking the shell's — which is loaded with whatever is open, and would
+   * make seven sketches preview as one. A callback rather than a constructor because a context
+   * cannot change sample rate and the list holds both qualities, and the shell owns engine
+   * lifetime.
    */
   engineFor(project: Project): BackingEngine;
   onOpen(id: string): void;
@@ -70,11 +58,8 @@ export function libraryScreen(opts: {
   /** The engine the current preview is running on; whichever project it was built for. */
   let engine: BackingEngine | undefined;
   /**
-   * Seconds, not frames. Every other screen works in the open project's frames because that is
-   * what the domain computes in — but this list holds projects at both capture rates, and the row
-   * being previewed decides which. A duration is the same number either way, so the preview
-   * clock converts once through the engine's own rate and cannot read a 48k project on a 44.1k
-   * scale.
+   * Seconds, not frames: the list holds projects at both capture rates and the previewed row
+   * decides which, so the clock converts once through the engine's own rate.
    */
   let loopSecondsNow = 1;
 
@@ -94,9 +79,8 @@ export function libraryScreen(opts: {
   const listEl = el('div', 'lr-rows');
 
   /**
-   * From the rows, not from `projects` — that is the snapshot the screen was built with, and a
-   * compress or a delete moves both numbers. §2.7 makes storage "visible and user-managed", so
-   * a device total that does not answer the action just taken is the one thing it must not be.
+   * From the rows, not the `projects` snapshot the screen was built with. §2.7 makes storage
+   * "visible and user-managed", so the total has to answer the action just taken.
    */
   function paintStorage() {
     const total = rows.reduce((n, r) => n + sizeProjection(r.project).uncompressedBytes, 0);
@@ -144,11 +128,8 @@ export function libraryScreen(opts: {
         if (!layerHasRecording(layer)) continue;
         const lane = LR.Waveform({ variant: 'thumb' });
         const [from, to] = ramp.slice(layer.index, LAYER_COUNT);
-        // Real pixel heights, not the mockup's percentages. `paint` scales a line against the
-        // height it was built with, so a lane built at 0 and restyled afterwards divides by
-        // zero and emits `scaleY(Infinity)` — which the browser drops, leaving the preview
-        // looking like a dead render loop. The mockup can use percentages because nothing
-        // there animates these lanes.
+        // Real pixel heights, not the mockup's percentages: `paint` scales against the height a
+        // line was built with, and a lane built at 0 emits `scaleY(Infinity)`.
         lane.build(THUMB_LINES, (i, u) => ({
           height: motion.snapEven(amp(layer.index, seed, i, THUMB_LINES) * THUMB_HEIGHT, 2),
           rgb: ramp.rgb(from + (to - from) * u),
@@ -171,9 +152,7 @@ export function libraryScreen(opts: {
 
     }
 
-    // The whole row opens the project. There is no second action on a row any more — export,
-    // bounce, compress and delete moved to the project's own settings screen, so a Projects row
-    // is a list entry rather than a control surface.
+    // The whole row opens the project; there is no second action on it.
     head.addEventListener('click', (e) => {
       if ((e.target as HTMLElement).closest('.lr-play')) return;
       opts.onOpen(row.project.id);
@@ -183,9 +162,6 @@ export function libraryScreen(opts: {
     rebuild();
     return row;
   }
-
-  // **No edit helpers here any more.** Replacing, inserting and removing a project all moved
-  // out with the actions that called them; this screen lists projects and opens one.
 
   // --------------------------------------------------------------- playback --
   /** Exclusive, matching the arming rule: starting one stops another (§4.1). */
@@ -201,11 +177,9 @@ export function libraryScreen(opts: {
       engine?.stop();
       return;
     }
-    // **Loaded with this row's project, not with whatever was queued last.** The engine holds a
-    // snapshot and nothing re-reads project state on its own, so a preview that only calls
-    // `start` plays the last project the engine was told about — which on this screen is the one
-    // the shell happens to have open, never the row that was tapped. Same trap the Playback and
-    // Edit screens hit three times; here it was a whole screen of it.
+    // **Loaded with this row's project, not whatever was queued last.** The engine holds a
+    // snapshot and re-reads nothing on its own, so a preview that only calls `start` plays the
+    // project the shell happens to have open rather than the row that was tapped.
     const project = rows.find((r) => r.project.id === id)!.project;
     loopSecondsNow = loopSeconds(projectTiming(project));
     engine = opts.engineFor(project);
