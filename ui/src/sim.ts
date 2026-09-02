@@ -91,6 +91,50 @@ export function simSession(id: string, frames: number): RecordingSession {
  * `lastModified` is spread across a week because §4.1 sorts on it, and a list that is already
  * in order cannot show that the sort works.
  */
+/**
+ * A prepared, empty project — settings for a song being written, kept so they outlive a reload.
+ *
+ * **Unlike everything else in this file it simulates nothing.** The other demo projects exist to
+ * exercise the screens: bar counts chosen to walk the tile-fit behaviour, a layer shaped to carry
+ * a pass gap. This one has no sessions at all, because it is a starting point rather than a
+ * fixture — the layers are meant to be filled by recording into them.
+ *
+ * 84 BPM, 24 bars: eight bars of verse at a line each, then the hook twice at two bars a line,
+ * which is where it landed after being sung against the bed rather than counted on paper.
+ *
+ * The chord bed is **unmuted**, which `defaultBacking` never is. The default is muted because a
+ * new project has nothing to play against and the drums are the thing that gives it a pulse
+ * (§5.1 #8). Here the progression is the point — Am7 · Fmaj7 · Cmaj7 · G, low, so it sits under a
+ * voice rather than in it, and ending on the unresolved G so the loop comes round rather than
+ * settling.
+ */
+function preparedSong(): Project {
+  return createProject({
+    id: 'everything-but-the-light',
+    name: 'Everything But the Light',
+    bpm: 84,
+    barCount: 24,
+    quality: 'standard',
+    now: '2026-09-01T12:00:00.000Z',
+    backing: {
+      drums: { patternId: 'boom-bap', kitId: 'lofi', level: 0.7, muted: false },
+      chords: {
+        chordPatternId: 'sparse-half-note',
+        tone: 'rhodes',
+        octave: -1,
+        slots: [
+          { letter: 'A', accidental: 'natural', quality: 'min7' },
+          { letter: 'F', accidental: 'natural', quality: 'maj7' },
+          { letter: 'C', accidental: 'natural', quality: 'maj7' },
+          { letter: 'G', accidental: 'natural', quality: 'major' },
+        ],
+        level: 0.55,
+        muted: false,
+      },
+    },
+  });
+}
+
 export function demoLibrary(): Project[] {
   const specs: {
     id: string;
@@ -139,7 +183,12 @@ export function demoLibrary(): Project[] {
 
   // Deliberately unsorted here: the screen sorts, and handing it a sorted list would let a
   // broken sort look correct.
-  return [built[3]!, demoProject(), built[0]!, built[4]!, built[1]!, built[2]!].map(richLayer);
+  // `preparedSong` is not passed through `richLayer` for a reason worth keeping: that function
+  // returns early on a layer with no sessions, so it would be a no-op today, but the moment it
+  // stopped being one it would start writing simulated takes into a project meant to be empty.
+  return [built[3]!, demoProject(), built[0]!, built[4]!, built[1]!, built[2]!]
+    .map(richLayer)
+    .concat(preparedSong());
 }
 
 /**
