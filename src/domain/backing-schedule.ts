@@ -146,6 +146,33 @@ export function chordBarOnsets(
   );
 }
 
+/** A chord voice never rings shorter than this, however dense the pattern. */
+const CHORD_RING_FLOOR_SECONDS = 0.15;
+/** Released this far before the next onset, so the two do not overlap. */
+const CHORD_RING_GAP_SECONDS = 0.05;
+
+/**
+ * How long each chord onset may ring, in seconds — capped to the gap before the next onset,
+ * wrapping past the bar line back to the first.
+ *
+ * Seconds because a ring time is a physical duration, like every other envelope length here.
+ *
+ * §6.1 has not settled the overlap policy: chords cap, the hat chokes its predecessor, and kick
+ * and snare do neither. The floor also means the cap stops holding on the densest pattern above
+ * roughly 150 BPM. Whichever policy wins should replace all three.
+ */
+export function chordRingSeconds(bar: BackingBar, t: Timing): readonly number[] {
+  const perBar = framesPerBar(t);
+  return bar.chords.map((onset, i) => {
+    const next = bar.chords[(i + 1) % bar.chords.length]!;
+    const gap =
+      i === bar.chords.length - 1
+        ? perBar - onset.frameOffset + next.frameOffset
+        : next.frameOffset - onset.frameOffset;
+    return Math.max(CHORD_RING_FLOOR_SECONDS, gap / t.sampleRate - CHORD_RING_GAP_SECONDS);
+  });
+}
+
 /**
  * One bar of backing, for the given arrangement slot.
  *

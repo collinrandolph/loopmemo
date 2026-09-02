@@ -11,7 +11,8 @@ import { loopSeconds } from '../../src/domain/timing.ts';
 import type { BackingEngine } from './audio.ts';
 import { helpControl } from './help.ts';
 import { type WaveNode, LR, el, motion, ramp } from './kit.ts';
-import { amp } from './sim.ts';
+import { amp } from './demo.ts';
+import { formatBytes, renderLoop } from './screen.ts';
 
 const THUMB_LINES = 26; // enough to read a shape at 84px, few enough to stay legible
 /**
@@ -99,7 +100,7 @@ export function libraryScreen(opts: {
    */
   function paintStorage() {
     const total = rows.reduce((n, r) => n + sizeProjection(r.project).uncompressedBytes, 0);
-    storage.textContent = `${rows.length} project${rows.length === 1 ? '' : 's'} · ${mb(total)}`;
+    storage.textContent = `${rows.length} project${rows.length === 1 ? '' : 's'} · ${formatBytes(total)}`;
   }
 
   // -------------------------------------------------------------------- rows --
@@ -166,7 +167,7 @@ export function libraryScreen(opts: {
         `<div class="p-meta">${p.bpm} BPM · ${p.barCount} bars · ${layers} layer${layers === 1 ? '' : 's'}` +
         // §2.7: pass count drives size, not layer count, which is why the row shows it.
         ` · ${passes} pass${passes === 1 ? '' : 'es'} · ${modified(p.lastModified)}</div>`;
-      right.querySelector('.p-size')!.textContent = mb(sizeProjection(p).uncompressedBytes);
+      right.querySelector('.p-size')!.textContent = formatBytes(sizeProjection(p).uncompressedBytes);
 
     }
 
@@ -212,10 +213,7 @@ export function libraryScreen(opts: {
   }
 
   const spent = ramp.tokenRGB('--lr-spent');
-  let alive = true;
-  const step = () => {
-    if (!alive) return;
-    requestAnimationFrame(step);
+  const loop = renderLoop(() => {
     if (playingId === null || !engine) return;
     const row = rows.find((r) => r.project.id === playingId);
     if (!row) return;
@@ -230,8 +228,7 @@ export function libraryScreen(opts: {
       for (let i = 0; i < lines.length; i++) lane.paint(lines[i]!, head - i, 1, spent, 2);
     }
     row.time.textContent = LR.fmtTime(position);
-  };
-  requestAnimationFrame(step);
+  });
 
   const help = helpControl({
     title: 'Projects',
@@ -247,7 +244,7 @@ export function libraryScreen(opts: {
   return {
     node: root,
     destroy() {
-      alive = false;
+      loop.stop();
       help.destroy();
       // Stop, not destroy: the shell owns the engine's lifetime and closes it on the way out.
       engine?.stop();
@@ -256,9 +253,6 @@ export function libraryScreen(opts: {
 }
 
 
-function mb(bytes: number): string {
-  return `${(bytes / 1e6).toFixed(1)} MB`;
-}
 
 /**
  * Relative, because §4.1 sorts on it and "3 days ago" is what the sort means.

@@ -12,9 +12,10 @@ import { type Project, projectTiming } from '../../src/domain/project.ts';
 import { loopSeconds } from '../../src/domain/timing.ts';
 import { bindChips } from './controls.ts';
 import { LR, el } from './kit.ts';
-import type { Engine } from './sim.ts';
+import type { Engine } from './engine.ts';
 import { renderExport } from './export-files.ts';
 import { chooseDestination, zip } from './save.ts';
+import { formatBytes, renderLoop } from './screen.ts';
 import type { TakeStore } from './takes.ts';
 
 /**
@@ -347,7 +348,7 @@ export function exportScreen(opts: {
       const n = alone.files.length;
       t.count.innerHTML =
         `<div class="export-files">${n} file${n === 1 ? '' : 's'}</div>` +
-        `<div class="export-size">${mb(alone.totalBytes)}</div>`;
+        `<div class="export-size">${formatBytes(alone.totalBytes)}</div>`;
     }
 
     const plan = exportPlan(project, selection, { format, mp3Bitrate: bitrate, backing });
@@ -364,41 +365,32 @@ export function exportScreen(opts: {
               // depending on how its layer is panned, and that is also why two of them can
               // differ in size.
               `<span class="export-ch">${f.channels === 2 ? 'stereo' : 'mono'}</span>` +
-              `<span class="export-bytes">${mb(f.bytes)}</span></div>`,
+              `<span class="export-bytes">${formatBytes(f.bytes)}</span></div>`,
           )
           .join('')
       : '<div class="lr-note">Nothing selected.</div>';
 
     const n = plan.files.length;
     shareBtn.disabled = !isExportable(selection);
-    shareBtn.textContent = n ? `Share ${n} file${n === 1 ? '' : 's'} · ${mb(plan.totalBytes)}` : 'Share';
+    shareBtn.textContent = n ? `Share ${n} file${n === 1 ? '' : 's'} · ${formatBytes(plan.totalBytes)}` : 'Share';
   }
 
   paint();
 
   // ---------------------------------------------------------------- render --
-  let alive = true;
-  const step = () => {
-    if (!alive) return;
-    requestAnimationFrame(step);
+  const loop = renderLoop(() => {
     const elapsed = playing ? (opts.engine.frame() / opts.engine.sampleRate) % seconds : 0;
     progress.set(elapsed / seconds);
     const bar = Math.min(project.barCount, Math.floor((elapsed / seconds) * project.barCount) + 1);
     position.textContent = `Bar ${bar} · ${LR.fmtTime(elapsed)} / ${LR.fmtTime(seconds)}`;
-  };
-  requestAnimationFrame(step);
+  });
 
   return {
     node: root,
     destroy() {
-      alive = false;
+      loop.stop();
       document.removeEventListener('keydown', onKey);
       opts.engine.stop();
     },
   };
-}
-
-function mb(bytes: number): string {
-  if (bytes < 1e6) return `${Math.max(1, Math.round(bytes / 1e3))} KB`;
-  return `${(bytes / 1e6).toFixed(1)} MB`;
 }

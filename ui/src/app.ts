@@ -8,7 +8,7 @@ import { el } from './kit.ts';
 import { libraryScreen } from './library.ts';
 import { playbackScreen } from './playback.ts';
 import { projectSettingsScreen } from './settings.ts';
-import { demoLibrary } from './sim.ts';
+import { demoLibrary } from './demo.ts';
 import { takeStore } from './takes.ts';
 
 /**

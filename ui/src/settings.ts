@@ -23,7 +23,8 @@ import { bindChips } from './controls.ts';
 import { helpControl } from './help.ts';
 import { LR, el } from './kit.ts';
 import type { BackingEngine } from './audio.ts';
-import { simSession } from './sim.ts';
+import { simSession } from './demo.ts';
+import { annotationRow, confirmPanel, formatBytes } from './screen.ts';
 import type { TakeStore } from './takes.ts';
 
 /**
@@ -220,20 +221,6 @@ export function projectSettingsScreen(opts: {
       'you like.',
   );
 
-  /**
-   * Prose that belongs to the row above it, indented into the same column as that row's control.
-   *
-   * The empty label is a **spacer, not a missing label** — it is how `playback.ts`'s empty-layer
-   * note lines up too. Aligning by participating in the row layout costs nothing and cannot drift;
-   * the `padding-left` this replaces was a hardcoded copy of the label column that was wrong at
-   * both breakpoints, because the row gap is 8px on mobile and 10px above it.
-   */
-  function annotate(node: HTMLElement): HTMLElement {
-    const row = el('div', 'lr-panel-row setting-annotation', '<span class="lr-panel-label"></span>');
-    row.appendChild(node);
-    return row;
-  }
-
   // ------------------------------------------------------- recording offset --
   /**
    * The recording offset (§2.3): how far earlier a take plays than it arrived.
@@ -341,21 +328,8 @@ export function projectSettingsScreen(opts: {
     return b;
   }
 
-  /** In place, and stating the outcome — never a generic prompt (§4.1). */
-  function ask(text: string, label: string, danger: boolean, run: () => void) {
-    confirmBox.innerHTML =
-      `<div class="confirm-text">${text}</div>` +
-      `<button class="lr-btn ${danger ? 'lr-btn--danger' : 'lr-btn--primary'}" data-yes>${label}</button>` +
-      '<button class="lr-btn" data-no>Cancel</button>';
-    actionsBlock.classList.add('is-confirming');
-    confirmBox.querySelector('[data-yes]')!.addEventListener('click', () => {
-      actionsBlock.classList.remove('is-confirming');
-      run();
-    });
-    confirmBox.querySelector('[data-no]')!.addEventListener('click', () => {
-      actionsBlock.classList.remove('is-confirming');
-    });
-  }
+  // The question replaces the four buttons; Cancel just puts them back, which the class does.
+  const ask = confirmPanel(actionsBlock, confirmBox, () => {});
 
   function askCompress() {
     const p = commit();
@@ -374,8 +348,8 @@ export function projectSettingsScreen(opts: {
     }
     const { uncompressedBytes, compressedBytes } = plan.projection;
     ask(
-      `Compress <b>${p.name}</b>? Unused passes are discarded — <b>${mb(uncompressedBytes)} → ` +
-        `${mb(compressedBytes)}</b>. The kept loop becomes Pass 1; bars stay editable and you can ` +
+      `Compress <b>${p.name}</b>? Unused passes are discarded — <b>${formatBytes(uncompressedBytes)} → ` +
+        `${formatBytes(compressedBytes)}</b>. The kept loop becomes Pass 1; bars stay editable and you can ` +
         'record new passes at any time.',
       'Compress',
       false,
@@ -431,7 +405,7 @@ export function projectSettingsScreen(opts: {
     const passes = projectTotalPasses(p);
     ask(
       `Delete <b>${p.name}</b>? ${passes} recorded pass${passes === 1 ? '' : 'es'} and ` +
-        `${mb(sizeProjection(p).uncompressedBytes)} go with it. This cannot be undone.`,
+        `${formatBytes(sizeProjection(p).uncompressedBytes)} go with it. This cannot be undone.`,
       'Delete',
       true,
       () => {
@@ -478,12 +452,12 @@ export function projectSettingsScreen(opts: {
     barsRow,
     el('div', 'setting-gap'),
     qualityRow,
-    annotate(qualityFigure),
+    annotationRow(qualityFigure),
     el('div', 'setting-gap'),
     latencyRow,
-    annotate(latencyNote),
+    annotationRow(latencyNote),
     el('div', 'setting-gap'),
-    annotate(lockNote),
+    annotationRow(lockNote),
     ...(creating ? [] : [el('div', 'setting-gap'), actionsBlock]),
   );
 
@@ -598,9 +572,4 @@ export function projectSettingsScreen(opts: {
       opts.engine.stop();
     },
   };
-}
-
-function mb(bytes: number): string {
-  if (bytes < 1e6) return `${Math.max(1, Math.round(bytes / 1e3))} KB`;
-  return `${(bytes / 1e6).toFixed(1)} MB`;
 }

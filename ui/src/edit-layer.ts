@@ -34,9 +34,10 @@ import { helpControl } from './help.ts';
 import { loopFrames } from '../../src/domain/timing.ts';
 import type { BackingEngine } from './audio.ts';
 import { type Rgb, type WaveNode, LR, clamp01, el, motion, ramp, sizing } from './kit.ts';
-import { amp, simSession } from './sim.ts';
+import { amp, simSession } from './demo.ts';
 import type { TakeStore } from './takes.ts';
 import { barAmplitude } from './peaks.ts';
+import { confirmPanel, formatBytes, renderLoop } from './screen.ts';
 
 const BARS_PER_ROW = 4;
 const LINES_PER_BAR = 16;
@@ -193,15 +194,10 @@ export function editLayerScreen(opts: {
     else paintOps();
   });
 
-  function askOps(text: string, label: string, run: () => void) {
-    drawer.innerHTML =
-      `<div class="confirm-text">${text}</div>` +
-      `<button class="lr-btn lr-btn--danger" data-yes>${label}</button>` +
-      '<button class="lr-btn" data-no>Cancel</button>';
-    drawer.classList.add('is-confirming');
-    drawer.querySelector('[data-yes]')!.addEventListener('click', run);
-    drawer.querySelector('[data-no]')!.addEventListener('click', paintOps);
-  }
+  // The drawer is both the host and the box: the two actions are replaced by the question, and
+  // Cancel redraws them.
+  const confirm = confirmPanel(drawer, drawer, paintOps);
+  const askOps = (text: string, label: string, run: () => void) => confirm(text, label, true, run);
 
   function paintOps() {
     drawer.classList.remove('is-confirming');
@@ -223,7 +219,7 @@ export function editLayerScreen(opts: {
       }
       askOps(
         `Compress <b>${name}</b>? ${saving.discarded} unused pass${saving.discarded === 1 ? '' : 'es'} ` +
-          `discarded, <b>${mb(saving.bytes)}</b> freed. The edited loop becomes Pass 1 and stays ` +
+          `discarded, <b>${formatBytes(saving.bytes)}</b> freed. The edited loop becomes Pass 1 and stays ` +
           'editable; the other layers are untouched.',
         'Compress',
         () => {
@@ -539,22 +535,7 @@ export function editLayerScreen(opts: {
   document.addEventListener('keydown', onKey);
 
   // ------------------------------------------------------------------ render --
-  // `LR.loop` cannot be cancelled, and this screen is rebuilt on every navigation — without a
-  // stop, each visit leaves a render pass running forever over detached nodes.
-  let alive = true;
-  function loop(fn: (dt: number) => void) {
-    let last = performance.now();
-    const step = (now: number) => {
-      if (!alive) return;
-      const dt = Math.min(now - last, 50); // clamp after a backgrounded tab
-      last = now;
-      fn(dt);
-      requestAnimationFrame(step);
-    };
-    requestAnimationFrame(step);
-  }
-
-  loop((dt) => {
+  const frames = renderLoop((dt) => {
     const head = playheadAt(transport, frameNow(), t);
 
     // A bar ending snaps that slot to fully spent; a completed cycle releases the lot. The
@@ -732,8 +713,10 @@ export function editLayerScreen(opts: {
   window.addEventListener('resize', onResize);
 
   let observer: ResizeObserver | undefined;
+  // Measuring needs the nodes on the page; the guard is for a screen destroyed before that.
+  let mounted = true;
   requestAnimationFrame(() => {
-    if (!alive) return;
+    if (!mounted) return;
     // `refresh` first: it fills the header, and until it does the header is 28px rather than 72.
     // Measuring the grid's available height against an empty header hands it 44 phantom pixels,
     // which is a whole row's worth of tile at 32 bars — the grid then overflows the screen the
@@ -751,7 +734,8 @@ export function editLayerScreen(opts: {
   return {
     node: root,
     destroy() {
-      alive = false;
+      mounted = false;
+      frames.stop();
       window.removeEventListener('resize', onResize);
       observer?.disconnect();
       document.removeEventListener('keydown', onKey);
@@ -759,10 +743,6 @@ export function editLayerScreen(opts: {
       opts.engine.stop();
     },
   };
-}
-
-function mb(bytes: number): string {
-  return bytes < 1e6 ? `${Math.max(1, Math.round(bytes / 1e3))} KB` : `${(bytes / 1e6).toFixed(1)} MB`;
 }
 
 /** The layout viewport — what CSS sizes against. See `syncTileHeight`. */

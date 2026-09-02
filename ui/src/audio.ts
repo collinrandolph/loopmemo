@@ -5,7 +5,11 @@ import {
   chordTone,
   drumKit,
 } from '../../src/domain/backing.ts';
-import { type BackingBar, backingSchedule } from '../../src/domain/backing-schedule.ts';
+import {
+  type BackingBar,
+  backingSchedule,
+  chordRingSeconds,
+} from '../../src/domain/backing-schedule.ts';
 import type { PassIndex } from '../../src/domain/pass-index.ts';
 import {
   type Layer,
@@ -29,7 +33,7 @@ import {
 import { type Capture, MUSIC_CONSTRAINTS, type Recorder, createRecorder } from './recorder.ts';
 import type { TakeStore } from './takes.ts';
 import { type Transport, playLoopFrom, playheadAt, slotAt } from '../../src/domain/transport.ts';
-import type { Engine } from './sim.ts';
+import type { Engine } from './engine.ts';
 
 /**
  * A **sounding** engine for the browser build: the backing tracks, synthesised live.
@@ -684,29 +688,6 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
   };
 
   // -------------------------------------------------------------- schedule --
-  /**
-   * How long each chord onset may ring before the next one in the same bar, wrapping past the bar
-   * line back to the first.
-   *
-   * **This is the prototype's overlap rule, and §6.1 has not settled it.** Capping to the gap
-   * makes cross-onset pile-up structurally impossible for chords, which is what stopped the
-   * cumulative screech in the prototype — but drums are not capped (the hat chokes instead, and
-   * kick and snare do neither), and the floor below means the cap stops holding above ~150 BPM on
-   * the densest pattern. Recorded rather than quietly fixed: whichever policy wins should be one
-   * rule, decided once, not three that happen to coexist here.
-   */
-  function chordRingCaps(bar: BackingBar, t: Timing): number[] {
-    const fpb = framesPerBar(t);
-    return bar.chords.map((onset, i) => {
-      const next = bar.chords[(i + 1) % bar.chords.length]!;
-      const gap =
-        i === bar.chords.length - 1
-          ? fpb - onset.frameOffset + next.frameOffset
-          : next.frameOffset - onset.frameOffset;
-      return Math.max(0.15, gap / t.sampleRate - 0.05);
-    });
-  }
-
   /** The one place frames become seconds. Project frames, so the ratio is real time. */
   function frameToTime(frame: number): number {
     return anchorTime! + (frame - originFrame) / sampleRate;
@@ -866,7 +847,8 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
   function rebuild() {
     if (!backing || !timing) return;
     bars = backingSchedule(backing, timing);
-    chordCaps = bars[0] ? chordRingCaps(bars[0], timing) : [];
+    // Every bar carries the same chord onsets — the pattern is one bar — so one bar decides them.
+    chordCaps = bars[0] ? chordRingSeconds(bars[0], timing) : [];
     applyLevels();
   }
 

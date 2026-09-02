@@ -26,7 +26,8 @@ import { type RecordState, type WaveNode, LR, el, motion, ramp, sizing } from '.
 import { SETTINGS_ICON } from './icons.ts';
 import { eqIconSvg, panIconSvg } from './preset-icons.ts';
 import { backingRows } from './backing-rows.ts';
-import { amp } from './sim.ts';
+import { amp } from './demo.ts';
+import { renderLoop } from './screen.ts';
 import { barAmplitude, computePeaks, drawnHeight } from './peaks.ts';
 import type { BackingEngine } from './audio.ts';
 import { type TakeStore, takeUrl } from './takes.ts';
@@ -797,20 +798,7 @@ export function playbackScreen(opts: {
   }
 
   // ------------------------------------------------------------------ render --
-  let alive = true;
-  function loopFrame(fn: (dt: number) => void) {
-    let last = performance.now();
-    const step = (now: number) => {
-      if (!alive) return;
-      const dt = Math.min(now - last, 50);
-      last = now;
-      fn(dt);
-      requestAnimationFrame(step);
-    };
-    requestAnimationFrame(step);
-  }
-
-  loopFrame((dt) => {
+  const frames = renderLoop((dt) => {
     const frame = frameNow();
     const progress = ((frame % loop) + loop) % loop / loop;
 
@@ -909,8 +897,10 @@ export function playbackScreen(opts: {
 
   paintTitle();
   let observer: ResizeObserver | undefined;
+  // Measuring needs the nodes on the page; the guard is for a screen destroyed before that.
+  let mounted = true;
   requestAnimationFrame(() => {
-    if (!alive) return;
+    if (!mounted) return;
     syncLabelWidth();
     syncSizing();
     buildLanes();
@@ -934,7 +924,8 @@ export function playbackScreen(opts: {
      */
     takeInProgress: () => capturingIndex() >= 0,
     destroy() {
-      alive = false;
+      mounted = false;
+      frames.stop();
       observer?.disconnect();
       document.removeEventListener('keydown', onKey);
       document.removeEventListener('pointerdown', onPointerDownAnywhere);

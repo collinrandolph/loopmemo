@@ -11,59 +11,18 @@ import {
 import { framesPerBar, loopFrames } from '../../src/domain/timing.ts';
 
 /**
- * The simulated audio engine and a project to look at.
+ * The fixtures — projects to look at, and synthetic waveform peaks for the ones with no audio.
  *
- * **This file is the only fake part of the UI, and that is the point.** Everything else
- * imports `src/domain` unchanged. The real audio engine replaces exactly this surface — a
- * frame position and some sample data — so if a screen ever needs something from here that a
- * real engine could not provide, the platform-bound surface has grown and the deferral is
- * failing (see the platform section of CLAUDE.md).
+ * **This is the only invented data in the UI.** Everything else runs on the real domain and the
+ * real engine. A recorded take draws its own peaks (`peaks.ts`); `amp` covers the demo shelf,
+ * whose sessions hold frame counts and nothing else.
  */
 
 /**
- * A frame counter, which is all transport asks of the engine.
+ * Sample amplitude, keyed to the **global** line index so the envelope flows across bar joins.
  *
- * §2.4's divergence 1 says transport owns no clock because a software clock free-runs against
- * the audible playhead. In simulation there is no audible playhead, so this *is* the engine —
- * but it stays on the engine's side of the line so the substitution is a swap, not a rewrite.
- */
-export type Engine = {
-  /** A real engine runs at the device rate and exposes it; screens that need seconds divide. */
-  readonly sampleRate: number;
-  frame(): number;
-  running(): boolean;
-  start(atFrame: number): void;
-  stop(): void;
-};
-
-export function simulatedEngine(sampleRate: number): Engine {
-  let origin = 0;
-  let startedAt: number | undefined;
-
-  return {
-    sampleRate,
-    frame: () =>
-      startedAt === undefined
-        ? origin
-        : origin + Math.round(((performance.now() - startedAt) / 1000) * sampleRate),
-    running: () => startedAt !== undefined,
-    start(atFrame) {
-      origin = atFrame;
-      startedAt = performance.now();
-    },
-    stop() {
-      origin = this.frame();
-      startedAt = undefined;
-    },
-  };
-}
-
-/**
- * Sample amplitude, as the mockup generates it: an envelope keyed to the **global** line
- * index so it flows across bar joins rather than restarting each bar.
- *
- * Keyed on the *source* bar, never the slot — swiping a slot onto another pass has to redraw
- * it with that pass's material, which is the whole point of the two indices (§1.1).
+ * Keyed on the *source* bar, never the slot — swiping a slot onto another pass has to redraw it
+ * with that pass's material, which is the whole point of the two indices (§1.1).
  */
 export function amp(layerIndex: number, sourceBarIndex: number, lineIndex: number, linesPerBar: number): number {
   const g = sourceBarIndex * linesPerBar + lineIndex + layerIndex * 613;
@@ -85,28 +44,11 @@ export function simSession(id: string, frames: number): RecordingSession {
 }
 
 /**
- * A shelf of projects for the Library (§4.1), chosen to cover the states the row has to show:
- * both qualities, compressed, bounced, a single-layer sketch and a full seven.
- *
- * `lastModified` is spread across a week because §4.1 sorts on it, and a list that is already
- * in order cannot show that the sort works.
- */
-/**
  * A prepared, empty project — settings for a song being written, kept so they outlive a reload.
  *
- * **Unlike everything else in this file it simulates nothing.** The other demo projects exist to
- * exercise the screens: bar counts chosen to walk the tile-fit behaviour, a layer shaped to carry
- * a pass gap. This one has no sessions at all, because it is a starting point rather than a
- * fixture — the layers are meant to be filled by recording into them.
- *
- * 84 BPM, 24 bars: eight bars of verse at a line each, then the hook twice at two bars a line,
- * which is where it landed after being sung against the bed rather than counted on paper.
- *
- * The chord bed is **unmuted**, which `defaultBacking` never is. The default is muted because a
- * new project has nothing to play against and the drums are the thing that gives it a pulse
- * (§5.1 #8). Here the progression is the point — Am7 · Fmaj7 · Cmaj7 · G, low, so it sits under a
- * voice rather than in it, and ending on the unresolved G so the loop comes round rather than
- * settling.
+ * Unlike the rest of the shelf it simulates nothing: no sessions, because it is a starting point
+ * rather than a fixture. 84 BPM, 24 bars, and the chord bed unmuted (which `defaultBacking` never
+ * is) because the progression is the point.
  */
 function preparedSong(): Project {
   return createProject({
@@ -135,6 +77,15 @@ function preparedSong(): Project {
   });
 }
 
+/**
+ * A shelf covering the states the Library row has to show: both qualities, compressed, bounced, a
+ * single-layer sketch and a full seven.
+ *
+ * Bar counts walk the tile-fit behaviour rather than looking varied — 8 is well under the
+ * threshold, 20 is the last that holds a full 120px tile at 375×812, and 24, 28 and 32 each
+ * compact a little harder. `demoProject` covers 16. `lastModified` is spread across a week
+ * because §4.1 sorts on it.
+ */
 export function demoLibrary(): Project[] {
   const specs: {
     id: string;
@@ -148,9 +99,6 @@ export function demoLibrary(): Project[] {
     compressed?: boolean;
     bounced?: boolean;
   }[] = [
-    // Bar counts chosen to walk the fit behaviour rather than to look varied: 8 is well under
-    // the threshold, 20 is the last that holds a full 120px tile at 375×812, and 24, 28 and 32
-    // each compact a little harder. `demoProject` covers 16.
     { id: 'hallway', name: 'Hallway Idea', bpm: 128, barCount: 8, quality: 'standard', layers: 3, passes: 2, modified: '2026-08-30T07:40:00.000Z' },
     { id: 'kitchen', name: 'Kitchen Take', bpm: 110, barCount: 20, quality: 'high', layers: 4, passes: 1, modified: '2026-08-29T21:05:00.000Z', compressed: true },
     { id: 'stairwell', name: 'Stairwell', bpm: 104, barCount: 24, quality: 'standard', layers: 2, passes: 1, modified: '2026-08-28T11:30:00.000Z' },
@@ -181,11 +129,9 @@ export function demoLibrary(): Project[] {
     };
   });
 
-  // Deliberately unsorted here: the screen sorts, and handing it a sorted list would let a
-  // broken sort look correct.
-  // `preparedSong` is not passed through `richLayer` for a reason worth keeping: that function
-  // returns early on a layer with no sessions, so it would be a no-op today, but the moment it
-  // stopped being one it would start writing simulated takes into a project meant to be empty.
+  // Deliberately unsorted: the screen sorts, and handing it a sorted list would let a broken sort
+  // look correct. `preparedSong` skips `richLayer`, which would start writing simulated takes into
+  // a project meant to be empty the moment its early return stopped applying.
   return [built[3]!, demoProject(), built[0]!, built[4]!, built[1]!, built[2]!]
     .map(richLayer)
     .concat(preparedSong());
@@ -194,13 +140,9 @@ export function demoLibrary(): Project[] {
 /**
  * Give a project's first layer the states `demoProject` carries, at whatever bar count it has.
  *
- * Every demo layer was otherwise one clean pass in recorded order: every tile reading `P1`,
- * nothing muted, colour running straight through. That says nothing about whether a tile can
- * still show a two-digit pass number, a colour jump or a muted bar once the grid has shrunk to
- * fit — which is the only reason to look at a 24, 28 or 32-bar project.
- *
- * Everything here is proportional to `barCount`, so one shape covers all eight valid lengths
- * rather than a hand-placed set per project.
+ * Otherwise every demo layer is one clean pass in recorded order, which says nothing about whether
+ * a tile can still show a two-digit pass number, a colour jump or a muted bar once the grid has
+ * shrunk to fit. Everything is proportional to `barCount`, so one shape covers all eight lengths.
  */
 function richLayer(project: Project): Project {
   const t = projectTiming(project);
@@ -224,8 +166,7 @@ function richLayer(project: Project): Project {
   const barAt = (fraction: number) => Math.min(bars, Math.max(1, Math.round(bars * fraction)));
 
   let sources = l.barSources;
-  // Two adjacent slots pulled from late in pass 4 — a jump big enough to read as a colour break,
-  // and two digits either side once the project is long enough to have them.
+  // Two adjacent slots pulled from late in pass 4 — a jump big enough to read as a colour break.
   sources = setSlot(sources, at(0.14), barRef(4, barAt(0.66)));
   sources = setSlot(sources, at(0.17), barRef(4, barAt(0.69)));
   sources = setSlot(sources, at(0.56), barRef(2, barAt(0.22))); // one in the second half
@@ -249,12 +190,11 @@ function richLayer(project: Project): Project {
 /**
  * A project chosen to show the states that were decided but never seen.
  *
- * - **Layer 1** is §1.4's worked example — two sessions, five passes, and a real gap where
- *   bars 9–16 have no pass 3. Two slots are pulled from elsewhere so the colour jumps, and
- *   one is muted.
+ * - **Layer 1** is §1.4's worked example — two sessions, five passes, and a real gap where bars
+ *   9–16 have no pass 3. Two slots are pulled from elsewhere so the colour jumps, and one is muted.
  * - **Layer 2** is ordinary: one clean pass, recorded order, nothing muted.
- * - **Layer 3** stopped part way through its first pass, so the slots it never reached hold
- *   `P1/1` placeholders and start muted (§1.6).
+ * - **Layer 3** stopped part way through its first pass, so the slots it never reached hold `P1/1`
+ *   placeholders and start muted (§1.6).
  */
 export function demoProject(): Project {
   const base = createProject({
