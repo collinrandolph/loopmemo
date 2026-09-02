@@ -31,10 +31,10 @@ import {
 import { SWIPE_THRESHOLD } from './controls.ts';
 import { trackDrag } from './gesture.ts';
 import { helpControl } from './help.ts';
-import { loopFrames } from '../../src/domain/timing.ts';
 import type { BackingEngine } from './audio.ts';
 import { type Rgb, type WaveNode, LR, clamp01, el, motion, ramp, sizing } from './kit.ts';
-import { amp, simSession } from './demo.ts';
+import { amp } from './demo.ts';
+import { compressedTake } from './compress.ts';
 import type { TakeStore } from './takes.ts';
 import { barAmplitude } from './peaks.ts';
 import { confirmPanel, formatBytes, renderLoop } from './screen.ts';
@@ -185,7 +185,8 @@ export function editLayerScreen(opts: {
     const compressBtn = el('button', 'lr-btn', 'Compress layer') as HTMLButtonElement;
     compressBtn.disabled = saving.discarded === 0;
     compressBtn.addEventListener('click', () => {
-      if (!layerCompressionPlan(layer, t)) {
+      const bars = layerCompressionPlan(layer, t);
+      if (!bars) {
         askOps(
           `<b>${name}</b> has a bar pointing at audio that is no longer there. Fix that bar ` +
             'before compressing, or the gap is baked into the only copy left.',
@@ -200,7 +201,19 @@ export function editLayerScreen(opts: {
           'editable; the other layers are untouched.',
         'Compress',
         () => {
-          layer = compressedLayer(layer, simSession(`${layer.id}-c`, loopFrames(t)), barCount);
+          // Written before the layer is changed. Compress keeps only what it writes, so a layer
+          // whose audio is not in this session must be refused rather than compressed to silence.
+          const session = compressedTake(layer, bars, opts.takes, t.sampleRate, `${layer.id}-c`);
+          if (!session) {
+            askOps(
+              `<b>${name}</b> cannot be compressed here: its audio is not in this session. The ` +
+                'browser build keeps takes in memory only, so a reload loses them.',
+              'Close',
+              paintOps,
+            );
+            return;
+          }
+          layer = compressedLayer(layer, session, barCount);
           opts.onChange(layer);
           root.classList.remove('is-ops-open');
           redrawAll();

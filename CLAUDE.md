@@ -547,6 +547,32 @@ plays the drums twice, while baking without carrying freezes a groove that §1.2
 default. `bounceSeed` lands on `defaultBacking()` as a placeholder. Do not turn either into a
 decision before §2.7 is settled.
 
+## Compress writes audio, and the caller is the one that has to
+
+**`compressionPlan` decides which bars survive; it does not write them.** `compressedProject`'s
+own doc says the caller supplies the written files — that is the platform-bound half — and both
+compress actions handed the domain a `simSession` instead. A compressed layer then pointed at a
+file nobody had written: it played nothing, and `barAmplitude` fell through to `amp()`, so the
+lane drew a confident waveform of audio that did not exist. **Reported as exactly that pair.**
+
+`ui/src/compress.ts` is the missing half. **A straight sample copy, not a render** — compress keeps
+the *edited loop* and level, EQ and pan stay on the layer, so there is nothing to bake and going
+through the engine could only introduce differences.
+
+**Advance by `RetainedBar.frameCount`, never by what was copied.** For a partial bar the region is
+shorter than the slot, and advancing by the audio pulls every later bar early and leaves the loop
+shorter than `barCount × framesPerBar` — in the only surviving copy.
+
+**A layer whose audio is not in this session is refused, not compressed to silence.** Takes live in
+memory only, so a reload loses them, and that is exactly when the buffers go missing. The project
+action refuses whole rather than partly, matching §2.7. `verify-compress.ts` checks the render
+against a ramp whose value is its own frame number, so a bar written from the wrong place is a
+wrong number rather than a subtle difference: 617,400 frames, worst error 0.
+
+**Bounce has the identical defect and is left visible.** `bounceSeed` still takes a `simSession`,
+because rendering a mixdown needs §2.7's open question answered first — whether the backing is in
+it, and whether its settings carry to the seeded project.
+
 ## Getting files out of the browser
 
 **Ask where the file goes BEFORE rendering it, not after.** `showSaveFilePicker` needs transient

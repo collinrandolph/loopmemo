@@ -18,11 +18,13 @@ import {
   projectTotalPasses,
   sizeProjection,
 } from '../../src/domain/project.ts';
-import { loopFrames, loopSeconds, timing } from '../../src/domain/timing.ts';
+import { loopSeconds, timing } from '../../src/domain/timing.ts';
 import { bindChips } from './controls.ts';
 import { helpControl } from './help.ts';
 import { LR, el } from './kit.ts';
 import type { BackingEngine } from './audio.ts';
+import type { RecordingSession } from '../../src/domain/pass-index.ts';
+import { compressedTake } from './compress.ts';
 import { simSession } from './demo.ts';
 import { annotationRow, confirmPanel, formatBytes } from './screen.ts';
 import type { TakeStore } from './takes.ts';
@@ -316,9 +318,28 @@ export function projectSettingsScreen(opts: {
       false,
       () => {
         opts.engine.stop();
-        opts.onCompress(
-          compressedProject(p, (i) => simSession(`${p.id}-c${i}`, loopFrames(projectTiming(p)))),
-        );
+        // Every layer is written before any of it is committed. `compressedProject` refuses a
+        // project whole rather than partly (§2.7), and so does this: a project half of whose
+        // layers were compressed to silence is a state nothing else knows how to describe.
+        const written = new Map<number, RecordingSession>();
+        const rate = projectTiming(p).sampleRate;
+        for (const { layerIndex, bars } of plan.layers) {
+          const layer = p.layers[layerIndex]!;
+          const session = compressedTake(layer, bars, opts.takes, rate, `${p.id}-c${layerIndex}`);
+          if (!session) {
+            ask(
+              `<b>${p.name}</b> cannot be compressed here: the audio for ` +
+                `<b>${layer.name || `Layer ${layerIndex + 1}`}</b> is not in this session. The ` +
+                'browser build keeps takes in memory only, so a reload loses them.',
+              'Close',
+              false,
+              () => {},
+            );
+            return;
+          }
+          written.set(layerIndex, session);
+        }
+        opts.onCompress(compressedProject(p, (i) => written.get(i)!));
       },
     );
   }
@@ -349,6 +370,12 @@ export function projectSettingsScreen(opts: {
         // a *new* project and §2.7 is explicit that `isCompressed` must be false on it: the flag
         // means recorded passes were discarded, and a project that never had any would wear a
         // label that lies.
+        //
+        // **The mixdown itself is not rendered**, so this seeds a layer pointing at audio nobody
+        // wrote — the same defect `compress.ts` fixes for compress, and it will behave the same
+        // way: silent, drawing a generated waveform. Rendering it needs §2.7's open question
+        // answered first (is the backing in the mixdown, and do its settings carry?), so the
+        // placeholder stays visible rather than being quietly half-built.
         opts.onBounce(
           p,
           bounceSeed(p, simSession(`${p.id}-mix`, plan.frameCount), {
