@@ -794,6 +794,10 @@ consequence so changing the number is deliberate rather than incidental.
 once already.** They are labels standing in for names — deriving them from `panGains` produced
 a rule that needed an exception for Surround and bought nothing anyone can act on.
 
+**Before changing any stylesheet or token, read `docs/kit/restyling.md`.** Colour is load-bearing
+here — two tokens are parsed as numbers by JS, the ramp is §1.1's whole feature, and several CSS
+rules gate behaviour rather than appearance. All of it fails silently.
+
 **Do not design UI here.** `docs/kit/` and `docs/mockups/` are the reference for layout,
 sizing, states and styling, and they are better than anything derivable from the spec text.
 Interface work cannot be judged before there is a build to look at, so proposing panel
