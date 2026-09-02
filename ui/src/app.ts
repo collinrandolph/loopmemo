@@ -39,7 +39,16 @@ const nav = el('div', 'app-nav');
 const host = el('div', 'app-host');
 document.body.append(nav, host);
 
-let current: { destroy(): void } | undefined;
+/**
+ * A screen, plus its right to refuse being torn down.
+ *
+ * Only Playback implements `takeInProgress`, because only Playback holds something a teardown
+ * would destroy. It is optional rather than a required `() => false` so a screen that cannot
+ * lose anything does not have to say so.
+ */
+type Screen = { node: HTMLElement; destroy(): void; takeInProgress?(): boolean };
+
+let current: Screen | undefined;
 let currentEngine: BackingEngine | undefined;
 
 /**
@@ -79,7 +88,21 @@ function replaceLayer(layer: Layer) {
   });
 }
 
-function go(next: Route) {
+/**
+ * The only way the route changes, and the only place a change can be refused.
+ *
+ * Navigating runs `current.destroy()` and then closes the `AudioContext`, which takes the
+ * capture worklet with it — so leaving Playback mid-take does not pause the performance, it
+ * deletes it. Every route out of a screen funnels through here (the tab bar included), so the
+ * rule is stated once rather than repeated at each caller, where the next one added would
+ * simply forget it.
+ *
+ * A screen refusing is not an error to report: the controls that could get here are already
+ * disabled, so reaching this is either the keyboard or a race, and in both cases the right
+ * answer is that nothing happens.
+ */
+function navigate(next: Route) {
+  if (current?.takeInProgress?.()) return;
   route = next;
   render();
 }
@@ -105,10 +128,9 @@ function render() {
       (tab.route.screen !== 'edit' ||
         tab.route.layerIndex === (route as { layerIndex: number }).layerIndex);
     const button = el('button', active ? 'is-active' : '', tab.label);
-    button.addEventListener('click', () => {
-      route = tab.route;
-      render();
-    });
+    // Through `navigate`, not straight to `render` — the tab bar is a way off Playback like any
+    // other, and it was the one that skipped the guard by setting the route itself.
+    button.addEventListener('click', () => navigate(tab.route));
     nav.appendChild(button);
   }
 
@@ -152,9 +174,9 @@ function render() {
           engine,
           onOpen(id) {
             openId = id;
-            go({ screen: 'playback' });
+            navigate({ screen: 'playback' });
           },
-          onNew: () => go({ screen: 'settings', mode: 'new' }),
+          onNew: () => navigate({ screen: 'settings', mode: 'new' }),
         })
       : route.screen === 'playback'
         ? playbackScreen({
@@ -168,10 +190,16 @@ function render() {
               // audible on the next bar, not on the next navigation.
               engine.setBacking(backing, projectTiming(open()));
             },
-            onEdit: (layerIndex) => go({ screen: 'edit', layerIndex }),
-            onSettings: () => go({ screen: 'settings', mode: 'edit' }),
-            onBack: () => go({ screen: 'library' }),
-            onExport: () => go({ screen: 'export', from: 'playback' }),
+            onEdit: (layerIndex) => navigate({ screen: 'edit', layerIndex }),
+            onSettings: () => navigate({ screen: 'settings', mode: 'edit' }),
+            onBack: () => navigate({ screen: 'library' }),
+            onExport: () => navigate({ screen: 'export', from: 'playback' }),
+            // The tab bar belongs to the shell, so the screen cannot dim it itself. Enforcement
+            // is still `navigate`; this only stops the bar from advertising a way out that a
+            // take in progress will refuse.
+            onBusyChange(busy) {
+              for (const button of nav.querySelectorAll('button')) button.disabled = busy;
+            },
           })
         : route.screen === 'edit'
           ? editLayerScreen({
@@ -180,7 +208,7 @@ function render() {
               engine,
               takes,
               onChange: replaceLayer,
-              onDone: () => go({ screen: 'playback' }),
+              onDone: () => navigate({ screen: 'playback' }),
             })
           : route.screen === 'settings'
             ? projectSettingsScreen({
@@ -202,14 +230,14 @@ function render() {
                   if (route.screen === 'settings' && route.mode === 'new') {
                     projects = [...projects, next];
                     openId = next.id;
-                    go({ screen: 'playback' });
+                    navigate({ screen: 'playback' });
                     return;
                   }
                   replaceProject(next);
-                  go({ screen: 'playback' });
+                  navigate({ screen: 'playback' });
                 },
                 onCancel: () =>
-                  go({
+                  navigate({
                     screen: route.screen === 'settings' && route.mode === 'new' ? 'library' : 'playback',
                   }),
                 // The project actions, which used to live in the Library's per-row panel. Each
@@ -217,11 +245,11 @@ function render() {
                 // handed rather than re-deriving it.
                 onExport(next) {
                   replaceProject(next);
-                  go({ screen: 'export', from: 'settings' });
+                  navigate({ screen: 'export', from: 'settings' });
                 },
                 onCompress(next) {
                   replaceProject(next);
-                  go({ screen: 'playback' });
+                  navigate({ screen: 'playback' });
                 },
                 onBounce(source, seed) {
                   // The source is written back first: it carries any pending rename, and §2.7 is
@@ -229,12 +257,12 @@ function render() {
                   replaceProject(source);
                   projects = [...projects, seed];
                   openId = seed.id;
-                  go({ screen: 'playback' });
+                  navigate({ screen: 'playback' });
                 },
                 onDelete(id) {
                   projects = projects.filter((p) => p.id !== id);
                   openId = projects[0]?.id ?? '';
-                  go({ screen: 'library' });
+                  navigate({ screen: 'library' });
                 },
               })
           : exportScreen({
@@ -247,8 +275,8 @@ function render() {
               tracks: project.backing,
               takes,
               // Back where you came from, not always the Library.
-              onCancel: () => go(back),
-              onShare: () => go(back),
+              onCancel: () => navigate(back),
+              onShare: () => navigate(back),
             });
 
   current = screen;

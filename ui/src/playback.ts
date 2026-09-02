@@ -89,7 +89,16 @@ export function playbackScreen(opts: {
   /** Up to the Library. Also what Escape does once nothing is armed or recording. */
   onBack(): void;
   onExport(): void;
-}): { node: HTMLElement; destroy(): void } {
+  /**
+   * A take started or ended, so the shell can dim the controls it owns.
+   *
+   * **Paint only.** What actually refuses a navigation is `takeInProgress`, which the shell
+   * asks at the moment it would tear the screen down. Caching the answer here instead would
+   * make enforcement depend on the notification having arrived, which is the derived-versus-
+   * written trap this codebase keeps undoing.
+   */
+  onBusyChange?(busy: boolean): void;
+}): { node: HTMLElement; destroy(): void; takeInProgress(): boolean } {
   const project = opts.project;
   const t = projectTiming(project);
   const loop = loopFrames(t);
@@ -108,6 +117,21 @@ export function playbackScreen(opts: {
   const rows: Row[] = [];
 
   const root = el('div', 'lr-screen');
+
+  /**
+   * Every control that ends a take by leaving the screen — settings, Edit Layer, Projects,
+   * Export. They lock together while one is running, and this list is the only reason they
+   * cannot drift: a new way off this screen is one `exits.push` away from being covered, and
+   * forgetting it is the kind of omission that only shows up as a lost performance.
+   *
+   * The kit already reads this way — "a pass in progress owns the input", which is why every
+   * other row's record dot disappears while one records. This is the same sentence about the
+   * rest of the screen.
+   *
+   * `disabled`, not `pointer-events: none`: a focused button still fires on Enter, and a rule
+   * that only holds for the mouse is not a rule. The dimming comes free with `.lr-btn:disabled`.
+   */
+  const exits: HTMLButtonElement[] = [];
 
   // ------------------------------------------------------------------ header --
   const header = el('div', 'lr-header');
@@ -130,6 +154,7 @@ export function playbackScreen(opts: {
   gearBtn.setAttribute('type', 'button');
   gearBtn.setAttribute('aria-label', 'Project settings');
   gearBtn.addEventListener('click', () => opts.onSettings());
+  exits.push(gearBtn as HTMLButtonElement);
   statsRow.append(statsText, gearBtn);
   const transportEl = el('div', 'lr-transport');
   /** Only ever visible when the input failed; see `paintInputState`. */
@@ -167,6 +192,13 @@ export function playbackScreen(opts: {
   const progressBar = LR.ProgressBar({
     ticks: project.barCount,
     onSeek(fraction) {
+      // **A take in progress cannot be seeked**, and this is not conservatism. The length
+      // committed at the stop is `frameNow() - recordingFrom`, so moving the clock under a
+      // running take reports a traversal that was never played: seek forward and the take
+      // claims passes with no audio behind them, seek back and it claims none at all and the
+      // domain declines the whole thing (§1.4). Same loss as navigating away, by a control
+      // that looks harmless.
+      if (capturingIndex() >= 0) return;
       // The engine is the clock (§2.4), so a seek moves the engine, not a private counter.
       const target = Math.round(fraction * loop);
       heldFrame = target;
@@ -333,6 +365,7 @@ export function playbackScreen(opts: {
       paintBadge(row);
     });
     layersEl.classList.toggle('is-capturing', capturingIndex() >= 0);
+    lockExits();
     // The armed equivalent of `is-capturing`. The kit hints an *empty, open* layer's record dot
     // in the record colour, so several open empty rows each looked as live as the one actually
     // armed — see the override in `app.css`.
@@ -350,6 +383,20 @@ export function playbackScreen(opts: {
       // the label column with the name.
       syncLabelWidth();
     }
+  }
+
+  /**
+   * Lock the ways off the screen for the length of a take, and unlock them at the stop.
+   *
+   * Armed is deliberately *not* locked. Arming is a held intention rather than a mode, and
+   * `onPointerDownAnywhere` already abandons it the moment attention moves elsewhere — there
+   * is no performance to lose yet, so locking there would be a mode with nothing to protect.
+   */
+  function lockExits() {
+    const busy = capturingIndex() >= 0;
+    root.classList.toggle('is-capturing', busy);
+    for (const button of exits) button.disabled = busy;
+    opts.onBusyChange?.(busy);
   }
 
   function capturedSession(layer: Layer, frames: number): RecordingSession {
@@ -523,6 +570,7 @@ export function playbackScreen(opts: {
       opts.onEdit(row.layer.index);
     });
     editRow.appendChild(editBtn);
+    exits.push(editBtn as HTMLButtonElement);
     inner.appendChild(editRow);
 
     inner.appendChild(
@@ -841,6 +889,7 @@ export function playbackScreen(opts: {
 
   const exportBtn = el('button', 'lr-btn lr-btn--primary', 'Export');
   exportBtn.addEventListener('click', () => opts.onExport());
+  exits.push(backBtn as HTMLButtonElement, exportBtn as HTMLButtonElement);
 
   // Three items in a `space-between` footer: help at the left edge, then the two actions, with
   // the pair kept together by an auto margin rather than spread across the width.
@@ -876,6 +925,14 @@ export function playbackScreen(opts: {
 
   return {
     node: root,
+    /**
+     * Whether tearing this screen down would throw away a performance.
+     *
+     * The shell asks before it navigates, and that call is the enforcement — the dimmed
+     * buttons above only say so. It reports on *recording*, not on armed: arming holds no
+     * audio, and refusing to leave over an intention would be a mode rather than a guard.
+     */
+    takeInProgress: () => capturingIndex() >= 0,
     destroy() {
       alive = false;
       observer?.disconnect();

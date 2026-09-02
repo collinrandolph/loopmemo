@@ -133,6 +133,14 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
   transition: stroke .12s;
 }
 .header-gear:hover svg { stroke: #fff; }
+/* A pass in progress owns the screen, not only the input: every route off it is disabled for
+   the length of the take, because reaching one tears the screen down and takes the capture
+   worklet with it. `.lr-btn:disabled` covers Projects, Export and Edit Layer; the gear and the
+   shell's tab bar are not buttons of that kind, so they say it here. Matched to the kit's .35. */
+.header-gear:disabled { cursor: default; }
+.header-gear:disabled svg,
+.header-gear:disabled:hover svg { stroke: rgba(255,255,255,.22); }
+.app-nav button:disabled { opacity: .35; cursor: default; }
 
 /* Fixed label column: the name and the pass badge swap inside one box, so a lane
    starts at the same x whatever state the layer is in. The width is measured from the

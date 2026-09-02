@@ -327,6 +327,34 @@ back, so a narrow one pulls every later bar early and leaves the compressed loop
 never written into `layer.muted`. Writing through would make our state indistinguishable from
 the user's, so stopping could not restore theirs — the same trap as everywhere else here.
 
+**Stop and pause are the only two ways out of a take, and everything else is disabled while one
+runs** (§3.5). Pause used to end the transport and leave the row recording, so the commit was
+never reached — fixed by delegating to `setRec`. Navigation was the same hole by a different
+door: `render()` calls `destroy()` and then closes the `AudioContext`, which takes the capture
+worklet with it, so a tab, the Projects button, Export, the gear or Edit Layer deleted the
+performance outright. **Seeking is the same loss from a control that looks harmless** — the
+length committed is `frameNow() - recordingFrom`, so moving the clock under a running take
+reports a traversal nobody played: forward it claims passes with no audio behind them, back it
+claims none and the domain declines the whole thing.
+
+Three things about the shape, each of which the obvious version gets wrong:
+
+- **One enforcement point.** `app.ts`'s `navigate` is the only way the route changes and the only
+  place a change is refused; the tab bar used to set `route` and call `render()` itself, which is
+  exactly how the next route added would skip the guard.
+- **`disabled`, not `pointer-events: none`.** A focused button still fires on Enter, and a rule
+  that only holds for the mouse is not a rule. `playback.ts` keeps an `exits` list every such
+  control pushes into, so a new way off the screen is one line from being covered.
+- **The predicate is asked, never cached.** `takeInProgress()` is what refuses; `onBusyChange`
+  only dims the shell's tab bar, which the screen cannot reach. Deriving enforcement from the
+  notification instead would make it depend on the notification having arrived.
+
+**Armed is deliberately not locked.** It holds no audio, and `onPointerDownAnywhere` already
+abandons it the moment attention moves elsewhere — locking there would be a mode with nothing to
+protect. The greying also reverses the kit's treatment of the *record dots*, which vanish
+outright, and §3.5 says why: a missing dot is explained by the one recording beside it, a missing
+Export button by nothing at all.
+
 ## Per-bar mute
 
 Tap and hold on a tile (§3.7). **Scope is the slot, not the source** — and since swiping is

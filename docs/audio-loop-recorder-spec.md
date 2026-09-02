@@ -1127,12 +1127,15 @@ arcs were complete and then how far into the next — three judgments for one va
 - **Arming is exclusive** — arming one layer clears any other.
 - **Hold while armed cancels** back to unarmed; Escape does the same on a keyboard. Hold does nothing while recording, where a tap already means stop.
 - **While a pass is running every other record control is removed** (`visibility: hidden`, preserving row spacing so nothing shifts when it ends). A greyed control still invites a tap and then has to explain itself.
+- **A pass in progress owns the whole screen, not only the input.** Stop and pause are the only two ways out of a take, and every control that would end one by other means — project settings, Edit Layer, Projects, Export, and seeking the transport — is disabled for its length. The test is not whether an action is related to recording but whether taking it destroys the performance: leaving the screen tears down the audio graph, and seeking moves the clock the take's length is measured against, so a forward seek claims passes that were never played and a backward one claims none at all. Losing a take to a mis-tap is not a recoverable mistake.
+
+  These are **greyed rather than hidden**, which is the opposite treatment to the record dots above, and for the reason the rule above gives. A missing record dot is explained by the one beside it that is recording; a missing Export button has nothing next to it to say why, and a screen whose furniture disappears reads as broken rather than as busy.
 
 ### Transport — `LR.PlayButton`, `LR.ProgressBar`
 
 A standard progress bar with optional bar ticks and click-to-seek, alongside the gradient sweep
 rather than replacing it. The sweep shows *what* has played; the bar shows *how far through* at a
-glance.
+glance. **Seeking is refused while a take is running**, per the rule above.
 
 ## 3.6 Transport logic — `LR.Transport`
 
