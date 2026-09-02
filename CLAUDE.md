@@ -612,12 +612,26 @@ continuous; cancelling outright snaps it back to whatever was last set explicitl
 click at the exact moment the splice exists to avoid one.
 
 **The engine holds a snapshot, so every screen that edits must push it — this has been got
-wrong three times.** `setLayers` copies each `Layer` into a `LayerVoice`, and nothing re-reads
+wrong four times.** `setLayers` copies each `Layer` into a `LayerVoice`, and nothing re-reads
 project state on its own. The backing rows forgot it and a kit swap was silent; the EQ and pan
 chips forgot it and a preset change did nothing; the Edit Layer axes forgot it and a swipe
 redrew the tile while playback kept scheduling the old arrangement — the drawing and the audio
 disagreeing about one edit, which is the split §1.1 exists to prevent. Both screens now have a
 `syncLayers()` and every mutation calls it.
+
+**The Library was the fourth, and the worst, because it was a whole screen of it.** Its row
+preview called `engine.start(0)` and nothing else, so every row played whatever the engine was
+last loaded with — which on that screen is the *open* project, never the row tapped. Seven
+sketches previewing as one. The other three were an edit that did not reach the audio; this was
+audio that belonged to a different project.
+
+**It is also the one screen that plays a project other than the open one**, which is why it takes
+an `engineFor(project)` callback rather than the shell's engine: the shell reloads the engine and
+reuses the context while the rate matches, and builds a new one when it does not. A context cannot
+change its sample rate after construction, and `Timing` computes every frame count at the
+*project's* quality, so previewing a 48 kHz project on a 44.1 kHz context is the two-rates bug
+above with the list as its trigger. Stop before reloading: `setBacking` re-anchors a running engine
+on a tempo change, which starts the new project a beat before `start(0)` says so.
 
 **`setLayers` reschedules only when the *arrangement* moved, and tells them apart by identity.**
 An edit has to be heard now — §2.4 calls applying an edit to playing audio core functionality

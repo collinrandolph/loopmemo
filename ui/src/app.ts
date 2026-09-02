@@ -171,7 +171,32 @@ function render() {
     route.screen === 'library'
       ? libraryScreen({
           projects,
-          engine,
+          /**
+           * An engine loaded with the project about to be previewed.
+           *
+           * The Library is the one screen that plays something other than the open project, so
+           * the engine built above is loaded with the wrong one for every row but at most one.
+           * Reconfiguring is enough while the rate matches — a context cannot change its sample
+           * rate, so a project at the other quality needs a new one, and `Timing` computes every
+           * frame count at the project's rate rather than the device's.
+           *
+           * Stopped before it is reloaded: `setBacking` re-anchors a running engine on a tempo
+           * change, which would start the new project playing a beat before `start(0)` says so.
+           */
+          engineFor(previewed) {
+            const rate = QUALITY_SPEC[previewed.audioQuality].sampleRate;
+            let next = currentEngine;
+            if (!next || next.sampleRate !== rate) {
+              currentEngine?.destroy();
+              next = audioEngine(rate);
+              currentEngine = next;
+            } else {
+              next.stop();
+            }
+            next.setBacking(previewed.backing, projectTiming(previewed));
+            next.setLayers(previewed, takes);
+            return next;
+          },
           onOpen(id) {
             openId = id;
             navigate({ screen: 'playback' });

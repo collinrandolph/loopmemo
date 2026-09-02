@@ -1,19 +1,17 @@
 import {
   LAYER_COUNT,
   type Project,
-  compressedProject,
   layerHasRecording,
-  projectCompressionPlan,
   projectTiming,
   projectTotalPasses,
   recordedLayerCount,
   sizeProjection,
 } from '../../src/domain/project.ts';
-import { bouncePlan, bounceSeed } from '../../src/domain/bounce.ts';
-import { loopFrames, loopSeconds } from '../../src/domain/timing.ts';
+import { loopSeconds } from '../../src/domain/timing.ts';
+import type { BackingEngine } from './audio.ts';
 import { helpControl } from './help.ts';
 import { type WaveNode, LR, el, motion, ramp } from './kit.ts';
-import { type Engine, amp, simSession } from './sim.ts';
+import { amp } from './sim.ts';
 
 const THUMB_LINES = 26; // enough to read a shape at 84px, few enough to stay legible
 /**
@@ -44,7 +42,20 @@ const THUMB_HEIGHT = 6;
  */
 export function libraryScreen(opts: {
   projects: readonly Project[];
-  engine: Engine;
+  /**
+   * An engine already loaded with `project` and matched to its capture rate.
+   *
+   * **This screen is the only one that plays a project other than the open one**, which is why
+   * it asks for an engine per preview instead of being handed the shell's. The shell's is
+   * configured for whatever project is open, so a row's play button used to start it and hear
+   * that project — a list of seven sketches previewing as one.
+   *
+   * It is a callback rather than a constructor because the sample rate is the project's, not the
+   * device's, and a list holds both qualities: a 48 kHz project previewed on a 44.1 kHz context
+   * runs its layers 8.8% fast against its own drums. The shell owns engine lifetime, so the
+   * decision to reuse or rebuild belongs there.
+   */
+  engineFor(project: Project): BackingEngine;
   onOpen(id: string): void;
   /** Setup for a project that does not exist yet (§4.5). */
   onNew(): void;
@@ -55,11 +66,14 @@ export function libraryScreen(opts: {
   const projects = [...opts.projects].sort((a, b) => b.lastModified.localeCompare(a.lastModified));
 
   let playingId: string | null = null;
+  /** The engine the current preview is running on; whichever project it was built for. */
+  let engine: BackingEngine | undefined;
   /**
    * Seconds, not frames. Every other screen works in the open project's frames because that is
-   * what the domain computes in — but this list holds projects at both capture rates, and one
-   * engine runs at one rate. A duration is the same number either way, so the preview clock
-   * converts once through `engine.sampleRate` and cannot drift on a 48k project.
+   * what the domain computes in — but this list holds projects at both capture rates, and the row
+   * being previewed decides which. A duration is the same number either way, so the preview
+   * clock converts once through the engine's own rate and cannot read a 48k project on a 44.1k
+   * scale.
    */
   let loopSecondsNow = 1;
 
@@ -183,11 +197,18 @@ export function libraryScreen(opts: {
       if (!on) for (const lane of row.lanes) for (const line of lane.lines()) line.style.transform = '';
     }
     if (id === null) {
-      opts.engine.stop();
+      engine?.stop();
       return;
     }
-    loopSecondsNow = loopSeconds(projectTiming(rows.find((r) => r.project.id === id)!.project));
-    opts.engine.start(0);
+    // **Loaded with this row's project, not with whatever was queued last.** The engine holds a
+    // snapshot and nothing re-reads project state on its own, so a preview that only calls
+    // `start` plays the last project the engine was told about — which on this screen is the one
+    // the shell happens to have open, never the row that was tapped. Same trap the Playback and
+    // Edit screens hit three times; here it was a whole screen of it.
+    const project = rows.find((r) => r.project.id === id)!.project;
+    loopSecondsNow = loopSeconds(projectTiming(project));
+    engine = opts.engineFor(project);
+    engine.start(0);
   }
 
   const spent = ramp.tokenRGB('--lr-spent');
@@ -195,11 +216,11 @@ export function libraryScreen(opts: {
   const step = () => {
     if (!alive) return;
     requestAnimationFrame(step);
-    if (playingId === null) return;
+    if (playingId === null || !engine) return;
     const row = rows.find((r) => r.project.id === playingId);
     if (!row) return;
 
-    const elapsed = opts.engine.frame() / opts.engine.sampleRate;
+    const elapsed = engine.frame() / engine.sampleRate;
     const position = elapsed % loopSecondsNow;
     const head = (position / loopSecondsNow) * THUMB_LINES;
     // The thumbnail *is* the progress display (§4.1): played lines recede, the same convention
@@ -228,7 +249,8 @@ export function libraryScreen(opts: {
     destroy() {
       alive = false;
       help.destroy();
-      opts.engine.stop();
+      // Stop, not destroy: the shell owns the engine's lifetime and closes it on the way out.
+      engine?.stop();
     },
   };
 }
