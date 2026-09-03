@@ -57,6 +57,8 @@ type Row = {
   note: HTMLElement;
   badge: HTMLElement;
   volume: { update(): void };
+  /** Waiting on the microphone before this row may arm; see `arm`. */
+  pending: boolean;
   /** Re-measure the collapse after something changes the panel's content. */
   syncPanel(): void;
   live: HTMLElement[];
@@ -282,9 +284,6 @@ export function playbackScreen(opts: {
       row.el.classList.toggle('is-armed', next === 'armed');
       row.el.classList.toggle('is-recording', next === 'recording');
 
-      // Arming is where the permission prompt is paid for. Raised at the downbeat instead, it
-      // is answered seconds into a take that is already running (see `openInput`).
-      if (next === 'armed' && was !== 'armed') void opts.engine.openInput().then(paintInputState);
 
       if (next === 'recording' && was !== 'recording') {
         // A pass always begins on the downbeat, so recording restarts the loop.
@@ -295,7 +294,13 @@ export function playbackScreen(opts: {
         // Told before the take rather than after: the layer being recorded onto is silent for
         // the duration (§2.2), and that has to be true from the first bar, not from the commit.
         opts.engine.setLayers(liveProject(), opts.takes, i);
-        void opts.engine.startCapture().then(paintInputState);
+        // The stream can still go between arming and the downbeat — a device unplugged, a
+        // permission revoked in another tab. Backing out is the same rule as refusing to arm:
+        // never run a take that cannot record.
+        void opts.engine.startCapture().then((ok) => {
+          paintInputState();
+          if (!ok) setRec(i, 'unarmed');
+        });
         playing = true;
         playBtn.setPlaying(true);
         clearLive(row);
@@ -358,6 +363,32 @@ export function playbackScreen(opts: {
     opts.onBusyChange?.(busy);
   }
 
+  /**
+   * Arm a row, but **only if there is something to record with** (§3.5).
+   *
+   * The record dot means "this will record". Letting it light up when the microphone has been
+   * refused produced a take of nothing that the domain committed as a real pass: the badge
+   * advanced, the arrangement was built on it, and the pass count and size projection both grew
+   * by audio that does not exist. Refusing to arm is the only place that can be prevented, because
+   * everything after it is correct given a take.
+   *
+   * **Instant when the input is already open**, which it is for every arm after the first. Only a
+   * cold start waits, so the pending state is the permission prompt and nothing else.
+   */
+  async function arm(row: Row) {
+    if (opts.engine.hasInput()) {
+      setRec(row.layer.index, 'armed');
+      return;
+    }
+    row.pending = true;
+    row.el.classList.add('is-pending');
+    const ok = await opts.engine.openInput();
+    row.pending = false;
+    row.el.classList.remove('is-pending');
+    paintInputState();
+    if (ok) setRec(row.layer.index, 'armed');
+  }
+
   function capturedSession(layer: Layer, frames: number): RecordingSession {
     const id = `${layer.id}-take-${layer.sessions.length + 1}`;
     return {
@@ -417,10 +448,25 @@ export function playbackScreen(opts: {
    * error text is verbatim: the difference between a denied permission, an insecure origin and no
    * device is the whole of what a user needs.
    */
+  /**
+   * Say what happened and what to do about it. The three cases need three different things from
+   * the user and only the first is fixable without leaving the app, so they are worded apart
+   * rather than printed as an exception name.
+   */
+  const INPUT_MESSAGE: Record<string, string> = {
+    denied:
+      'Microphone access was refused, so there is nothing to record with. ' +
+      'Allow it for this site in your browser settings, then arm the layer again.',
+    missing: 'No microphone found. Connect one, then arm the layer again.',
+    insecure: 'Recording needs a secure connection — open this over https, or on localhost.',
+  };
+
   function paintInputState() {
-    const error = opts.engine.inputError();
-    inputNote.textContent = error ? `No audio input — ${error}. Takes will be silent.` : '';
-    inputNote.style.display = error ? '' : 'none';
+    const failure = opts.engine.inputError();
+    inputNote.textContent = failure
+      ? (INPUT_MESSAGE[failure.kind] ?? `The microphone could not be opened — ${failure.detail}.`)
+      : '';
+    inputNote.style.display = failure ? '' : 'none';
   }
 
   function layerRow(initial: Layer): Row {
@@ -430,10 +476,13 @@ export function playbackScreen(opts: {
     const dot = LR.RecordDot({
       state: () => row.rec,
       blocked: () => {
+        // A pass in progress owns the input, and so does a prompt that is still open — a second
+        // tap while the browser is asking would queue an arm against an answer nobody has yet.
+        if (rows.some((r) => r.pending)) return true;
         const c = capturingIndex();
         return c >= 0 && c !== row.layer.index;
       },
-      set: (s) => setRec(row.layer.index, s),
+      set: (s) => (s === 'armed' ? void arm(row) : setRec(row.layer.index, s)),
     });
 
     const label = el(
@@ -462,6 +511,7 @@ export function playbackScreen(opts: {
       note,
       badge: label.querySelector('.lr-pass-badge')!,
       volume: { update() {} },
+      pending: false,
       syncPanel() {},
       live: [],
       resetA: 0,

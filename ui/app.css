@@ -524,6 +524,14 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
   color: #ffd9d4; font-size: 12px; line-height: 1.45;
 }
 
+/* Waiting on the microphone prompt. The dot pulses in the record colour without going solid:
+   the intent is real, the permission is not granted yet, and the row has not armed. */
+.lr-row.is-pending .lr-rec {
+  background: rgba(255,107,107,.45);
+  animation: lr-pulse 1s ease-in-out infinite;
+  cursor: progress;
+}
+
 /* ------------------------------------------------ one layer claims the input -- */
 /* The kit hints an empty layer whose panel is open by tinting its record dot the *record*
    colour and pulsing a halo out of it. That is a good prompt while nothing is armed and a bad

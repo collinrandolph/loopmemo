@@ -91,8 +91,13 @@ export type BackingEngine = Engine & {
    * lives on the engine because the engine owns the `AudioContext`.
    */
   openInput(): Promise<boolean>;
-  /** Why the input is unavailable, for a screen to show. Undefined once it opens. */
-  inputError(): string | undefined;
+  /** Why the input is unavailable, for a screen to word. Undefined once it opens. */
+  inputError(): InputFailure | undefined;
+  /**
+   * Is the microphone already open? Arming can then be instant instead of pending — the prompt is
+   * paid for once, and every later arm must not flicker through a waiting state it does not need.
+   */
+  hasInput(): boolean;
   /** Loudest input sample since the last call; resets on read. 0 when nothing is capturing. */
   inputPeak(): number;
   /**
@@ -111,6 +116,32 @@ export type BackingEngine = Engine & {
   ready(): boolean;
   destroy(): void;
 };
+
+/**
+ * Why the input could not be opened, classified rather than described.
+ *
+ * The three cases need three different things from the user and only one of them is recoverable
+ * without leaving the app, so the screen has to tell them apart. Classifying here and wording it
+ * there keeps platform knowledge on this side and copy on that one.
+ */
+export type InputFailure = {
+  readonly kind: 'denied' | 'missing' | 'insecure' | 'unknown';
+  /** The raw error, for a case the four kinds do not cover. */
+  readonly detail: string;
+};
+
+function classify(e: unknown): InputFailure {
+  const name = e instanceof Error ? e.name : '';
+  const detail = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+  // A page served over plain http has no `mediaDevices` at all, so the throw is a TypeError
+  // rather than one of the permission errors.
+  if (!globalThis.isSecureContext) return { kind: 'insecure', detail };
+  if (name === 'NotAllowedError' || name === 'SecurityError') return { kind: 'denied', detail };
+  if (name === 'NotFoundError' || name === 'OverconstrainedError' || name === 'DevicesNotFoundError') {
+    return { kind: 'missing', detail };
+  }
+  return { kind: 'unknown', detail };
+}
 
 type Voice = { nodes: AudioNode[]; startsAt: number; endsAt: number };
 
@@ -151,7 +182,7 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
   let latencyFrames = 0;
 
   let stream: MediaStream | undefined;
-  let inputError: string | undefined;
+  let inputError: InputFailure | undefined;
   let recorder: Recorder | undefined;
 
   let originFrame = 0;
@@ -886,12 +917,14 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
       } catch (e) {
         // No device, no permission, or an insecure origin. Kept, not swallowed: a browser that
         // refuses the microphone otherwise records a silent take and says nothing.
-        inputError = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+        inputError = classify(e);
         return false;
       }
     },
 
     inputError: () => inputError,
+
+    hasInput: () => !!recorder,
 
     inputPeak: () => (recorder?.recording() ? recorder.peak() : 0),
 

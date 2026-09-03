@@ -1120,11 +1120,31 @@ arcs were complete and then how far into the next — three judgments for one va
 | State | Dot | Row |
 |-------|-----|-----|
 | Unarmed | Grey, translucent | No emphasis |
+| **Waiting** | Red at 45%, faster pulse | No emphasis — it has not armed |
 | Armed | Red, slow pulse | Background lifts, soft red inset border |
 | Recording | Red **square**, no pulse | Stronger red border, warmer background |
 
 - **Positioned at the far LEFT of a row, opposite the speaker.** They were neighbours, which put "start recording" a thumb-width from "mute". The consequences are asymmetric: a mis-hit on mute is one tap to undo, a mis-hit on record starts or stops a pass.
 - **Arming is exclusive** — arming one layer clears any other.
+- **A row cannot arm without an input.** The dot means "this will record", so it must not light up
+  when there is nothing to record with. Arming is where the microphone is opened — a prompt raised
+  at the downbeat instead is answered seconds into a running take — and if it is refused the row
+  simply does not arm.
+
+  **This is the only place the failure can be prevented.** Everything downstream is correct given a
+  take, so a denied microphone that still armed produced a take of silence that the domain
+  committed as a real pass: the badge advanced, the arrangement was built on it, and the pass count
+  and the size projection both grew by audio that does not exist. Measured at 7 → 8 passes and
+  24.7 → 28.2 MB for three seconds of nothing.
+
+  **Waiting is a state, not a stall.** Only a cold start waits, because the microphone is held open
+  across takes (§2.3) — every arm after the first is instant, so the waiting dot means a permission
+  prompt is open and nothing else. Every record dot is inert while one is.
+
+  **A refusal is worded per cause, never as an exception.** Denied, no device and an insecure
+  origin need three different things from the user, and only the first is fixable without leaving
+  the app. The stream can also go *between* arming and the downbeat — a device unplugged, a
+  permission revoked in another tab — and the row backs out of recording for the same reason.
 - **Hold while armed cancels** back to unarmed; Escape does the same on a keyboard. Hold does nothing while recording, where a tap already means stop.
 - **While a pass is running every other record control is removed** (`visibility: hidden`, preserving row spacing so nothing shifts when it ends). A greyed control still invites a tap and then has to explain itself.
 - **A pass in progress owns the whole screen, not only the input.** Stop and pause are the only two ways out of a take, and every control that would end one by other means — project settings, Edit Layer, Projects, Export, and seeking the transport — is disabled for its length. The test is not whether an action is related to recording but whether taking it destroys the performance: leaving the screen tears down the audio graph, and seeking moves the clock the take's length is measured against, so a forward seek claims passes that were never played and a backward one claims none at all. Losing a take to a mis-tap is not a recoverable mistake.
@@ -1610,7 +1630,6 @@ touch-action: none;                         /* on gesture surfaces */
 
 | Item | Notes |
 |------|-------|
-| **Microphone permission and first-run** | The first record tap triggers the system prompt; a denial needs a defined state. The only §5.1-class item still open. |
 | **Row density** | Empty and armed layers occupy full-height rows; with two of seven recorded, much of the screen is placeholder. |
 | **Backing tails at the loop point** | Settled for bounce: `tailFrames` is rendered and folded onto the head (`wrapTail`). Still open for **export**, whose fixed-length render truncates both a layer's pan delay and a backing voice still ringing at the loop point. `tailFrames` also still accounts only for the pan delay, not for a chord's own decay. |
 | **Input gain staging** | Reported as "working but very quiet". Two of the three contributors are settled: the shared bus no longer attenuates, and the live waveform is the meter (§5.2). What is left is whether there should be anything to *set* — an input trim, or a normalise-on-commit, or neither. `autoGainControl` stays off either way (§2.3 — a rider is a moving gain and ruins two takes of the same playing), so without one of those the system level governs entirely. |

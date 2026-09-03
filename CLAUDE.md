@@ -353,6 +353,17 @@ Three things about the shape, each of which the obvious version gets wrong:
   only dims the shell's tab bar, which the screen cannot reach. Deriving enforcement from the
   notification instead would make it depend on the notification having arrived.
 
+**A row refuses to arm without an input, and that is the only place the failure is preventable**
+(§3.5). Everything downstream is correct *given a take*, so a denied microphone that still armed
+committed a take of silence as a real pass — badge advanced, arrangement built on it, pass count
+and size projection both up by audio that does not exist. Measured at 7 → 8 passes and 24.7 →
+28.2 MB for three seconds of nothing, and persistence would have made it permanent.
+
+**Only a cold start waits.** `hasInput()` is what keeps every later arm instant, so the pending dot
+means a prompt is open and nothing else — without it, each arm would flicker through a waiting
+state it does not need. `classify()` sorts the failure into denied / missing / insecure so the
+screen can word three different remedies; printing an exception name is not a defined state.
+
 **Armed is deliberately not locked.** It holds no audio, and `onPointerDownAnywhere` already
 abandons it the moment attention moves elsewhere — locking there would be a mode with nothing to
 protect. The greying also reverses the kit's treatment of the *record dots*, which vanish
