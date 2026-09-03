@@ -813,6 +813,27 @@ thing.
 corner — a colour for a known source, not a default for arbitrary material. 24 dB/octave would
 be two cascaded biquads, not a Q change.
 
+## Level runs past unity, and that is the whole answer to "very quiet"
+
+**A take arrives at whatever the system input gave it, and no browser or iOS API can set that.**
+`autoGainControl` is off on purpose (§2.3), so the app's only lever is what it does with the
+signal afterwards — and `Layer.level` was attenuation-only, which meant a quiet recording had no
+remedy anywhere, including recordings already made. `LEVEL_MAX` is 2, i.e. +6 dB.
+
+**A trim and a normalise were both rejected, and both for reasons already in the codebase**
+(§5.2). A trim at playback is `Layer.level` under a second name; at capture it is baked in and
+unjudgeable, which is the argument §2.3 uses to put the recording offset at scheduling. Normalising
+per take is `autoGainControl`'s fault at coarser grain — two passes of one part come back at
+different levels.
+
+**Unity is the midpoint, which is what makes it markable.** The tick sits *below* the track: drawn
+on it, the thumb hides it at exactly the value it exists to mark. Double tap returns to unity.
+`levelSlider` in `controls.ts` is the one copy — layer rows and backing rows share it.
+
+**The master volume on the Playback screen is not wired to anything.** `masterLevel` and
+`masterMuted` are screen-local state nothing reads, so the control moves and does nothing. Known,
+not yet fixed.
+
 ## Pan and the Haas delay
 
 **There is no EQ in `effects.ts` on purpose.** §2.8's preset table is a placeholder — frequencies

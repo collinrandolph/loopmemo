@@ -20,7 +20,7 @@ import {
   sizeProjection,
 } from '../../src/domain/project.ts';
 import { framesPerBar, loopFrames, loopSeconds } from '../../src/domain/timing.ts';
-import { bindChips } from './controls.ts';
+import { bindChips, levelSlider } from './controls.ts';
 import { helpControl } from './help.ts';
 import { type RecordState, type WaveNode, LR, el, motion, ramp, sizing } from './kit.ts';
 import { SETTINGS_ICON } from './icons.ts';
@@ -538,11 +538,17 @@ export function playbackScreen(opts: {
     panel.appendChild(inner);
     rowEl.appendChild(panel);
 
-    const volumeRow = el(
-      'div',
-      'lr-panel-row',
-      '<span class="lr-panel-label">Volume</span>' +
-        `<input class="level" type="range" min="0" max="100" value="${Math.round(initial.level * 100)}" style="flex:1">`,
+    const volumeRow = el('div', 'lr-panel-row', '<span class="lr-panel-label">Volume</span>');
+    volumeRow.appendChild(
+      levelSlider(
+        () => row.layer.level,
+        (next) => {
+          row.layer = { ...row.layer, level: next };
+          volume.update();
+          opts.onChange(row.layer);
+          syncLayers();
+        },
+      ),
     );
     inner.appendChild(volumeRow);
 
@@ -590,12 +596,6 @@ export function playbackScreen(opts: {
     // An empty row hides the presets and the Edit button, so gaining audio changes an open
     // panel's height. Measured rather than guessed, so that needs no second CSS case.
     row.syncPanel = () => syncCollapse(rowEl, panel);
-    volumeRow.querySelector('.level')!.addEventListener('input', (e) => {
-      row.layer = { ...row.layer, level: Number((e.target as HTMLInputElement).value) / 100 };
-      volume.update();
-      opts.onChange(row.layer);
-      syncLayers();
-    });
     bindChips(panel);
 
     row.volume = volume;

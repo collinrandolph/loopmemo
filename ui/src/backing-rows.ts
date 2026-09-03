@@ -16,7 +16,7 @@ import {
   randomChord,
 } from '../../src/domain/backing.ts';
 import { isAudibleInMixdown } from '../../src/domain/bounce.ts';
-import { bindChips, swipeWheel } from './controls.ts';
+import { bindChips, levelSlider, swipeWheel } from './controls.ts';
 import { syncCollapse } from './screen.ts';
 import { DRUM_ICON, PIANO_ICON } from './icons.ts';
 import { LR, el } from './kit.ts';
@@ -85,16 +85,16 @@ export function backingRows(opts: {
     panel.appendChild(inner);
     row.appendChild(panel);
 
-    const settings = el(
-      'div',
-      'lr-panel-row',
-      '<span class="lr-panel-label">Volume</span>' +
-        `<input class="level" type="range" min="0" max="100" value="${Math.round(track().level * 100)}" style="flex:1">`,
+    const settings = el('div', 'lr-panel-row', '<span class="lr-panel-label">Volume</span>');
+    settings.appendChild(
+      levelSlider(
+        () => track().level,
+        (next) => {
+          setTrack({ level: next });
+          vol.update();
+        },
+      ),
     );
-    settings.querySelector('.level')!.addEventListener('input', (e) => {
-      setTrack({ level: Number((e.target as HTMLInputElement).value) / 100 });
-      vol.update();
-    });
 
     const syncPanelHeight = () => syncCollapse(row, panel);
 

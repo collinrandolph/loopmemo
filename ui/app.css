@@ -669,6 +669,18 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
    A dimmed version of the field's own ink instead. */
 .setting-name::placeholder { color: var(--lr-hint); opacity: 1; }
 .setting-slider { flex: 1; min-width: 0; }
+
+/* A level fader that runs past unity, with unity marked.
+   The tick sits BELOW the track rather than on it: drawn on the track it would be hidden by the
+   thumb at exactly the value it exists to mark, which is the one position that has to be legible.
+   `manipulation` is what stops a phone reading the reset double-tap as a zoom. */
+.lr-level { flex: 1; min-width: 0; position: relative; padding-bottom: 5px; }
+.lr-level__range { width: 100%; display: block; touch-action: manipulation; }
+.lr-level::after {
+  content: ''; position: absolute; bottom: 0; left: 50%;
+  width: 2px; height: 4px; margin-left: -1px; border-radius: 1px;
+  background: var(--lr-hint); pointer-events: none;
+}
 /* Tabular, so the number does not jitter sideways while a slider is being dragged. */
 .setting-figure {
   flex: none; min-width: 68px; text-align: right;

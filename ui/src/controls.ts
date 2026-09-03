@@ -1,5 +1,6 @@
 import { trackDrag } from './gesture.ts';
 import { SWIPE_Y_ICON } from './icons.ts';
+import { LEVEL_MAX, LEVEL_UNITY } from '../../src/domain/project.ts';
 import { el } from './kit.ts';
 
 /** The two controls this app adds on top of `docs/kit/`, both used by more than one screen. */
@@ -85,4 +86,40 @@ export function bindChips(scope: HTMLElement): void {
       chip.classList.add('is-active');
     });
   }
+}
+
+/**
+ * A level fader that can be pushed past unity, marks where unity is, and snaps back on a
+ * double tap.
+ *
+ * **Past unity because a take arrives at whatever the system input gave it** (§6.1). The app
+ * cannot set that gain — no browser or iOS API offers it — so the only remedy for a quiet
+ * recording is to raise it afterwards, and a fader that stops at 1 has none. `LEVEL_MAX` is
+ * +6 dB.
+ *
+ * **Unity is the midpoint**, which is what makes it markable: half the travel attenuates and
+ * half boosts, so the tick sits dead centre and the neutral position is findable by eye.
+ * The double tap is the same thing for the hand, and it is what stops "back to normal" being a
+ * hunt for a value you cannot see.
+ *
+ * The volume icon stays coarse above unity — §3.5 already says the arcs are the readout and
+ * precision belongs on the slider, so the thumb's position past the tick is the fine reading.
+ */
+export function levelSlider(level: () => number, onInput: (next: number) => void): HTMLElement {
+  const wrap = el('div', 'lr-level');
+  const input = el('input', 'lr-level__range') as HTMLInputElement;
+  input.type = 'range';
+  input.min = '0';
+  input.max = String(Math.round(LEVEL_MAX * 100));
+  input.value = String(Math.round(level() * 100));
+  input.addEventListener('input', () => onInput(Number(input.value) / 100));
+  // `dblclick` rather than a hand-rolled double tap: this is a native control, not one of the
+  // gesture surfaces `trackDrag` exists for, and `touch-action: manipulation` in the CSS is what
+  // stops a phone treating the second tap as a zoom.
+  input.addEventListener('dblclick', () => {
+    input.value = String(Math.round(LEVEL_UNITY * 100));
+    onInput(LEVEL_UNITY);
+  });
+  wrap.appendChild(input);
+  return wrap;
 }

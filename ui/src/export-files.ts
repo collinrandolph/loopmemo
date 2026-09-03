@@ -47,7 +47,10 @@ function soloLayer(project: Project, index: number, treated: boolean): Project {
     layers: project.layers.map((l) =>
       l.index === index
         ? treated
-          ? { ...l, muted: false, level: 1 }
+          // Unmuted but otherwise untouched: §2.7 says a muted layer still produces a stem, and
+          // the domain's own table says a stem with effects carries the layer's **level**, EQ and
+          // pan. Forcing level to 1 here dropped it, so the set no longer summed to the mix.
+          ? { ...l, muted: false }
           : dry(l)
         : { ...l, muted: true },
     ),

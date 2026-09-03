@@ -43,11 +43,26 @@ export const BPM_MAX = 240;
 export const NAME_CHARACTER_LIMIT = 12;
 
 /** One of exactly seven recorded tracks (§5.1 #6). */
+/** A level control's neutral position, and what a new layer starts on. */
+export const LEVEL_UNITY = 1;
+/**
+ * The most a level may be raised: +6 dB.
+ *
+ * Enough for a take that arrived quieter than intended, and short of amplifying room tone into
+ * the mix. Worse than this is a system input level the app has no API to reach.
+ */
+export const LEVEL_MAX = 2;
+
 export type Layer = {
   readonly id: string;
   readonly index: number;
   /** Empty means unnamed — the row shows a placeholder rather than a real name (§3.9). */
   readonly name: string;
+  /**
+   * Linear gain. Unity is `LEVEL_UNITY`, and it may exceed it: a take arrives at whatever the
+   * system input gave it, and the app cannot set that (§6.1), so the only remedy for a quiet
+   * recording is to be able to turn it up afterwards.
+   */
   readonly level: number;
   /** Layer mute, set on the Playback screen (§3.7). Independent of `mutedSlots`. */
   readonly muted: boolean;
