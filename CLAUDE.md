@@ -159,8 +159,9 @@ drag, and `consume()` to say the release was not a tap.
 above), `controls.ts` (`swipeWheel`, `bindChips`), `screen.ts` (`renderLoop`, `formatBytes`,
 `confirmPanel`, `annotationRow` — each of these had been written out per screen and drifted),
 `icons.ts` (inline Lucide paths — take new ones from that set), `backing-rows.ts` (the two backing
-rows, which edit `project.backing` and report upward like a layer row), `store.ts` (IndexedDB —
-see below) and `help.ts`.
+rows, which edit `project.backing` and report upward like a layer row), `theme.ts` (the four
+colourways, generated — see `docs/kit/restyling.md` §9), `store.ts` (IndexedDB — see below) and
+`help.ts`.
 **There are no tests over `ui/`** — only `src/domain` is covered, so a change here is verified by
 driving the browser.
 
@@ -579,9 +580,14 @@ crossfades, splices and pan law. `MixSource` in `bouncePlan` is the domain's acc
 in, not a recipe the browser follows — a platform without an engine to render through needs it.
 
 **`wrapTail` folds the overhang onto the head.** A Surround layer's delayed last bar has nowhere to
-go in a fixed-length render, and truncating leaves a seam the live loop never had, so a bounce
-renders `frames + tailFrames` and adds the overhang back at the start. **Export does not do this
-yet** — it still truncates (§6.1).
+go in a fixed-length render, so the render runs `frames + tailFrames` and adds the overhang back at
+the start. **Export and bounce both do this, and both gate it on `Project.perfectLoop`** — off
+renders exactly one loop and lets the tail be cut, which is what a one-shot going into an
+arrangement wants. Truncating is now a choice rather than the only behaviour.
+
+**Bounce passes no backing to `loopTailFrames` and export does.** That looks like a discrepancy and
+is the same rule: the tail is what is still sounding in *this* render, and a bounce has no backing
+audio in it at all (§2.7), so there is no drum tail to make room for.
 
 **Both destructive-ish actions refuse audio that is not in this session.** `hasAudioFor` is shared:
 compress would bake a gap into the only copy, bounce would seed a project with a silent layer 1.
@@ -608,9 +614,12 @@ action refuses whole rather than partly, matching §2.7. `verify-compress.ts` ch
 against a ramp whose value is its own frame number, so a bar written from the wrong place is a
 wrong number rather than a subtle difference: 617,400 frames, worst error 0.
 
-**Bounce has the identical defect and is left visible.** `bounceSeed` still takes a `simSession`,
-because rendering a mixdown needs §2.7's open question answered first — whether the backing is in
-it, and whether its settings carry to the seeded project.
+**Bounce had the identical defect and no longer does.** It was left visible while §2.7's open
+question stood — whether the backing is in a mixdown, and whether its settings carry — and that is
+now settled (layers only, settings carry regardless of mute). `runBounce` renders through
+`renderOffline`, wraps the tail, files the buffer with `takes.put`, and hands `bounceSeed` a
+`RecordingSession` describing audio that exists. **`simSession` is now only `demo.ts`'s**, which is
+the one place invented data belongs.
 
 ## Perfect loop, and the tail it wraps
 
@@ -944,8 +953,8 @@ Interface work cannot be judged before there is a build to look at, so proposing
 layouts, control placement or new components ahead of one is wasted effort.
 
 **The delayed tail of the last bar runs past the loop end.** Live that is correct and needs
-nothing. **Bounce and export render fixed-length files**, so there it must wrap to the start or
-the rendered loop has a seam the live one never had. Not yet implemented — bounce is not built.
+nothing. **Bounce and export render fixed-length files**, so there it wraps to the start or the
+rendered loop has a seam the live one never had — see "Perfect loop, and the tail it wraps".
 
 ## Build order (§0.5)
 
