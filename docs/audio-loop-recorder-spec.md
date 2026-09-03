@@ -1117,8 +1117,10 @@ from its **centre outward** (normalise `pathLength` to 1, draw a dash of length 
   travel attenuates and half boosts, which is what makes unity markable: a tick sits dead centre,
   **below** the track rather than on it, since drawn on the track the thumb would hide it at
   exactly the value it exists to mark. **A double tap returns to unity.**
-- Above unity the arcs stay saturated. That follows from the rule above — the icon is the coarse
-  readout and the fader is the fine one — so the thumb's position past the tick is the reading.
+- **The arcs span the whole range, so unity is half fill.** Filling them completely at unity
+  would leave the whole +6 dB above it moving nothing — the icon identical at 1.0 and at 2.0,
+  which is the readout going blind exactly where the new range lives. Half fill also puts the
+  icon's neutral where the fader's tick is, so the coarse readout and the fine one agree.
 
 A staged version (four arcs filling one at a time) was tried and rejected: it required reading which
 arcs were complete and then how far into the next — three judgments for one value.

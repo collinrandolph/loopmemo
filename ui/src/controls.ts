@@ -105,6 +105,19 @@ export function bindChips(scope: HTMLElement): void {
  * The volume icon stays coarse above unity — §3.5 already says the arcs are the readout and
  * precision belongs on the slider, so the thumb's position past the tick is the fine reading.
  */
+/**
+ * A level as the percentage the volume icon fills to.
+ *
+ * **Over the whole range, not just the attenuating half.** The icon divides by 100 internally and
+ * clamps, so passing `level * 100` filled it completely at unity and every decibel of the +6 dB
+ * above that moved nothing — the control looked identical at 1.0 and at 2.0. Dividing by
+ * `LEVEL_MAX` puts unity at half fill, which is also where the fader's tick is, so the coarse
+ * readout and the fine one agree about where neutral is.
+ */
+export function levelPercent(level: number): number {
+  return (level / LEVEL_MAX) * 100;
+}
+
 export function levelSlider(level: () => number, onInput: (next: number) => void): HTMLElement {
   const wrap = el('div', 'lr-level');
   const input = el('input', 'lr-level__range') as HTMLInputElement;

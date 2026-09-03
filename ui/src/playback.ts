@@ -20,7 +20,7 @@ import {
   sizeProjection,
 } from '../../src/domain/project.ts';
 import { framesPerBar, loopFrames, loopSeconds } from '../../src/domain/timing.ts';
-import { bindChips, levelSlider } from './controls.ts';
+import { bindChips, levelPercent, levelSlider } from './controls.ts';
 import { helpControl } from './help.ts';
 import { type RecordState, type WaveNode, LR, el, motion, ramp, sizing } from './kit.ts';
 import { SETTINGS_ICON } from './icons.ts';
@@ -518,7 +518,7 @@ export function playbackScreen(opts: {
     };
 
     const volume = LR.VolumeControl({
-      level: () => row.layer.level * 100,
+      level: () => levelPercent(row.layer.level),
       muted: () => row.layer.muted,
       onToggle() {
         row.layer = { ...row.layer, muted: !row.layer.muted };

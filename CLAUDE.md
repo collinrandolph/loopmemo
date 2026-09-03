@@ -830,6 +830,12 @@ different levels.
 on it, the thumb hides it at exactly the value it exists to mark. Double tap returns to unity.
 `levelSlider` in `controls.ts` is the one copy — layer rows and backing rows share it.
 
+**The volume icon spans the same range, so unity is half fill** (`levelPercent`). `VolumeControl`
+divides by 100 and clamps, so passing `level * 100` saturated it at unity and every decibel of the
++6 dB above moved nothing — the icon read identically at 1.0 and 2.0. Dividing by `LEVEL_MAX` also
+puts the icon's neutral where the fader's tick is. **The master control is still `* 100` because it
+is 0..1 and unwired**; give it the same treatment when it is given a range.
+
 **The master volume on the Playback screen is not wired to anything.** `masterLevel` and
 `masterMuted` are screen-local state nothing reads, so the control moves and does nothing. Known,
 not yet fixed.

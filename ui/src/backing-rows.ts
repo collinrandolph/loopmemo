@@ -16,7 +16,7 @@ import {
   randomChord,
 } from '../../src/domain/backing.ts';
 import { isAudibleInMixdown } from '../../src/domain/bounce.ts';
-import { bindChips, levelSlider, swipeWheel } from './controls.ts';
+import { bindChips, levelPercent, levelSlider, swipeWheel } from './controls.ts';
 import { syncCollapse } from './screen.ts';
 import { DRUM_ICON, PIANO_ICON } from './icons.ts';
 import { LR, el } from './kit.ts';
@@ -67,7 +67,7 @@ export function backingRows(opts: {
     head.appendChild(body);
 
     const vol = LR.VolumeControl({
-      level: () => track().level * 100,
+      level: () => levelPercent(track().level),
       muted: () => track().muted,
       onToggle() {
         setTrack({ muted: !track().muted });
