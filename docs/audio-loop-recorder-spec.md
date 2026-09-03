@@ -1584,6 +1584,11 @@ Do not reintroduce these. Each was built or specified, then removed for the stat
 | **Voicing implied by the chord tone** | A pad held through the bar, a keyed tone re-articulated. It welded rhythm to timbre, so choosing a sound also chose a groove. The chord pattern is now its own axis (§2.6). |
 | **A per-slot chord pattern** | Considered when the rhythm axis was added, rejected: it is the axis most likely to make a four-bar bed sound arranged rather than supportive, and it is a fourth per-slot decision in a control whose justification is speed. |
 | **`enabled` alongside `muted` on a backing track** | Two spellings of one state, and only `muted` was ever reachable — so `enabled` was a field the user could not set that still decided whether a backing stem was written. |
+| **Preset chord progressions** | A library of I–V–vi–IV and similar, to remove the blank slate. The blank slate is four editable slots and a Randomize button, which is already fast; a preset list adds a vocabulary to learn in front of a control whose whole justification is speed. |
+| **Auto-navigating to Edit Layer when a recording stops** | What follows a take is usually another take, not editing. Moving the screen out from under the user at the moment they might reach for the record dot again is the wrong guess, and the guess is unnecessary — the Edit Layer button is right there. |
+| **An input level meter** | The live waveform *is* the meter. It draws from the same `inputPeak()` a meter would, at the same display gain as the committed take, across the whole pass rather than at one instant — so a second readout would be a quieter copy of something already on screen. This does not settle input *gain staging* (§6.1), only the display half of it. |
+| **Tapping the lane to open Edit Layer** | The Edit Layer button in the layer's own panel is deliberately large, and it is the affordance. A second, invisible route to the same screen teaches nothing and makes the lane's other gestures ambiguous. |
+| **Lane scrubbing** | The transport's progress bar already seeks, and it is the control that looks like it seeks. Putting a second seek on the lane would also make a horizontal drag mean "seek" on Playback and "change bar" on Edit Layer, on elements that look alike. |
 
 ## 5.3 Suppress by default
 
@@ -1603,23 +1608,18 @@ touch-action: none;                         /* on gesture surfaces */
 | Item | Notes |
 |------|-------|
 | **Microphone permission and first-run** | The first record tap triggers the system prompt; a denial needs a defined state. The only §5.1-class item still open. |
-| **Lane scrubbing** | The lane is the obvious place to seek, but that would make a horizontal drag mean "seek" here and "change bar" on the Edit Layer screen — same gesture, different meaning, on similar-looking elements. Distinct contexts, so probably fine; decide deliberately. |
-| **Handoff to the Edit Layer screen** | "Edit bars" is a panel button; the lane is the more natural target and is currently inert. |
-| **Auto-navigation** to Edit Layer when a recording stops | |
 | **Row density** | Empty and armed layers occupy full-height rows; with two of seven recorded, much of the screen is placeholder. |
 | **Edit Layer gradient scope** | Full ramp, or the layer's `slice(i, 7)` subdivided across the recording. The slice would make colour mean the same thing on both screens and constantly signal which layer you're in — but a seventh of the ramp has less hue separation, so subtle reorderings get harder to spot. Try both against real recordings. |
-| **Preset chord progressions** | A small library (I–V–vi–IV and similar) removes the blank-slate problem. More valuable now that quality is per slot (§4.4): a preset sets eight fields, not four. |
 | **Backing voices that outlive their onset gap** | A voice can still be ringing when the next onset in the same pattern fires. Three different policies are in play and none is settled: chords cap each voice's ring to the gap before the next onset, the hat chokes its predecessor outright, and kick and snare do neither. Decide one model — cap, choke, or overlap — and apply it consistently, or state deliberately why a voice type differs. |
 | **Backing tails at the loop point** | Live it is correct; a fixed-length bounce or export truncates it into a seam. See §2.6, and `tailFrames`, which currently accounts only for the pan delay. |
 | **What a bounce does with the backing tracks** | Two coupled questions — is the backing in the mixdown, and do its settings carry to the new project. Current direction is that it stops being part of a bounce. See §2.7. |
-| **Input gain staging, and whether anything meters it** | Reported as "working but very quiet". Three contributors and only one is the device. `autoGainControl` is deliberately off (§2.3 — a rider is a moving gain and ruins two takes of the same playing), so the system level now governs entirely and the app offers no trim, no meter and no clip indicator: there is nothing to look at and nothing to set. The shared output bus also applies a flat 0.5 headroom gain, chosen when it only carried a dozen synthesised oscillators, so every recorded layer inherits −6 dB it has no reason to. Decide whether the answer is an input trim, a normalise-on-commit, a meter, or simply a louder bus for material that is not the backing. |
+| **Input gain staging** | Reported as "working but very quiet". Two of the three contributors are settled: the shared bus no longer attenuates, and the live waveform is the meter (§5.2). What is left is whether there should be anything to *set* — an input trim, or a normalise-on-commit, or neither. `autoGainControl` stays off either way (§2.3 — a rider is a moving gain and ruins two takes of the same playing), so without one of those the system level governs entirely. |
 | **Layer reordering** | |
 | **Storage full mid-recording** | How gracefully the session ends. |
 | **Showing the pass range** (`P2/4`) | Makes the wrap predictable. |
 
 ## 6.2 Not yet designed
 
-- Backing-track **selection UI**. The libraries themselves are settled (§2.6): six drum patterns, four kits, seven chord patterns, four tones. How they are picked inside a backing row's panel is not.
 - Export sharing details beyond format and destination
 - The manual's actual copy (§4.7 is structure only)
 - Onboarding
