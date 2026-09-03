@@ -308,7 +308,11 @@ export function editLayerScreen(opts: {
       const node = el('div', 'tile');
       const label = el('div', 'tile-label');
       const wave = LR.Waveform({});
-      node.append(label, wave, el('div', 'swipe-hint', '<span>↕ pass</span><span>↔ bar</span>'));
+      node.append(
+        label,
+        wave,
+        el('div', 'swipe-hint', '<span class="hint-pass">↕ pass</span><span>↔ bar</span>'),
+      );
       rowEl.appendChild(node);
       attachGestures(node, slot);
       tiles.push({ node, label, wave, swiping: false, swipeA: 1, muteA: 0, resetA: 0 });
@@ -335,6 +339,15 @@ export function editLayerScreen(opts: {
     tile.label.innerHTML =
       `<span class="pass"><i class="ax">↕</i>P${ref.pass}</span>` +
       `<span class="rel"><i class="ax">↔</i>${ref.relativeBar}</span>`;
+    // **A tile with one available pass hides its vertical hint** — the axis works, it simply has
+    // nowhere to go, and an affordance for a gesture that cannot change anything is a promise the
+    // user has no way to cash. Per *bar*, not per layer: a partial pass leaves early bars with two
+    // and late ones with one (§1.4), so neighbouring tiles legitimately differ.
+    //
+    // Deliberately not extended to a muted tile, whose swipe is also locked. That lock is one hold
+    // away from being released and the help sheet says so, whereas a second pass can only come
+    // from recording one.
+    tile.node.classList.toggle('is-single-pass', passes.length <= 1);
     tile.node.title = `slot ${slot + 1} · pass ${ref.pass}, bar ${ref.relativeBar} · available: ${passes.join(', ') || 'none'}`;
 
     // Colour indexes per LINE across the whole recording: one continuous non-repeating ramp at

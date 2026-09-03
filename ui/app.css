@@ -106,6 +106,13 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
 }
 .tile.is-selected .swipe-hint { color: var(--lr-hint-sel); }
 
+/* One pass for this bar means the vertical axis has nowhere to go, so it stops advertising
+   itself. The horizontal hint stays and takes the left, which is the axis it belongs to.
+   Both forms of the hint go: the strip on a tall tile and the arrow folded into the label on a
+   short one. */
+.tile.is-single-pass .hint-pass { display: none; }
+.tile.is-single-pass .pass .ax { display: none; }
+
 /* --- Playback screen; lifted from docs/mockups/playback-screen-mockup.html --- */
 .lr-transport { display: flex; align-items: center; gap: 14px; margin-top: 14px; }
 

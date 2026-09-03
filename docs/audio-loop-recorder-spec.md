@@ -1167,6 +1167,15 @@ A standard progress bar with optional bar ticks and click-to-seek, alongside the
 rather than replacing it. The sweep shows *what* has played; the bar shows *how far through* at a
 glance. **Seeking is refused while a take is running**, per the rule above.
 
+**A tile with only one available pass hides its vertical hint.** The axis still works; it simply
+has nowhere to go, and an affordance for a gesture that cannot change anything is a promise the
+user has no way to cash. Scoped per **bar**, not per layer — a partial pass leaves early bars with
+one more pass than late ones (§1.4), so neighbouring tiles legitimately differ. Both forms go: the
+strip on a tall tile and the arrow folded into the label on a short one.
+
+**Deliberately not extended to a muted tile**, whose swipe is also locked. That lock is one hold
+away from being released and the help sheet says so; a second pass can only come from recording one.
+
 ## 3.6 Transport logic — `LR.Transport`
 
 Progress indexes on the **edited** timeline. Modes: `idle`, `bar` (repeat one slot), `loop` (play the
@@ -1620,6 +1629,7 @@ Do not reintroduce these. Each was built or specified, then removed for the stat
 | **Tapping the lane to open Edit Layer** | The Edit Layer button in the layer's own panel is deliberately large, and it is the affordance. A second, invisible route to the same screen teaches nothing and makes the lane's other gestures ambiguous. |
 | **Lane scrubbing** | The transport's progress bar already seeks, and it is the control that looks like it seeks. Putting a second seek on the lane would also make a horizontal drag mean "seek" on Playback and "change bar" on Edit Layer, on elements that look alike. |
 | **Subdividing the layer's ramp slice on the Edit Layer grid** | Considered so colour would mean one thing on every screen. Measured on a 5-pass, 16-bar layer: the full ramp separates neighbouring passes by 80–139 RGB units; a layer's seventh separates them by 11–12. Layer 1's whole recording would run `rgb(255,138,91)` to `rgb(255,184,91)` — red pinned at 255, blue at ~90, only green moving — which at a 3px line width is not a jump anyone can see, and the jump is the feature (§1.1). The argument for it, constantly signalling which layer you are in, is already served by the layer's name in the header. The two screens are not inconsistent: Playback's colour is layer identity (§4.4), Edit Layer's is source position (§1.1). |
+| **Showing the pass range on a tile** (`P2/4`) | Meant to make the vertical wrap predictable. The available set can be non-contiguous (§1.4), so with `{1,2,4,5}` a tile on pass 4 reads `P4/4` — which looks like the last of four and is the third, and the ambiguity is worst in exactly the case the readout would be most useful. Disambiguating costs a third number on a tile that already drops its hint strip at 50px. The hint now hides itself when there is only one pass, which is the part that was actually misleading. |
 | **An input trim** | Considered for "working but very quiet". At playback it is `Layer.level` under a second name — the duplicate editor §1.5 warns about. At capture it is baked into the take, fixes only *future* recordings and cannot be judged after the fact, which is the same argument §2.3 uses to put the recording offset at scheduling rather than capture. The remedy was neither: extend the range of the fader that already exists (§3.5). |
 | **Normalise-on-commit** | Scaling each take to a target peak. §2.3 already rejects `autoGainControl` because "a rider is a moving gain and ruins two takes of the same playing" — normalising per take is the same fault at coarser grain: two passes of one part come back at different levels and the balance the user set means nothing. |
 | **A uniform voice choke on the backing** | One rule for all four voice types — a new onset ends the previous one over a 5 ms ramp, on the argument that a voice type is one physical mechanism (one pair of cymbals, one pair of hands, one drum and one beater). Built behind a live A/B and rejected on hearing it. Measured, it leaves 1.81× the energy of the cap on Fast 8th with a Rhodes, 1.59× on Steady Quarters and 0.98× on Sustain — the chords ring their full recipe length and are cut while still singing, rather than having faded first. The numbers were right and the sound was wrong; a chord bed is meant to support, and one that keeps ringing to the handover competes. The per-voice policies stand (§2.6). |
@@ -1645,7 +1655,6 @@ touch-action: none;                         /* on gesture surfaces */
 | **Row density** | Empty and armed layers occupy full-height rows; with two of seven recorded, much of the screen is placeholder. |
 | **Backing tails at the loop point** | Settled for bounce: `tailFrames` is rendered and folded onto the head (`wrapTail`). Still open for **export**, whose fixed-length render truncates both a layer's pan delay and a backing voice still ringing at the loop point. `tailFrames` also still accounts only for the pan delay, not for a chord's own decay. |
 | **Storage full mid-recording** | How gracefully the session ends. |
-| **Showing the pass range** (`P2/4`) | Makes the wrap predictable. |
 
 ## 6.2 Not yet designed
 
