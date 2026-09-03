@@ -2,8 +2,9 @@ import type { BackingTracks } from '../../src/domain/backing.ts';
 import type { ExportFile, ExportPlan } from '../../src/domain/export.ts';
 import { panGains } from '../../src/domain/effects.ts';
 import { type Layer, type Project, QUALITY_SPEC, projectTiming } from '../../src/domain/project.ts';
+import { loopTailFrames } from '../../src/domain/tail.ts';
 import { loopFrames } from '../../src/domain/timing.ts';
-import { renderOffline, silentBacking } from './render.ts';
+import { renderOffline, silentBacking, wrapTail } from './render.ts';
 import type { OutputFile } from './save.ts';
 import type { TakeStore } from './takes.ts';
 import { encodeWav } from './wav.ts';
@@ -58,12 +59,30 @@ function soloLayer(project: Project, index: number, treated: boolean): Project {
 }
 
 /** Both live in `render.ts`, so export and bounce cannot render a project differently. */
-const renderThroughEngine = (
+/**
+ * Render one loop, and decide what happens to whatever is still ringing at the end of it.
+ *
+ * **Perfect loop on renders past the loop point and folds the overhang onto the head** — what the
+ * live loop does when it comes round, and what stops a file that is meant to repeat having a seam
+ * at the join. Off renders exactly one loop and lets the tail be cut, which is what a one-shot
+ * going into an arrangement wants: a clean head, at the price of the end.
+ *
+ * The tail is the project's worst case rather than this file's. Over-rendering costs a few frames
+ * of silence and nothing else, where a per-file figure would be three more paths to keep in
+ * agreement (`loopTailFrames`).
+ */
+const renderThroughEngine = async (
   ctx: RenderContext,
   project: Project,
   backing: BackingTracks,
   frames: number,
-) => renderOffline(project, backing, ctx.takes, frames);
+) => {
+  const tail = ctx.project.perfectLoop
+    ? loopTailFrames(project.layers, projectTiming(project), backing)
+    : 0;
+  const rendered = await renderOffline(project, backing, ctx.takes, frames + tail);
+  return wrapTail(rendered, frames, tail);
+};
 
 /** Drop to one channel, with the centre-pan makeup applied. */
 function toMono(buffer: AudioBuffer, makeup = CENTRE_MAKEUP): AudioBuffer {

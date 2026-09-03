@@ -1111,6 +1111,47 @@ from its **centre outward** (normalise `pathLength` to 1, draw a dash of length 
 - **Muted**: arcs hidden, body dimmed, a slash wipes in over ~180 ms using the same dash technique.
 - The icon **absorbs its own clicks** so muting never also expands the row.
 - **No numeric readout in the row.** The arcs are the readout; precision belongs on the expanded slider.
+#### Perfect loop
+
+**A loop is a loop**: whatever is still ringing at the end carries over the start, and live that
+needs no arithmetic. A rendered file is a fixed length, so the same audio is cut instead — and on
+repeat that is a seam the live loop never had.
+
+Both behaviours are wanted and one file cannot be both, so `Project.perfectLoop` is a setting,
+**on by default**, read by export *and* by bounce:
+
+| | |
+|---|---|
+| **On** | Renders past the loop point and folds the overhang onto the head. No seam when the file repeats. |
+| **Off** | Renders exactly one loop; the tail is cut. A clean start, which is what a one-shot going into an arrangement wants. |
+
+**It does not change a file's length**, so the manifest and the size projection are identical
+either way, and it is a no-op for files with no tail — dry stems (forced to centre pan and flat
+EQ) and recorded passes, which are never rendered.
+
+**It is one value with two views**: the primary control is on the project settings screen and a
+second instance sits on Export, where the choice is usually made. Both read and write
+`project.perfectLoop`. Settings holds it pending until Save like its other fields; Export applies
+it at once, because that screen has no commit step.
+
+**Off is a foot-gun on a bounce** and kept only for consistency: a bounce seeds a project that
+loops forever and cannot be re-rendered with the other setting later, so a seam there is permanent.
+
+`loopTailFrames` reports what has to wrap. Three sources, and they are not the same size —
+measured at 44.1 kHz:
+
+| | Overhang |
+|---|---|
+| A Surround layer's Haas delay | 35 ms |
+| `syncopated-pop`'s open hat, Tight kit | 0 ms at 84 BPM, 100 at 120, **183 at 180**, 225 at 240 |
+| Chords | 0 ms across the usable range; 25 ms at 240 BPM from the ring floor |
+
+**Chords essentially never overhang**, which is not obvious: `chordRingSeconds` caps a ring to the
+next onset *minus 50 ms* and every pattern in the library starts on beat 1, so the ring lands just
+before the bar line. Off-beat Skank is the one that starts elsewhere and its onsets are all short
+chunks. **Only one drum pattern overhangs at all** — the only one with an open hat, whose own
+source comment says the accent is meant to ring past the loop point.
+
 - **The fader runs past unity, to +6 dB**, and unity is its midpoint. A take arrives at whatever
   the system input gave it and the app has no API to set that (§2.3), so a fader stopping at 1
   leaves a quiet recording with no remedy at all — including recordings already made. Half the
@@ -1653,7 +1694,6 @@ touch-action: none;                         /* on gesture surfaces */
 | Item | Notes |
 |------|-------|
 | **Row density** | Empty and armed layers occupy full-height rows; with two of seven recorded, much of the screen is placeholder. |
-| **Backing tails at the loop point** | Settled for bounce: `tailFrames` is rendered and folded onto the head (`wrapTail`). Still open for **export**, whose fixed-length render truncates both a layer's pan delay and a backing voice still ringing at the loop point. `tailFrames` also still accounts only for the pan delay, not for a chord's own decay. |
 | **Storage full mid-recording** | How gracefully the session ends. |
 
 ## 6.2 Not yet designed

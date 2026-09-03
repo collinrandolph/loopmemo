@@ -136,3 +136,33 @@ export function levelSlider(level: () => number, onInput: (next: number) => void
   wrap.appendChild(input);
   return wrap;
 }
+
+/**
+ * The Perfect loop setting (§2.6), as a row of two chips.
+ *
+ * **One control, mounted twice.** It is the primary setting on the project settings screen and
+ * appears again on Export, where the choice is usually made — both read and write the same
+ * `project.perfectLoop`, so they are two views of one value rather than the second editor §1.5
+ * warns about. `refresh` lets a mount re-read after the other one has changed it.
+ */
+export function perfectLoopRow(
+  value: () => boolean,
+  onPick: (next: boolean) => void,
+): { node: HTMLElement; refresh(): void } {
+  const row = el('div', 'lr-panel-row', '<span class="lr-panel-label">Perfect loop</span>');
+  const chips = el('div', 'lr-chips');
+  const on = el('span', 'lr-chip', 'On');
+  const off = el('span', 'lr-chip', 'Off');
+  chips.append(on, off);
+  row.appendChild(chips);
+
+  const refresh = () => {
+    on.classList.toggle('is-active', value());
+    off.classList.toggle('is-active', !value());
+  };
+  on.addEventListener('click', () => onPick(true));
+  off.addEventListener('click', () => onPick(false));
+  bindChips(row);
+  refresh();
+  return { node: row, refresh };
+}

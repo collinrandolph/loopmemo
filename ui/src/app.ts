@@ -284,6 +284,9 @@ function render() {
               tracks: project.backing,
               takes,
               // Back where you came from, not always the Library.
+              // Straight through to the project: the settings screen edits the same value, and
+              // this screen has no commit step to defer it to.
+              onPerfectLoop: (next) => replaceProject({ ...open(), perfectLoop: next }),
               onCancel: () => navigate(back),
               onShare: () => navigate(back),
             });

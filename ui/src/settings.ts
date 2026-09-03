@@ -19,7 +19,7 @@ import {
   sizeProjection,
 } from '../../src/domain/project.ts';
 import { loopSeconds, timing } from '../../src/domain/timing.ts';
-import { bindChips } from './controls.ts';
+import { bindChips, perfectLoopRow } from './controls.ts';
 import { helpControl } from './help.ts';
 import { LR, el } from './kit.ts';
 import type { BackingEngine } from './audio.ts';
@@ -270,6 +270,23 @@ export function projectSettingsScreen(opts: {
       'headphones and microphone. Play the loop and slide until your playing sits on the beat.',
   );
 
+  // ----------------------------------------------------------- perfect loop --
+  /**
+   * A render setting rather than a mix one, so it sits with the recording offset rather than with
+   * tempo and bars — nothing recorded depends on it and it never locks. Pending until Save, like
+   * every other field on this screen; the Export screen's copy applies at once, because that
+   * screen has no commit step.
+   */
+  let perfectLoop = opts.project.perfectLoop;
+  const loopRow = perfectLoopRow(
+    () => perfectLoop,
+    (next) => {
+      perfectLoop = next;
+      loopRow.refresh();
+    },
+  );
+  const loopNote = el('div', 'setting-note', "Wraps whatever is still ringing at the end of the loop — an open hat, a Surround layer’s delay — onto the start, so a file that repeats has no seam at the join. Turn it off for a one-shot, which keeps a clean start and lets the tail be cut.");
+
   // ---------------------------------------------------------------- actions --
   /**
    * Export, bounce, compress and delete. **They belong to a project, so they live on the
@@ -358,8 +375,11 @@ export function projectSettingsScreen(opts: {
    * fixed-length render, and truncating it leaves a seam the live loop never had.
    */
   async function runBounce(p: Project, frames: number, tailFrames: number) {
-    const rendered = await renderOffline(p, silentBacking(), opts.takes, frames + tailFrames);
-    const buffer = wrapTail(rendered, frames, tailFrames);
+    // Off means the seeded project carries the seam — permanently, since a bounce cannot be
+    // re-rendered with the other setting later. On is the default for that reason.
+    const tail = p.perfectLoop ? tailFrames : 0;
+    const rendered = await renderOffline(p, silentBacking(), opts.takes, frames + tail);
+    const buffer = wrapTail(rendered, frames, tail);
     const id = `${p.id}-mix-${Date.now().toString(36)}`;
     const session: RecordingSession = {
       id,
@@ -478,6 +498,8 @@ export function projectSettingsScreen(opts: {
     el('div', 'setting-gap'),
     latencyRow,
     annotationRow(latencyNote),
+    loopRow.node,
+    annotationRow(loopNote),
     el('div', 'setting-gap'),
     annotationRow(lockNote),
     ...(creating ? [] : [el('div', 'setting-gap'), actionsBlock]),
@@ -536,6 +558,7 @@ export function projectSettingsScreen(opts: {
       bpm,
       barCount,
       latencyOffsetSeconds: latencyMs / 1000,
+      perfectLoop,
       lastModified: new Date().toISOString(),
     };
   }

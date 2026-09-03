@@ -1,6 +1,6 @@
 import { type RetainedBar, compressionPlan } from './arrangement.ts';
 import type { BackingMixSource } from './backing.ts';
-import { type PanPlan, haasDelayFrames, panPlan, panPreset } from './effects.ts';
+import { type PanPlan, panPlan, panPreset } from './effects.ts';
 import { type EqBand, eqPreset } from './eq.ts';
 import type { RecordingSession } from './pass-index.ts';
 import {
@@ -13,6 +13,7 @@ import {
   projectTiming,
   recordSession,
 } from './project.ts';
+import { loopTailFrames } from './tail.ts';
 import { loopFrames } from './timing.ts';
 
 /**
@@ -93,7 +94,6 @@ function contributes(bars: readonly RetainedBar[]): boolean {
 export function bouncePlan(project: Project): BouncePlan | undefined {
   const t = projectTiming(project);
   const layers: MixSource[] = [];
-  let usesDelay = false;
 
   for (const layer of project.layers) {
     if (layer.muted || layer.sessions.length === 0) continue;
@@ -103,7 +103,6 @@ export function bouncePlan(project: Project): BouncePlan | undefined {
     if (!contributes(plan.bars)) continue;
 
     const pan = panPlan(panPreset(layer.pan), t);
-    if (pan.delay.wet.left > 0 || pan.delay.wet.right > 0) usesDelay = true;
 
     layers.push({
       layerIndex: layer.index,
@@ -119,7 +118,9 @@ export function bouncePlan(project: Project): BouncePlan | undefined {
   return {
     frameCount: loopFrames(t),
     layers,
-    tailFrames: usesDelay ? haasDelayFrames(t) : 0,
+    // Through `loopTailFrames` so bounce and export cannot disagree about what is still
+    // sounding. No backing argument: a bounce does not contain it (§2.7).
+    tailFrames: loopTailFrames(project.layers, t),
   };
 }
 

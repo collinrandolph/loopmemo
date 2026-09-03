@@ -10,7 +10,7 @@ import {
 } from '../../src/domain/export.ts';
 import { type Project, projectTiming } from '../../src/domain/project.ts';
 import { loopSeconds } from '../../src/domain/timing.ts';
-import { bindChips } from './controls.ts';
+import { bindChips, perfectLoopRow } from './controls.ts';
 import { LR, el } from './kit.ts';
 import type { Engine } from './engine.ts';
 import { renderExport } from './export-files.ts';
@@ -37,6 +37,8 @@ export function exportScreen(opts: {
   tracks: BackingTracks;
   /** Captured audio, so a stem or a pass has something to render from. */
   takes: TakeStore;
+  /** Writes `project.perfectLoop`; the project settings screen edits the same value (§2.6). */
+  onPerfectLoop(next: boolean): void;
   /** Leave without exporting. Distinct from `onShare` even where both land in the same place. */
   onCancel(): void;
   onShare(): void;
@@ -161,6 +163,27 @@ export function exportScreen(opts: {
   bitrateRow.appendChild(bitrateChips);
   bindChips(bitrateRow);
 
+  /**
+   * The same setting as project settings, not a copy of it: this writes through immediately and
+   * the project is what both read. Export is where the choice is usually made, which is why it is
+   * here as well as there.
+   *
+   * **A local mirror, because `opts.project` is the snapshot this screen was built with** — it
+   * does not see the write coming back, so reading it would leave the chips showing the value
+   * before the tap. Nothing else needs repainting: wrapping does not change a file's length, so
+   * the manifest and the sizes are identical either way.
+   */
+  let perfectLoop = project.perfectLoop;
+  const loopRow = perfectLoopRow(
+    () => perfectLoop,
+    (next) => {
+      perfectLoop = next;
+      opts.onPerfectLoop(next);
+      loopRow.refresh();
+    },
+  );
+  const loopNote = el('div', 'export-note', "Wraps whatever is still ringing at the end of the loop — an open hat, a Surround layer’s delay — onto the start, so a file that repeats has no seam at the join. Turn it off for a one-shot, which keeps a clean start and lets the tail be cut.");
+
   const formatNote = el(
     'div',
     'export-note',
@@ -201,6 +224,8 @@ export function exportScreen(opts: {
     formatNote,
     bitrateRow,
     wavNote,
+    loopRow.node,
+    loopNote,
     el('div', 'lr-section-label', 'Preview'),
     preview,
     el('div', 'lr-section-label', 'Files'),

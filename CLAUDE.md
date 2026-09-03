@@ -612,6 +612,30 @@ wrong number rather than a subtle difference: 617,400 frames, worst error 0.
 because rendering a mixdown needs §2.7's open question answered first — whether the backing is in
 it, and whether its settings carry to the seeded project.
 
+## Perfect loop, and the tail it wraps
+
+**`loopTailFrames` is the one derivation of what is still sounding at the loop point**, shared by
+bounce and export so they cannot disagree. It reports the project's worst case rather than a
+per-file figure: over-wrapping adds silence and nothing else, where three per-kind figures would be
+three things to keep in agreement.
+
+**The tail is much smaller than it looks, and almost all of it is one drum pattern.** Chords
+essentially never overhang — `chordRingSeconds` caps to the next onset minus 50 ms and every
+pattern starts on beat 1, so the ring lands *before* the bar line. `syncopated-pop` is the only
+pattern with an open hat and the only real backing tail: 183 ms at 180 BPM with the Tight kit. A
+Surround layer adds 35 ms. Do not re-derive this from strike decays — that mistake was made once
+and gave a figure four times too large, because chunk onsets ring `chunkSeconds`, not
+`strikeSeconds`.
+
+**`Project.perfectLoop` is one value with two views** — project settings and Export. That is not
+the second editor §1.5 warns about, because there is one stored value; but the Export mount keeps
+a **local mirror**, since `opts.project` is the snapshot that screen was built with and never sees
+the write coming back.
+
+**`store.ts`'s `migrate` is where a new `Project` field gets its default on load.** A field added
+today reads `undefined` on every project saved before today, and for a boolean that silently means
+*off* — so a default of true inverts itself for existing work without it.
+
 ## Getting files out of the browser
 
 **Ask where the file goes BEFORE rendering it, not after.** `showSaveFilePicker` needs transient

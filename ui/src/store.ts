@@ -55,6 +55,18 @@ function samplesOf(buffer: AudioBuffer): Float32Array {
 }
 
 /** `dbName` is only for `verify-store.ts`, so a check never writes into the real database. */
+/**
+ * Fill in fields a project predates.
+ *
+ * **Every read goes through here**, because a stored project is only as new as the day it was
+ * saved and `Project` gains fields. Without it a field added today reads `undefined` on every
+ * project saved before today — and for a boolean that silently means *off*, so a default of true
+ * would invert itself for existing work. Add a line here whenever a required field is added.
+ */
+function migrate(project: Project): Project {
+  return { ...project, perfectLoop: project.perfectLoop ?? true };
+}
+
 export function persistentStore(dbName = DB_NAME): Store {
   let db: IDBDatabase | undefined;
   let broken = false;
@@ -126,7 +138,7 @@ export function persistentStore(dbName = DB_NAME): Store {
       if (!seeded) return undefined;
       const store = await tx(PROJECTS, 'readonly');
       const all = await run<Project[]>(store?.getAll() as IDBRequest<Project[]>, 'projects');
-      return all ?? undefined;
+      return all?.map(migrate) ?? undefined;
     },
 
     saveProject(project) {

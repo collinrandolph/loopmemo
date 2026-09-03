@@ -127,6 +127,18 @@ export type Project = {
    * changing it rewrites nothing, so it stays editable for the life of the project.
    */
   readonly latencyOffsetSeconds: number;
+  /**
+   * Whether a rendered file wraps its tail onto the head instead of truncating it (§2.6).
+   *
+   * A loop is a loop: whatever is still ringing at the end carries over the start, and live that
+   * needs no arithmetic. A fixed-length render cuts it instead, so on repeat there is a seam the
+   * live loop never had. On is that seam removed; off is a clean head and a cut tail, which is
+   * what a one-shot destined for an arrangement wants.
+   *
+   * Both readings are legitimate and one file cannot be both, so it is a setting. Read by export
+   * and by bounce, which is why it lives on the project rather than on either screen.
+   */
+  readonly perfectLoop: boolean;
   readonly layers: readonly Layer[];
 };
 
@@ -217,6 +229,9 @@ export function createProject(options: {
     isCompressed: false,
     backing: options.backing ?? defaultBacking(),
     latencyOffsetSeconds: clampLatencyOffset(options.latencyOffsetSeconds ?? 0),
+    // On by default: a project is a loop, and a seam at its loop point is a defect rather than a
+    // choice until someone deliberately wants a clean head instead (§2.6).
+    perfectLoop: true,
     layers: Array.from({ length: LAYER_COUNT }, (_, i) => emptyLayer(i)),
   };
 }
