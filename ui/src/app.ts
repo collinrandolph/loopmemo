@@ -9,6 +9,7 @@ import { libraryScreen } from './library.ts';
 import { playbackScreen } from './playback.ts';
 import { projectSettingsScreen } from './settings.ts';
 import { demoLibrary } from './demo.ts';
+import { persistentStore } from './store.ts';
 import { takeStore } from './takes.ts';
 
 /**
@@ -18,10 +19,10 @@ import { takeStore } from './takes.ts';
  * functions take and return, so nothing needs an adapter. The Library is the entry point (§4.1);
  * everything else is reached from a project.
  */
-let projects: readonly Project[] = demoLibrary();
+let projects: readonly Project[] = [];
 // The most recently modified, which is what the Library puts at the top and what a user
 // returning to the app last had open.
-let openId = [...projects].sort((a, b) => b.lastModified.localeCompare(a.lastModified))[0]!.id;
+let openId = '';
 
 type Route =
   | { screen: 'library' }
@@ -51,12 +52,17 @@ type Screen = { node: HTMLElement; destroy(): void; takeInProgress?(): boolean }
 let current: Screen | undefined;
 let currentEngine: BackingEngine | undefined;
 
+const store = persistentStore();
+
 /**
  * Captured audio, held here rather than on a screen or an engine — both are rebuilt on every
  * navigation, and record-then-edit is the app's central loop. Not in the `Project` either: that is
  * copied on every edit, and copying it should not mean copying tens of megabytes of samples.
+ *
+ * **Every route that files a take persists it**, because the write-through is here rather than at
+ * the call sites — recording and compress both go through `put` and neither has to remember.
  */
-const takes = takeStore();
+const takes = takeStore((id, buffer) => store.saveTake(id, buffer));
 
 /**
  * The recording offset a new project starts on (§2.3). Latency belongs to the audio route, not to
@@ -71,6 +77,7 @@ function open(): Project {
 
 function replaceProject(next: Project) {
   projects = projects.map((p) => (p.id === next.id ? next : p));
+  store.saveProject(next);
 }
 
 function replaceLayer(layer: Layer) {
@@ -230,6 +237,7 @@ function render() {
                   lastLatencyOffsetSeconds = next.latencyOffsetSeconds;
                   if (route.screen === 'settings' && route.mode === 'new') {
                     projects = [...projects, next];
+                    store.saveProject(next);
                     openId = next.id;
                     navigate({ screen: 'playback' });
                     return;
@@ -256,11 +264,14 @@ function render() {
                   // explicit that a bounce leaves it otherwise untouched.
                   replaceProject(source);
                   projects = [...projects, seed];
+                  store.saveProject(seed);
                   openId = seed.id;
                   navigate({ screen: 'playback' });
                 },
                 onDelete(id) {
                   projects = projects.filter((p) => p.id !== id);
+                  store.deleteProject(id);
+                  // Its takes are nobody's now; `sweep` collects them on the next boot.
                   openId = projects[0]?.id ?? '';
                   navigate({ screen: 'library' });
                 },
@@ -281,4 +292,55 @@ function render() {
   host.appendChild(screen.node);
 }
 
-render();
+/**
+ * Read take audio back, newest-looking first, and tell the engine as it lands.
+ *
+ * Nothing waits for this. Peaks travel with the project, so every waveform is already correct;
+ * what arrives here is only the ability to *hear* a layer. The open project goes first so the
+ * screen you are looking at is the one that starts working.
+ *
+ * A take in progress is left alone: `setLayers` without the capturing index would un-silence the
+ * layer being recorded onto (§2.2), and navigation is blocked during a take anyway.
+ */
+async function hydrate(sweep: boolean) {
+  const live = new Set<string>();
+  for (const p of projects) for (const l of p.layers) for (const s of l.sessions) live.add(s.id);
+  // Only when the saved list is what we are holding. Sweeping against a freshly seeded demo shelf
+  // would delete every real take on disk.
+  if (sweep) store.sweep(live);
+
+  const openFirst = [...live].sort((a, b) => Number(b.startsWith(openId)) - Number(a.startsWith(openId)));
+  for (const id of openFirst) {
+    if (takes.has(id)) continue;
+    const audio = await store.loadTake(id);
+    if (!audio) continue;
+    const buffer = new OfflineAudioContext(1, audio.samples.length, audio.sampleRate).createBuffer(
+      1,
+      audio.samples.length,
+      audio.sampleRate,
+    );
+    buffer.getChannelData(0).set(audio.samples);
+    takes.restore(id, buffer);
+    // Per take rather than at the end: the horizon already scheduled stays silent either way, but
+    // everything after it picks the buffer up, so a long project starts sounding as it loads.
+    if (!current?.takeInProgress?.()) currentEngine?.setLayers(open(), takes);
+  }
+}
+
+/**
+ * Projects first, audio behind them.
+ *
+ * **The saved list is authoritative once it exists, including when it is empty** — a user who
+ * deleted every project meant it, and re-seeding the demo shelf over that would be the app
+ * arguing with them. The shelf is a first-run convenience, and every row of it is deletable.
+ */
+async function boot() {
+  const saved = await store.loadProjects();
+  projects = saved ?? demoLibrary();
+  if (!saved) for (const p of projects) store.saveProject(p);
+  openId = [...projects].sort((a, b) => b.lastModified.localeCompare(a.lastModified))[0]?.id ?? '';
+  render();
+  void hydrate(saved !== undefined);
+}
+
+void boot();

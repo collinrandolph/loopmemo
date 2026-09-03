@@ -141,7 +141,8 @@ drag, and `consume()` to say the release was not a tap.
 above), `controls.ts` (`swipeWheel`, `bindChips`), `screen.ts` (`renderLoop`, `formatBytes`,
 `confirmPanel`, `annotationRow` — each of these had been written out per screen and drifted),
 `icons.ts` (inline Lucide paths — take new ones from that set), `backing-rows.ts` (the two backing
-rows, which edit `project.backing` and report upward like a layer row) and `help.ts`.
+rows, which edit `project.backing` and report upward like a layer row), `store.ts` (IndexedDB —
+see below) and `help.ts`.
 **There are no tests over `ui/`** — only `src/domain` is covered, so a change here is verified by
 driving the browser.
 
@@ -546,6 +547,38 @@ plays the drums twice, while baking without carrying freezes a groove that §1.2
 `project.backing`, so the choice stays visible at the call site instead of being settled by a
 default. `bounceSeed` lands on `defaultBacking()` as a placeholder. Do not turn either into a
 decision before §2.7 is settled.
+
+## Persistence, and why the boot stays synchronous
+
+**Two sizes, two stores.** A `Project` is a few kilobytes of JSON; a take is megabytes of samples.
+The split that matters is that **`waveformPeaks` travels with the project**, so every waveform on
+every screen is right the instant the app boots — `barAmplitude` reads peaks, never buffers. Audio
+is only needed to *hear* something, so it streams in behind `render()` and re-pushes itself at the
+engine as each take lands. `scheduleSegments` already skips a segment whose session has no buffer,
+so a screen opened early draws correctly and is briefly silent.
+
+**Storage failing is never fatal.** A private window, blocked storage or a quota error leaves the
+app exactly as it was before `store.ts` existed — everything in memory, lost on reload. One warning,
+then carry on.
+
+**The saved list is authoritative once it exists, including when it is empty.** The demo shelf is a
+first-run seed, not a floor: a user who deleted every project meant it, and re-seeding over that
+would be the app arguing with them. `meta.seeded` is what tells the two apart — an empty
+`projects` store is ambiguous on its own.
+
+**Never sweep against a list you did not load.** `sweep` deletes every take no live project refers
+to, which is right after a compress or a delete and catastrophic if the project list is a freshly
+seeded shelf that references none of them. `boot` passes `saved !== undefined` for exactly that.
+
+**The write-through is on the take store, not at the call sites.** Recording and compress both go
+through `put`, so neither has to remember to persist; `restore` is the one that does not write
+back, which is what stops a hydration pass rewriting everything it just read.
+
+**Takes are Float32, as captured.** Twice the size of the 16-bit PCM §2.7 prices a project at, and
+the trade is that a take reads back exactly as recorded rather than being quantised on the way to
+disk — a conversion live playback does not do, so a reload would otherwise change the audio.
+`verify-store.ts` writes a ramp valued by its own frame number and reads it back: 882,000 frames,
+worst sample error 0, peaks identical.
 
 ## Compress writes audio, and the caller is the one that has to
 
