@@ -51,12 +51,10 @@ export function beatFrameOffset(t: Timing, beat: number): number {
 }
 
 /**
- * `nominalFrames` is how long the voice rings **on its own recipe alone**.
- *
- * It is not necessarily how long it ends up sounding. How voices that outlive the gap to the next
- * onset are handled is deliberately unsettled (§6.1): chords currently cap to that gap, hats choke
- * their predecessor, and kick and snare do neither. Whatever policy wins will shorten some of
- * these, so treat this as the recipe's length rather than the final one.
+ * `nominalFrames` is how long the voice rings **on its own recipe alone**, not how long it ends
+ * up sounding. §2.6's overlap policy differs by voice type, deliberately: a chord is capped to the
+ * gap before the next onset (`chordRingSeconds`), a hat is choked by the next hat, and kick and
+ * snare are left to overlap. Treat this as the recipe's length rather than the final one.
  */
 export type DrumOnset = {
   readonly voice: DrumVoice;
@@ -157,9 +155,9 @@ const CHORD_RING_GAP_SECONDS = 0.05;
  *
  * Seconds because a ring time is a physical duration, like every other envelope length here.
  *
- * §6.1 has not settled the overlap policy: chords cap, the hat chokes its predecessor, and kick
- * and snare do neither. The floor also means the cap stops holding on the densest pattern above
- * roughly 150 BPM. Whichever policy wins should replace all three.
+ * **Capping is the settled policy for chords** (§2.6). A uniform choke was built and judged
+ * against it by ear, and rejected (§5.2). The floor does mean the cap stops holding on the densest
+ * pattern above ~200 BPM, where 0.15 s exceeds the gap itself — a known limit, not a placeholder.
  */
 export function chordRingSeconds(bar: BackingBar, t: Timing): readonly number[] {
   const perBar = framesPerBar(t);

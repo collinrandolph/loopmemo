@@ -722,18 +722,16 @@ sweep moved reads as the backing being on a different loop — that is the same 
 already sounding are left alone (cutting a chord mid-decay is a click), and the bar in progress is
 re-scheduled rather than skipped, so `scheduleBar` has to drop onsets already in the past.
 
-**The backing-voice overlap policy is a live A/B right now (§6.1) — delete the loser.**
-`cap` is the old behaviour: chords pre-shorten their envelope to the gap, the hat chokes, kick and
-snare do neither. `choke` is one rule — a new onset of a voice type ends the previous one over
-`CHOKE_SECONDS`, because a voice type is one physical mechanism. Flip it live with
-`lrVoicePolicy('choke')` in the console, or `?voices=choke`; it is read per voice, so a flip lands
-on the next bar scheduled.
+**The three voice types overlap differently, and that is the decision** (§2.6). Chords cap their
+envelope to the gap before the next onset; the hat chokes its predecessor, because a real hi-hat is
+one pair of cymbals; kick and snare overlap, because their decays outlive the gap only above
+~200 BPM on dense patterns and only in the inaudible tail. A uniform choke was built behind a live
+A/B and **rejected by ear** (§5.2) — it measured 1.6–1.8× the energy on dense chord patterns, which
+is exactly the chords ringing to the handover instead of getting out of the way.
 
-**Every voice now ends in its own output gain (`voiceOut`), and that is what a choke ramps.**
-Choking the voice's *envelope* gain would mean interrupting automation that is mid-ramp; a
-dedicated gain that sits at 1 until it is needed has nothing to cancel. `verify-voices.ts` measures
-the difference — Fast 8th with a Rhodes carries 1.81× the energy under `choke`, Sustain with a Pad
-0.98× — and that the worst sample step never grows, which is what says a choke is not a click.
+**The hat's choke ramps its own output gain over `CHOKE_SECONDS` rather than stopping the source
+dead**, which is the one thing kept from that A/B. Ramping a dedicated gain that sits at 1 until it
+is needed avoids interrupting a voice's envelope automation mid-ramp.
 
 **A muted track schedules nothing**, rather than scheduling voices that are then silenced. It
 also means a caller reading the schedule cannot disagree with the mixdown about what was audible.
