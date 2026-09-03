@@ -867,12 +867,41 @@ on it, the thumb hides it at exactly the value it exists to mark. Double tap ret
 **The volume icon spans the same range, so unity is half fill** (`levelPercent`). `VolumeControl`
 divides by 100 and clamps, so passing `level * 100` saturated it at unity and every decibel of the
 +6 dB above moved nothing — the icon read identically at 1.0 and 2.0. Dividing by `LEVEL_MAX` also
-puts the icon's neutral where the fader's tick is. **The master control is still `* 100` because it
-is 0..1 and unwired**; give it the same treatment when it is given a range.
+puts the icon's neutral where the fader's tick is. **The master control's `* 100` is the same
+normalisation** — it is `level / max * 100` with a max of 1, not an exception to the rule.
 
-**The master volume on the Playback screen is not wired to anything.** `masterLevel` and
-`masterMuted` are screen-local state nothing reads, so the control moves and does nothing. Known,
-not yet fixed.
+## Master is monitoring, not mix
+
+**How loud you hear the loop, not what goes in the file** (§4.2). It is the last gain before the
+destination, and `setMaster` **refuses to act on an engine that was handed a context** — which is
+every rendering engine, since `renderOffline` builds its own on an `OfflineAudioContext`. So the
+guarantee is structural rather than a convention about who calls what: a future caller that reuses
+the live engine for a render still writes the file at unity.
+
+Getting this wrong is silent and permanent. Listen quietly at night, export, and every file is
+15 dB down with nothing on screen having said so — in audio that has already been sent. That is why
+`verify-master.ts` renders through an engine explicitly told to go to zero and muted, and asserts
+the output is **bit-identical** to the ordinary render: worst sample difference 0. Claim 1 would
+pass on an engine that happily applied it, because nothing calls `setMaster` on a render today;
+driving it through one that has been told is the point.
+
+**Mix decisions live on `Layer.level`**, which runs to +6 dB precisely so a quiet take has a remedy.
+Master is 0..1 — monitoring only ever trims down, and the compressor is immediately upstream, so
+there is no headroom above unity to spend. Unity is therefore the default *and* the right-hand end,
+which is why `levelSlider`'s midpoint unity tick and double-tap are not reused here.
+
+**It lives on the shell, not on the screen and not on a `Project`.** The Playback screen is rebuilt
+on every navigation, so a listening level held there would reset on a trip to Edit Layer. It is not
+project state either: it belongs to the room you are listening in, does not travel with a bounce,
+and every engine `app.ts` builds is told it — including the Library's per-row preview engines.
+
+**The level persists and the mute does not.** A trim is a preference; a mute is momentary — you
+mute to take a call — and restoring one on launch is an app that opens silent and looks broken.
+A stored value outside 0..1 is ignored rather than clamped: it means something else wrote the key.
+
+**Ramp, never assign.** The slider emits an event per pixel and setting a gain outright is a click,
+so `applyMaster` uses `setTargetAtTime` over 10 ms — the same rule as every other live gain here.
+The database is not written per pixel either; that write is debounced.
 
 ## Pan and the Haas delay
 

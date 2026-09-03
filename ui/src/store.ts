@@ -38,9 +38,14 @@ export type Store = {
   saveTake(id: string, buffer: AudioBuffer): void;
   /** Drop every take no live project refers to — compress and delete both orphan them. */
   sweep(keep: ReadonlySet<string>): void;
-  /** The chosen colourway. A preference of the person, not of a project — hence not on one. */
-  loadTheme(): Promise<string | undefined>;
-  saveTheme(id: string): void;
+  /**
+   * App preferences: things that belong to the person rather than to a project, so they are not
+   * on a `Project` and do not travel with a bounce or an export. The colourway and the monitoring
+   * level are both this. One pair of accessors rather than a named pair per preference — the
+   * second one would have been a copy of the first.
+   */
+  loadPref(key: string): Promise<string | undefined>;
+  savePref(key: string, value: string): void;
   status(): StorageStatus;
   /** Takes held only in memory because a write was refused; empty when everything is durable. */
   unsaved(): readonly string[];
@@ -197,19 +202,19 @@ export function persistentStore(dbName = DB_NAME): Store {
   }
 
   return {
-    async loadTheme() {
+    async loadPref(key) {
       const meta = await tx(META, 'readonly');
       const row = await run<{ value?: string } | undefined>(
-        meta?.get('theme') as IDBRequest<{ value?: string } | undefined>,
-        'theme',
+        meta?.get(key) as IDBRequest<{ value?: string } | undefined>,
+        `read ${key}`,
       );
       return row?.value;
     },
 
-    saveTheme(id) {
+    savePref(key, value) {
       void (async () => {
         const meta = await tx(META, 'readwrite');
-        await run(meta?.put({ key: 'theme', value: id }), 'theme');
+        await run(meta?.put({ key, value }), `write ${key}`);
       })();
     },
 

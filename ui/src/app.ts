@@ -72,6 +72,28 @@ const takes = takeStore((id, buffer) => store.saveTake(id, buffer));
  */
 let lastLatencyOffsetSeconds = 0;
 
+/**
+ * How loud the app is monitored at (§4.2). Here rather than on the Playback screen because that
+ * screen is rebuilt on every navigation, and here rather than on a `Project` because it is a
+ * property of the room you are listening in, not of the sketch — it does not travel with a bounce
+ * and is not in an exported file. Every engine built below is told it, so the Library's row
+ * previews obey it too.
+ *
+ * **The level persists and the mute does not.** A trim is a preference; a mute is a momentary act
+ * — you mute to take a call — and restoring one on launch is an app that opens silent and looks
+ * broken. The distinction is worth the extra line.
+ */
+let master = { level: 1, muted: false };
+let masterWrite: number | undefined;
+
+function setMaster(next: { readonly level: number; readonly muted: boolean }) {
+  master = { level: next.level, muted: next.muted };
+  currentEngine?.setMaster(master.level, master.muted);
+  // The slider emits an event per pixel; the audio follows every one and the database does not.
+  window.clearTimeout(masterWrite);
+  masterWrite = window.setTimeout(() => store.savePref('master', String(master.level)), 300);
+}
+
 function open(): Project {
   return projects.find((p) => p.id === openId) ?? projects[0]!;
 }
@@ -147,6 +169,7 @@ function render() {
   engine.setBacking(project.backing, projectTiming(project));
   // A fresh engine on every navigation, so it has to be told what the layers hold each time.
   engine.setLayers(project, takes);
+  engine.setMaster(master.level, master.muted);
   currentEngine = engine;
 
   // Where an escape from Export lands: back where it was opened from, never somewhere else.
@@ -179,6 +202,8 @@ function render() {
             }
             next.setBacking(previewed.backing, projectTiming(previewed));
             next.setLayers(previewed, takes);
+            // A row preview is monitoring too, so it obeys the same trim as the open project.
+            next.setMaster(master.level, master.muted);
             return next;
           },
           onOpen(id) {
@@ -186,7 +211,7 @@ function render() {
             navigate({ screen: 'playback' });
           },
           onNew: () => navigate({ screen: 'settings', mode: 'new' }),
-          onTheme: (id) => store.saveTheme(id),
+          onTheme: (id) => store.savePref('theme', id),
         })
       : route.screen === 'playback'
         ? playbackScreen({
@@ -194,6 +219,8 @@ function render() {
             engine,
             takes,
             onChange: replaceLayer,
+            master: () => master,
+            onMaster: setMaster,
             onBackingChange(backing) {
               replaceProject({ ...open(), backing });
               // Straight to the engine as well as into state: a kit swap or a mute has to be
@@ -343,7 +370,11 @@ async function hydrate(sweep: boolean) {
  */
 async function boot() {
   // Before anything renders, so no frame is painted in the wrong colourway.
-  applyTheme(((await store.loadTheme()) as ThemeId | undefined) ?? DEFAULT_THEME);
+  applyTheme(((await store.loadPref('theme')) as ThemeId | undefined) ?? DEFAULT_THEME);
+  // Mute is deliberately not restored — see `master`. A stored value outside 0..1 is ignored
+  // rather than clamped: it means something else wrote the key, and unity is the safe reading.
+  const savedMaster = Number(await store.loadPref('master'));
+  if (savedMaster >= 0 && savedMaster <= 1) master = { level: savedMaster, muted: false };
   const saved = await store.loadProjects();
   projects = saved ?? demoLibrary();
   if (!saved) for (const p of projects) store.saveProject(p);

@@ -82,6 +82,12 @@ export function playbackScreen(opts: {
   onChange(layer: Layer): void;
   /** Backing edits, which are project state rather than layer state (§2.6). */
   onBackingChange(backing: BackingTracks): void;
+  /**
+   * The monitoring level, owned by the shell. A preference of the person, not of a project — it
+   * is not on `Project`, does not travel with a bounce, and is not in an exported file.
+   */
+  master(): { readonly level: number; readonly muted: boolean };
+  onMaster(next: { readonly level: number; readonly muted: boolean }): void;
   onEdit(layerIndex: number): void;
   /** Project settings (§4.5), reached by the gear beside the project stats. */
   onSettings(): void;
@@ -201,15 +207,31 @@ export function playbackScreen(opts: {
   });
   const position = el('div', 'lr-position');
 
-  let masterLevel = 0.85;
-  let masterMuted = false;
+  /**
+   * The monitoring level (§4.2). **Not screen state** — it is read from and written back to the
+   * shell, because this screen is rebuilt on every navigation and a listening level that reset
+   * itself on a trip to Edit Layer would be worse than not having one.
+   *
+   * 0..1, so it only ever trims down: the mix lives on the layer rows, where `Layer.level` runs
+   * past unity to +6 dB. Unity is the default and the right-hand end, which is what makes this a
+   * monitor rather than a second fader — and it is why `levelSlider`'s midpoint unity tick and
+   * double-tap are not reused here.
+   */
+  let masterLevel = opts.master().level;
+  let masterMuted = opts.master().muted;
+  const pushMaster = () => {
+    masterVol.update();
+    opts.onMaster({ level: masterLevel, muted: masterMuted });
+  };
   const masterVol = LR.VolumeControl({
     large: true,
+    // `* 100` is `level / max * 100` with a max of 1 — the same normalisation `levelPercent` does
+    // for layer rows, where the max is 2. Passing a raw 0..2 there saturated the icon at unity.
     level: () => masterLevel * 100,
     muted: () => masterMuted,
     onToggle() {
       masterMuted = !masterMuted;
-      masterVol.update();
+      pushMaster();
     },
   });
   const masterSlider = el('input') as HTMLInputElement;
@@ -220,7 +242,7 @@ export function playbackScreen(opts: {
   masterSlider.style.width = '90px';
   masterSlider.addEventListener('input', () => {
     masterLevel = Number(masterSlider.value) / 100;
-    masterVol.update();
+    pushMaster();
   });
   transportEl.append(playBtn, progressBar, position, masterVol, masterSlider);
 

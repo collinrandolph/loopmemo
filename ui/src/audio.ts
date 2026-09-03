@@ -101,6 +101,19 @@ export type BackingEngine = Engine & {
   /** Loudest input sample since the last call; resets on read. 0 when nothing is capturing. */
   inputPeak(): number;
   /**
+   * How loud the loop is *monitored* at (§4.2) — not part of the mix.
+   *
+   * The last stage before the destination, and deliberately the one thing a render never sees:
+   * `renderOffline` builds its own engine on an `OfflineAudioContext` and this refuses to act on
+   * one, so a file is written at unity however quietly you were listening. Baking it would be
+   * silent and permanent — listen at night, export, and every file is 15 dB down with nothing
+   * having said so. Mix decisions live on `Layer.level`, which runs to +6 dB for that reason.
+   *
+   * `level` is 0..1: monitoring only ever trims down, and the compressor is immediately upstream,
+   * so there is no headroom above unity to spend.
+   */
+  setMaster(level: number, muted: boolean): void;
+  /**
    * Schedule `bars` bars from frame 0 at once, for an offline render (§2.7's export).
    *
    * An `OfflineAudioContext` does not advance until `startRendering`, so the live lookahead loop
@@ -153,6 +166,10 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
   let bus: DynamicsCompressorNode | undefined;
   let drumGain: GainNode | undefined;
   let chordGain: GainNode | undefined;
+  /** Monitoring, not mix. Unity until the shell says otherwise, which it never does offline. */
+  let masterGain: GainNode | undefined;
+  let masterLevel = 1;
+  let masterMuted = false;
 
   let backing: BackingTracks | undefined;
   let timing: Timing | undefined;
@@ -219,7 +236,13 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
       const headroom = ctx.createGain();
       headroom.gain.value = 1;
       comp.connect(headroom);
-      headroom.connect(ctx.destination);
+      // The monitoring stage, after everything and before the destination — see `setMaster`. It
+      // exists on an offline context too, and stays at unity there because `setMaster` refuses to
+      // act on one, so the graph shape does not differ between what is heard and what is written.
+      masterGain = ctx.createGain();
+      masterGain.gain.value = masterMuted ? 0 : masterLevel;
+      headroom.connect(masterGain);
+      masterGain.connect(ctx.destination);
       bus = comp;
 
       // One gain per track, so `level` is not baked into every voice's peak. Mute is not here:
@@ -231,6 +254,15 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
     }
     if (owned?.state === 'suspended') void owned.resume();
     return ctx;
+  }
+
+  /**
+   * Ramp rather than assign: the slider emits an event per pixel, and setting a gain outright is
+   * a click — a drag would be a few hundred of them. Same rule as every other live gain here.
+   */
+  function applyMaster() {
+    if (!masterGain || !ctx) return;
+    masterGain.gain.setTargetAtTime(masterMuted ? 0 : masterLevel, ctx.currentTime, 0.01);
   }
 
   function applyLevels() {
@@ -927,6 +959,16 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
     hasInput: () => !!recorder,
 
     inputPeak: () => (recorder?.recording() ? recorder.peak() : 0),
+
+    setMaster(level, muted) {
+      // An engine handed a context is rendering (`render.ts`), and monitoring is not part of the
+      // mix. Refusing here makes that structural rather than a convention a future caller could
+      // break by reusing the live engine for a render.
+      if (context) return;
+      masterLevel = Math.min(Math.max(level, 0), 1);
+      masterMuted = muted;
+      applyMaster();
+    },
 
     prerender(bars) {
       ensure();
