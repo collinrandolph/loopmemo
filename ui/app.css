@@ -221,13 +221,13 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
 /* The panel's one navigation, and the path most often taken: every other control here
    adjusts the layer in place, this one leaves for the grid. Filled and unoutlined so it
    does not read as one more chip in a panel already full of them.
-   The accent is a saturated lift of the row surface within the kit's single violet family
-   (§ kit palette: "one violet family, no pure neutrals"). It is not a kit token — flagged
-   for confirmation against `docs/kit/` rather than adopted there. */
-.lr-screen { --lr-accent: #5A46D6; --lr-accent-hi: #6857E8; }
+   `--lr-accent` comes from the colourway (`theme.ts`). It used to be hardcoded violet *here*,
+   scoped to `.lr-screen` — which quietly outranked the themed `:root` value for everything
+   inside the screen, so the New Project button stayed violet in all four colourways. One
+   definition per token, and the theme owns this one. */
 .edit-row .lr-btn {
   flex: 1; padding: 10px 13px; font-size: 13px; font-weight: 600;
-  border: none; background: var(--lr-accent); color: #fff;
+  border: none; background: var(--lr-accent); color: var(--lr-btn-ink);
 }
 .edit-row .lr-btn:hover { background: var(--lr-accent-hi); }
 
@@ -726,3 +726,119 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
 .setting-actions .acts { padding-left: 0; }
 /* The grouping the removed section labels were carrying. */
 .setting-gap { height: 6px; }
+
+/* ============================================================================
+   The Wine direction, and its three siblings — see `ui/src/theme.ts`.
+
+   Everything below is the *structure* the colourways need; the colours themselves are tokens
+   written onto the document at boot. The one structural change from the shipped kit is that the
+   screen is no longer a gradient all the way down: the HEADER carries the gradient and the BODY
+   underneath it is light, with the rows and tiles reading as dark cards on it.
+
+   That inverts what sits on what, so anything drawn directly on the body needs dark ink
+   (`--lr-label-ink`) while anything inside a card keeps the cream `--lr-ink`. Getting that
+   backwards is how a control disappears.
+   ========================================================================= */
+
+body { font-family: 'Hanken Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+
+/* Data rather than prose: counts, times, sizes, pass numbers. **Mono only at 9–11px** — it is
+   a wider face, and at body size the meta lines wrap where the sans did not. The swipe hints are
+   deliberately NOT mono: they are arrow glyphs, and the body stack has the symbol fallback. */
+.lr-meta, .lr-position, .lr-settings, .stats-text, .p-meta, .p-size, .p-time, .storage,
+.lr-pass-badge, .tile-label, .export-bytes, .export-files, .export-size,
+.setting-figure, .setting-figures, .lr-btn, .lr-chip, .app-nav button, .lr-section-label {
+  font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}
+.lr-settings, .lr-meta, .stats-text, .storage {
+  font-size: 9px; font-weight: 400; letter-spacing: .04em; text-transform: uppercase;
+}
+.p-meta, .p-size { font-size: 9px; font-weight: 400; letter-spacing: .01em; line-height: 1.35; }
+.lr-position, .p-time { font-size: 9.5px; font-weight: 500; letter-spacing: .01em; text-transform: uppercase; }
+.lr-section-label { font-size: 9px; font-weight: 400; letter-spacing: .2em; text-transform: uppercase; }
+.lr-btn { font-size: 10px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; }
+.lr-chip { font-size: 10px; font-weight: 500; }
+.lr-pass-badge { font-size: 10px; font-weight: 700; letter-spacing: .04em; }
+.app-nav button { font-size: 9px; font-weight: 500; letter-spacing: .08em; padding: 5px 9px; text-transform: uppercase; }
+.p-name { font-size: 12.5px; font-weight: 700; }
+.lr-title { font-size: 20px; font-weight: 700; letter-spacing: -.02em; }
+
+/* --- the screen: light body, dark header ---------------------------------- */
+.lr-screen { background: var(--lr-body); color: var(--lr-label-ink); }
+.lr-header {
+  background: linear-gradient(176deg, var(--lr-grad-start) 0%, var(--lr-grad-end) 100%);
+  color: var(--lr-ink);
+}
+/* The header is a surface now, so it owns the horizontal padding the screen used to imply. */
+.lr-header { padding: 16px 16px 14px; }
+
+/* Rows and tiles are cards ON the light body, so they keep the cream ink. */
+.lr-row, .tile { color: var(--lr-ink); }
+.lr-rows, .backing { padding: 10px 14px 14px; display: flex; flex-direction: column; gap: 8px; }
+.lr-row { border-radius: 10px; }
+.lr-row-head { padding: 9px 12px; }
+
+/* --- ink on the light body ------------------------------------------------ */
+.lr-section-label { color: var(--lr-label-ink); opacity: .75; padding-top: 4px; }
+.lr-footer { border-top: 1px solid var(--lr-label-line); color: var(--lr-label-ink); }
+/* The Export screen straddles both surfaces, so it is split by where a thing is painted rather
+   than by its name. `.export-title` / `.export-detail` / `.export-files` / `.export-size` are
+   inside `.export-item`, a dark card, and keep the card's cream — they were briefly pulled into
+   this block and went dark-on-dark, the option titles measuring 1.00:1, i.e. exactly invisible.
+   The file list and the notes below it sit on the body. */
+.setting-note, .export-note, .export-ch, .export-bytes, .lr-panel-label { color: var(--lr-label-ink); }
+.export-name, .setting-name { color: var(--lr-label-strong); }
+/* Inside the header everything is on the dark surface and inherits the cream, so nothing here
+   may take a body colour — that is how a title turns dark-on-dark and disappears. */
+.lr-header .lr-title { color: var(--lr-ink); }
+.lr-header .sort-note, .lr-header .lr-meta, .lr-header .lr-settings { color: var(--lr-ink-dim); }
+
+/* The other direction of the same mistake, and the more common one: a token named for its role
+   rather than its surface gets reused on the opposite surface and disappears. `.setting-figure`
+   held `--lr-ink` — the cream for the dark header — and measured 1.31:1 on the light body, so
+   "96 BPM" and "Off" were the least readable text on a screen whose whole job is reporting them.
+   Audited by walking every leaf element and comparing its ink against its painted background;
+   nothing below 3:1 is left on the body. */
+.setting-figure { color: var(--lr-label-strong); }
+.setting-figures, .settings .hint { color: var(--lr-label-ink); }
+/* Panels sit inside a card, so their labels stay on the dark side of the ladder. */
+.lr-row .lr-panel-label, .lr-row .lr-note { color: var(--lr-ink-dim); }
+
+/* --- controls ------------------------------------------------------------- */
+.lr-btn { background: var(--lr-btn-bg); color: var(--lr-btn-ink); border: 1px solid var(--lr-label-line); }
+.lr-btn:hover { background: var(--lr-btn-bg); filter: brightness(1.04); }
+.lr-btn--primary { background: var(--lr-accent); color: var(--lr-btn-ink); border-color: transparent; }
+/* Delete sits on the light body, where the card-tuned record hue measures 2.16:1. */
+.lr-btn--danger { background: transparent; color: var(--lr-rec-ink); border-color: var(--lr-rec-ink); }
+.lr-play { background: var(--lr-play-bg); color: var(--lr-play-ink); }
+.lr-progress { background: var(--lr-track); }
+.lr-chip { background: var(--lr-btn-bg); color: var(--lr-btn-ink); border: 1px solid transparent; }
+.lr-chip.is-active { background: var(--lr-label-strong); color: var(--lr-ink); }
+/* Chips inside a card are on the dark side and keep the card's vocabulary. */
+.lr-row .lr-chip { background: rgba(255,255,255,.10); color: var(--lr-ink-dim); }
+.lr-row .lr-chip.is-active { background: rgba(255,255,255,.92); color: var(--lr-ink-on-light); }
+
+/* The tile's pass number is where the accent lives on the Edit Layer grid. */
+.tile-label .pass { color: var(--lr-ink-pass); }
+
+/* --- the shell tab bar ---------------------------------------------------- */
+.app-nav button { background: transparent; border: 1px solid var(--lr-label-line); color: var(--lr-label-ink); }
+.app-nav button.is-active { background: var(--lr-grad-start); color: var(--lr-ink); border-color: transparent; }
+
+/* --- the colourway picker ------------------------------------------------- */
+/* Four dots in the Library footer. The swatch is hue-forward (`theme.ts`'s `swatch`) because
+   the real accent is nearly grey and four near-greys would be indistinguishable as a control.
+   The selected ring is drawn in two shadows so it reads on any of the four body colours: a
+   gap in the body colour, then the line. */
+.theme-pick { display: flex; gap: 9px; align-items: center; }
+.theme-dot {
+  width: 17px; height: 17px; padding: 0; border: none; border-radius: 50%;
+  cursor: pointer; appearance: none;
+  box-shadow: 0 0 0 1px rgba(0,0,0,.16);
+  transition: box-shadow 140ms ease, transform 140ms ease;
+}
+.theme-dot:hover { transform: scale(1.08); }
+.theme-dot.is-active {
+  box-shadow: 0 0 0 2px var(--lr-body), 0 0 0 3.5px var(--lr-label-ink);
+}

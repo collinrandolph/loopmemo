@@ -186,3 +186,71 @@ Nothing here is covered by tests — `ui/` has none, by design. Drive the browse
 5. Drag vertically on a tile. If the page scrolls instead of stepping the pass, `touch-action` is
    gone.
 6. Open a layer panel and a backing panel. Both must animate the full distance, not jump.
+
+## 8. Two surfaces, and tokens named for their role rather than their surface
+
+The app is a **light body with a dark header and dark cards**. Every ink token therefore belongs to
+exactly one of those surfaces, and reusing one across the divide fails silently in whichever
+direction you got wrong — the text is still painted, still selectable, still the right size.
+
+| Surface | Ink | Recessive ink | Strong ink |
+|---|---|---|---|
+| dark header / card | `--lr-ink` | `--lr-ink-dim`, `--lr-ink-faint` | — |
+| light body | `--lr-label-ink` | `--lr-label-ink` | `--lr-label-strong` |
+
+Four of these were shipped at once and all four were invisible or near it:
+
+- `.lr-title` took `--lr-label-strong`. It lives in the dark header — **1.3:1**.
+- `.setting-figure` took `--lr-ink`. It is the value a settings row is *set to*, on the body —
+  **1.3:1**, so "96 BPM" and "Off" were the least readable text on the screen reporting them.
+- `.export-title` / `.export-detail` were pulled into the body block by name. They are inside
+  `.export-item`, a dark card — the option titles measured **1.00:1**, i.e. exactly invisible.
+- `.lr-btn--danger` uses `--lr-rec`, which is chosen to sit on a dark card. Delete is on the body —
+  **2.2:1**. `--lr-rec-ink` is the darkened version for that side.
+
+**A class name does not tell you its surface.** `.export-note` and `.export-title` differ by one
+word and sit on opposite ones. Ask the DOM, not the name.
+
+### The audit
+
+Paste into the console on each screen. It walks every leaf element with text, finds the nearest
+ancestor that actually paints a background, and reports anything under 3:1. Gradient-backed
+ancestors are skipped rather than guessed at, so the header reports nothing — check it by eye.
+
+```js
+const bg = el => { for (let e = el; e; e = e.parentElement) {
+  const cs = getComputedStyle(e);
+  if (cs.backgroundImage !== 'none') return 'GRADIENT';
+  const m = cs.backgroundColor.match(/[\d.]+/g);
+  if (m && (m.length < 4 || +m[3] > 0.5)) return m.slice(0, 3).map(Number);
+} return [255, 255, 255]; };
+const lum = c => { const f = c.map(v => (v /= 255) <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4);
+  return .2126 * f[0] + .7152 * f[1] + .0722 * f[2]; };
+for (const e of document.querySelectorAll('.lr-screen *')) {
+  if (e.children.length || !e.textContent.trim()) continue;
+  const cs = getComputedStyle(e);
+  if (cs.display === 'none' || cs.visibility === 'hidden' || +cs.opacity < .05) continue;
+  const b = bg(e); if (b === 'GRADIENT') continue;
+  const fg = cs.color.match(/[\d.]+/g).slice(0, 3).map(Number);
+  const [a, z] = [lum(fg), lum(b)].sort((x, y) => y - x);
+  const r = (a + .05) / (z + .05);
+  if (r < 3) console.warn(e.className, JSON.stringify(e.textContent.trim().slice(0, 20)), r.toFixed(2));
+}
+```
+
+Run it on all seven screens **in every colourway** — the four bodies differ in lightness, so a
+token can clear the bar in Wine and fail in Moss. That is how `--lr-ink-faint` was set: L55 measured
+2.5–2.7:1 against the card in all four, and L62 is the lowest step that clears 3:1 in every one.
+
+## 9. Colourways
+
+`ui/src/theme.ts` generates all four from **four numbers each** — a dark `[hue, sat]`, a light
+`[hue, sat]`, an accent hue and a record hex — and writes `--lr-*` onto `document.documentElement`.
+A fifth is four numbers, not a palette.
+
+- **The picker applies the theme without re-rendering.** The tokens are on the root element, so
+  every open screen restyles in place; rebuilding would stop a running preview to change a colour.
+- **The ramp is not in here** (see §1). All four colourways share it.
+- **A token defined anywhere below `:root` outranks the theme** for everything inside it.
+  `--lr-accent` was hardcoded on `.lr-screen`, so the New Project button stayed violet in all four
+  colourways and no theme could reach it. One definition per token.

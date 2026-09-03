@@ -13,6 +13,7 @@ import { helpControl } from './help.ts';
 import { type WaveNode, LR, el, motion, ramp } from './kit.ts';
 import { amp } from './demo.ts';
 import { formatBytes, renderLoop } from './screen.ts';
+import { THEMES, type ThemeId, applyTheme, swatch } from './theme.ts';
 
 const THUMB_LINES = 26; // enough to read a shape at 84px, few enough to stay legible
 /**
@@ -48,6 +49,8 @@ export function libraryScreen(opts: {
   onOpen(id: string): void;
   /** Setup for a project that does not exist yet (§4.5). */
   onNew(): void;
+  /** Remember a colourway. Applying it is immediate and does not wait on this. */
+  onTheme(id: ThemeId): void;
 }): { node: HTMLElement; destroy(): void } {
   const root = el('div', 'lr-screen library');
 
@@ -211,8 +214,39 @@ export function libraryScreen(opts: {
     ],
   });
 
+  /**
+   * The colourway picker (§ not in the spec — flagged as an addition).
+   *
+   * **App chrome, not project state**, so it lives in the Library footer rather than project
+   * settings and is stored beside the theme itself instead of inside a `Project`. Four dots and
+   * no label: the swatch is the control, the same argument as the backing kit names.
+   *
+   * `applyTheme` is called directly rather than through a re-render — the tokens are on
+   * `documentElement`, so every open screen restyles without being rebuilt, and rebuilding the
+   * Library here would stop a running preview to change a colour.
+   */
+  const themes = el('div', 'theme-pick');
+  for (const v of THEMES) {
+    const dot = el('button', 'theme-dot');
+    dot.style.background = swatch(v);
+    dot.title = `${v.name} — ${v.note}`;
+    dot.setAttribute('aria-label', v.name);
+    dot.addEventListener('click', () => {
+      applyTheme(v.id);
+      opts.onTheme(v.id);
+      paintThemes(v.id);
+    });
+    themes.append(dot);
+  }
+  function paintThemes(active: string) {
+    for (let i = 0; i < themes.children.length; i++) {
+      themes.children[i]!.classList.toggle('is-active', THEMES[i]!.id === active);
+    }
+  }
+  paintThemes(document.documentElement.dataset['theme'] ?? '');
+
   const footer = el('div', 'lr-footer');
-  footer.append(help.node, el('span', 'lr-note', ''));
+  footer.append(help.node, themes);
   root.append(header, listEl, footer);
 
   return {

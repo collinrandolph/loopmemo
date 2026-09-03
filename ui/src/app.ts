@@ -10,6 +10,7 @@ import { playbackScreen } from './playback.ts';
 import { projectSettingsScreen } from './settings.ts';
 import { demoLibrary } from './demo.ts';
 import { persistentStore } from './store.ts';
+import { DEFAULT_THEME, type ThemeId, applyTheme } from './theme.ts';
 import { takeStore } from './takes.ts';
 
 /**
@@ -185,6 +186,7 @@ function render() {
             navigate({ screen: 'playback' });
           },
           onNew: () => navigate({ screen: 'settings', mode: 'new' }),
+          onTheme: (id) => store.saveTheme(id),
         })
       : route.screen === 'playback'
         ? playbackScreen({
@@ -340,6 +342,8 @@ async function hydrate(sweep: boolean) {
  * arguing with them. The shelf is a first-run convenience, and every row of it is deletable.
  */
 async function boot() {
+  // Before anything renders, so no frame is painted in the wrong colourway.
+  applyTheme(((await store.loadTheme()) as ThemeId | undefined) ?? DEFAULT_THEME);
   const saved = await store.loadProjects();
   projects = saved ?? demoLibrary();
   if (!saved) for (const p of projects) store.saveProject(p);

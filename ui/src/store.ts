@@ -38,6 +38,9 @@ export type Store = {
   saveTake(id: string, buffer: AudioBuffer): void;
   /** Drop every take no live project refers to — compress and delete both orphan them. */
   sweep(keep: ReadonlySet<string>): void;
+  /** The chosen colourway. A preference of the person, not of a project — hence not on one. */
+  loadTheme(): Promise<string | undefined>;
+  saveTheme(id: string): void;
   status(): StorageStatus;
   /** Takes held only in memory because a write was refused; empty when everything is durable. */
   unsaved(): readonly string[];
@@ -194,6 +197,22 @@ export function persistentStore(dbName = DB_NAME): Store {
   }
 
   return {
+    async loadTheme() {
+      const meta = await tx(META, 'readonly');
+      const row = await run<{ value?: string } | undefined>(
+        meta?.get('theme') as IDBRequest<{ value?: string } | undefined>,
+        'theme',
+      );
+      return row?.value;
+    },
+
+    saveTheme(id) {
+      void (async () => {
+        const meta = await tx(META, 'readwrite');
+        await run(meta?.put({ key: 'theme', value: id }), 'theme');
+      })();
+    },
+
     status: () => status,
     unsaved: () => [...refused.keys()],
     onStatusChange(listener) {
