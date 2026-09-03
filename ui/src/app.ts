@@ -334,6 +334,23 @@ async function hydrate(sweep: boolean) {
  * deleted every project meant it, and re-seeding the demo shelf over that would be the app
  * arguing with them. The shelf is a first-run convenience, and every row of it is deletable.
  */
+/**
+ * **TEMPORARY: the §6.1 backing-voice overlap A/B. Delete with the loser.**
+ *
+ * `?voices=choke` in the URL sets the starting policy; `lrVoices('choke' | 'cap')` in the console
+ * flips it while the loop plays. Scheduling runs `AHEAD_SECONDS` in front, so a flip is heard
+ * about a bar later — no reload, and no need to stop.
+ *
+ * A console hook rather than a control, because it is an instrument for choosing, not a setting.
+ * Whichever wins becomes the only behaviour and this goes.
+ */
+type VoicesHook = { lrVoices?: string | ((next?: string) => string) };
+(globalThis as VoicesHook).lrVoices = new URL(location.href).searchParams.get('voices') ?? 'cap';
+(globalThis as { lrVoicePolicy?: (next?: string) => string }).lrVoicePolicy = (next) => {
+  if (next === 'cap' || next === 'choke') (globalThis as VoicesHook).lrVoices = next;
+  return String((globalThis as VoicesHook).lrVoices);
+};
+
 async function boot() {
   const saved = await store.loadProjects();
   projects = saved ?? demoLibrary();

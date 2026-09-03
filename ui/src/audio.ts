@@ -159,7 +159,6 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
   let anchorTime: number | undefined;
   let nextBar = 0; // absolute bar index, counting from the loop start
   let voices: Voice[] = [];
-  let lastHat: { source: AudioBufferSourceNode; stopAt: number } | undefined;
   let timer: number | undefined;
 
   // ------------------------------------------------------------------ graph --
@@ -251,7 +250,7 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
   function killAll() {
     for (const v of voices) silence(v.nodes);
     voices = [];
-    lastHat = undefined;
+    sounding = {};
 
     // **And the layers, which are not in `voices`** — they are held per layer so a splice can
     // reach them, so every teardown path has to walk both lists. Sounding segments fade over the
@@ -284,7 +283,9 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
       silence(v.nodes);
       return false;
     });
-    lastHat = undefined; // it may well have been one of those
+    // A dropped voice must not stay on record as something to choke; the worst a cleared map
+    // costs is one missed choke on the bar being re-planned.
+    sounding = {};
 
     // The layers again — dropping only `voices` leaves every queued bar of the old plan running
     // while `topUp` schedules the new one beside it.
@@ -300,6 +301,68 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
     topUp();
   }
 
+  // ------------------------------------------------------- overlap policy --
+  /**
+   * **TEMPORARY A/B for §6.1's backing-voice overlap policy. Delete the loser.**
+   *
+   * `cap` is what the app has always done: chords shorten their envelope to the gap before the
+   * next onset, the hat chokes its predecessor, kick and snare do neither. `choke` is one rule —
+   * a new onset of a voice type ends the previous one, because a voice type is one physical
+   * mechanism (one pair of cymbals, one pair of hands, one drum and one beater).
+   *
+   * Read per voice, so flipping it is heard on the next bar scheduled rather than needing a
+   * reload. `app.ts` exposes it as `window.lrVoices`.
+   */
+  function policy(): 'cap' | 'choke' {
+    return (globalThis as { lrVoices?: string }).lrVoices === 'choke' ? 'choke' : 'cap';
+  }
+
+  /** One mechanism per group: what a new onset in it silences. */
+  type ChokeGroup = 'kick' | 'snare' | 'hat' | 'chords';
+  /** Long enough not to click, short enough to read as a stop rather than a fade. */
+  const CHOKE_SECONDS = 0.005;
+  let sounding: Partial<
+    Record<ChokeGroup, { out: GainNode; sources: AudioScheduledSourceNode[]; endsAt: number }>
+  > = {};
+
+  /**
+   * Take the group's previous voice down, and record this one as its successor.
+   *
+   * The ramp is on a dedicated output gain that is otherwise always 1, so choking never has to
+   * interrupt a voice's own envelope automation — it just closes the tap in front of it.
+   */
+  function register(
+    group: ChokeGroup,
+    out: GainNode,
+    sources: AudioScheduledSourceNode[],
+    at: number,
+    seconds: number,
+  ) {
+    // Under `cap`, only the hat chokes — which is what the app has always done.
+    const chokes = policy() === 'choke' || group === 'hat';
+    const previous = sounding[group];
+    if (chokes && previous && previous.endsAt > at) {
+      previous.out.gain.setValueAtTime(1, at);
+      previous.out.gain.linearRampToValueAtTime(0, at + CHOKE_SECONDS);
+      for (const s of previous.sources) {
+        try {
+          s.stop(at + CHOKE_SECONDS);
+        } catch {
+          /* already stopped */
+        }
+      }
+    }
+    sounding[group] = { out, sources, endsAt: at + seconds };
+  }
+
+  /** Every voice's last node before the track gain, so `register` has one thing to ramp. */
+  function voiceOut(c: BaseAudioContext, dest: AudioNode): GainNode {
+    const out = c.createGain();
+    out.gain.value = 1;
+    out.connect(dest);
+    return out;
+  }
+
   // ----------------------------------------------------------- drum voices --
   function noise(c: BaseAudioContext, seconds: number): AudioBuffer {
     const length = Math.max(1, Math.floor(c.sampleRate * seconds));
@@ -311,18 +374,19 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
 
   /** Pitch-swept sine plus a very short click. The sweep alone reads as boomy, not as a hit. */
   function kick(c: BaseAudioContext, dest: AudioNode, at: number, k: DrumKit['kick']) {
+    const out = voiceOut(c, dest);
     const osc = c.createOscillator();
     osc.type = 'sine';
     const gain = c.createGain();
     osc.connect(gain);
-    gain.connect(dest);
+    gain.connect(out);
 
     const click = c.createOscillator();
     click.type = 'square';
     click.frequency.value = k.clickFreq;
     const clickGain = c.createGain();
     click.connect(clickGain);
-    clickGain.connect(dest);
+    clickGain.connect(out);
 
     osc.frequency.setValueAtTime(k.startFreq, at);
     osc.frequency.exponentialRampToValueAtTime(k.endFreq, at + k.sweepSeconds);
@@ -336,7 +400,8 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
     osc.stop(at + k.seconds + 0.05);
     click.start(at);
     click.stop(at + 0.02);
-    track([osc, gain, click, clickGain], at, k.seconds);
+    track([osc, gain, click, clickGain, out], at, k.seconds);
+    register('kick', out, [osc, click], at, k.seconds);
   }
 
   /** Two detuned tonal oscillators (the shell) plus a highpassed noise burst (the buzz). */
@@ -360,11 +425,12 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
     src.connect(hp);
     hp.connect(nGain);
 
-    const out = c.createGain();
-    out.gain.value = 0.6;
-    body.connect(out);
-    nGain.connect(out);
-    out.connect(dest);
+    const level = c.createGain();
+    level.gain.value = 0.6;
+    const out = voiceOut(c, dest);
+    body.connect(level);
+    nGain.connect(level);
+    level.connect(out);
 
     body.gain.setValueAtTime(0.5, at);
     body.gain.exponentialRampToValueAtTime(0.0001, at + s.bodySeconds);
@@ -378,7 +444,8 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
     o2.stop(stopAt);
     src.start(at);
     src.stop(stopAt);
-    track([o1, o2, body, src, hp, nGain, out], at, s.seconds);
+    track([o1, o2, body, src, hp, nGain, level, out], at, s.seconds);
+    register('snare', out, [o1, o2, src], at, s.seconds);
   }
 
   /**
@@ -401,26 +468,22 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
     bp.frequency.value = h.bandpass;
     bp.Q.value = 0.8;
     const gain = c.createGain();
+    const out = voiceOut(c, dest);
     src.connect(hp);
     hp.connect(bp);
     bp.connect(gain);
-    gain.connect(dest);
+    gain.connect(out);
 
     gain.gain.setValueAtTime(open ? 0.32 : 0.38, at);
     gain.gain.exponentialRampToValueAtTime(0.0001, at + seconds);
 
-    if (lastHat && lastHat.stopAt > at) {
-      try {
-        lastHat.source.stop(at);
-      } catch {
-        /* already stopped */
-      }
-    }
     const stopAt = at + seconds + 0.02;
     src.start(at);
     src.stop(stopAt);
-    lastHat = { source: src, stopAt };
-    track([src, hp, bp, gain], at, seconds);
+    track([src, hp, bp, gain, out], at, seconds);
+    // The choke a real hi-hat performs on itself — one pair of cymbals — now through the same
+    // path every other voice uses, so it fades over `CHOKE_SECONDS` rather than cutting dead.
+    register('hat', out, [src], at, seconds);
   }
 
   // ---------------------------------------------------------- chord voices --
@@ -488,8 +551,9 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
       osc.connect(main);
       bark.connect(barkGain);
       barkGain.connect(main);
+      const out = voiceOut(c, dest);
       main.connect(trem.stage);
-      trem.stage.connect(dest);
+      trem.stage.connect(out);
 
       const peak = chunk ? 0.22 : 0.3;
       main.gain.setValueAtTime(0.0001, at);
@@ -509,7 +573,8 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
         n.start(at);
         n.stop(stopAt);
       }
-      track([osc, bark, barkGain, main, trem.stage, trem.osc, trem.amount], at, seconds);
+      track([osc, bark, barkGain, main, trem.stage, trem.osc, trem.amount, out], at, seconds);
+      register('chords', out, [osc, bark, trem.osc], at, seconds);
     },
 
     pad(c, dest, freq, at, chunk, seconds) {
@@ -526,8 +591,9 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
         o.connect(filter);
         return o;
       });
+      const out = voiceOut(c, dest);
       filter.connect(main);
-      main.connect(dest);
+      main.connect(out);
 
       const peak = chunk ? 0.16 : 0.22;
       main.gain.setValueAtTime(0.0001, at);
@@ -546,7 +612,8 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
         o.start(at);
         o.stop(stopAt);
       }
-      track([...oscs, filter, main], at, seconds);
+      track([...oscs, filter, main, out], at, seconds);
+      register('chords', out, oscs, at, seconds);
     },
 
     wurly(c, dest, freq, at, chunk, seconds) {
@@ -564,12 +631,13 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
       const main = c.createGain();
       const trem = tremolo(c, 5.5, 0.07);
 
+      const out = voiceOut(c, dest);
       osc.connect(shaper);
       shaper.connect(main);
       bark.connect(barkGain);
       barkGain.connect(main);
       main.connect(trem.stage);
-      trem.stage.connect(dest);
+      trem.stage.connect(out);
 
       const peak = chunk ? 0.2 : 0.26;
       main.gain.setValueAtTime(0.0001, at);
@@ -589,12 +657,14 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
         n.start(at);
         n.stop(stopAt);
       }
-      track([osc, shaper, bark, barkGain, main, trem.stage, trem.osc, trem.amount], at, seconds);
+      track([osc, shaper, bark, barkGain, main, trem.stage, trem.osc, trem.amount, out], at, seconds);
+      register('chords', out, [osc, bark, trem.osc], at, seconds);
     },
 
     organ(c, dest, freq, at, chunk, seconds) {
       const main = c.createGain();
-      main.connect(dest);
+      const out = voiceOut(c, dest);
+      main.connect(out);
       const oscs = [1, 2, 3, 4].map((harmonic, i) => {
         const o = c.createOscillator();
         o.type = 'sine';
@@ -619,7 +689,8 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
         o.start(at);
         o.stop(stopAt);
       }
-      track([...oscs, main], at, seconds);
+      track([...oscs, main, out], at, seconds);
+      register('chords', out, oscs, at, seconds);
     },
   };
 
@@ -689,7 +760,10 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
       const at = frameToTime(frame);
       if (at < c.currentTime) return;
       const nominal = onset.nominalFrames / t.sampleRate;
-      const seconds = Math.min(nominal, chordCaps[i] ?? nominal);
+      // Under `choke` a chord rings its recipe's own length and is ended by the next onset; under
+      // `cap` it is pre-shortened to the gap. §6.1, and the A/B above.
+      const seconds =
+        policy() === 'choke' ? nominal : Math.min(nominal, chordCaps[i] ?? nominal);
       for (const freq of bar.frequencies) {
         build(c, chordGain!, freq, at, onset.articulation === 'chunk', seconds);
       }
