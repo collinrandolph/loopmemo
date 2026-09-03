@@ -104,6 +104,24 @@ npm test           # just the tests
 npm run ui         # build the browser bundle and serve it on :5173
 ```
 
+## Needs a human — do not report these as verified
+
+Everything else in this repo is checked by `npm run check` or by driving the browser. These
+cannot be, because the environment the agent works in has no microphone, no ears and no screen it
+can judge. Each is verified *in parts*; none is verified end to end.
+
+- **Arming with a microphone that is actually granted.** The refusal path is reproduced and
+  covered (§3.5); the grant path uses the same call in the same order and has never run. The tell
+  that it is wrong: a pulsing dot on any arm *after* the first, which would mean `hasInput()` is
+  answering false when the stream is open.
+- **Recording end to end on real hardware** — capture is bit-exact (`verify-capture.ts`) and the
+  recording offset is applied at scheduling, but no take has been made here.
+- **Transport's colour feather.** Verified numerically against the kit across 32,768 played-set
+  states and 144,000 line-frames, which is not the same as looking right.
+- **`SURROUND_WET_DB = -1.5`.** Surround is the only preset whose two paths both carry signal, so
+  it is ~2.3 dB hotter; a test records the consequence so changing the number is deliberate, but
+  the number itself is a guess until someone hears it.
+
 ## The UI pass
 
 `ui/` is a browser app over the **real domain** — `tsc -p tsconfig.build.json` emits the same
@@ -458,8 +476,7 @@ events in the kit across five origins and sixty-five phases of single-bar playba
 in ours. `tests/transport-bleed.test.ts` keeps it that way — it is the most visible failure
 in the whole transport, so it has its own file.
 
-**This has not been seen on screen.** It is verified numerically against the reference, which
-is not the same as looking right. Confirm in the UI when there is one.
+**This has not been seen on screen** — see "Needs a human" above.
 
 ## The audio layer, and what it still owes
 
