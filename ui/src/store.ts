@@ -38,9 +38,23 @@ export type Store = {
   saveTake(id: string, buffer: AudioBuffer): void;
   /** Drop every take no live project refers to — compress and delete both orphan them. */
   sweep(keep: ReadonlySet<string>): void;
-  /** Whether anything is actually being written. False once storage has failed. */
-  available(): boolean;
+  status(): StorageStatus;
+  /** Takes held only in memory because a write was refused; empty when everything is durable. */
+  unsaved(): readonly string[];
+  /** Fires whenever `status` or `unsaved` changes. Returns an unsubscribe. */
+  onStatusChange(listener: () => void): () => void;
 };
+
+/**
+ * **`full` and `unavailable` are different, and conflating them costs the recovery.**
+ *
+ * Unavailable is a private window or blocked storage: nothing will ever be written and the user
+ * cannot change that from here. Full is a working database with no room — reads and *deletes*
+ * still work, so freeing space is the fix, and the refused takes are still in memory waiting to be
+ * written. Treating a quota error as unavailable turns a recoverable state into a permanent one
+ * and stops the delete that would have fixed it.
+ */
+export type StorageStatus = 'ok' | 'full' | 'unavailable';
 
 /** Debounce for project writes. Long enough to swallow a slider drag, short enough to survive. */
 const SAVE_DEBOUNCE_MS = 400;
@@ -54,7 +68,6 @@ function samplesOf(buffer: AudioBuffer): Float32Array {
   return buffer.getChannelData(0).slice();
 }
 
-/** `dbName` is only for `verify-store.ts`, so a check never writes into the real database. */
 /**
  * Fill in fields a project predates.
  *
@@ -67,15 +80,28 @@ function migrate(project: Project): Project {
   return { ...project, perfectLoop: project.perfectLoop ?? true };
 }
 
+/** `dbName` is only for `verify-store.ts`, so a check never writes into the real database. */
 export function persistentStore(dbName = DB_NAME): Store {
   let db: IDBDatabase | undefined;
-  let broken = false;
+  let status: StorageStatus = 'ok';
   const pending = new Map<string, number>();
+  /** Refused takes, kept so that freeing space can still make them durable. */
+  const refused = new Map<string, TakeAudio>();
+  const listeners: (() => void)[] = [];
+
+  function announce() {
+    for (const listener of listeners) listener();
+  }
 
   function fail(what: string, e: unknown) {
-    if (broken) return;
-    broken = true;
-    console.warn(`Loop Recorder: storage unavailable (${what}), continuing in memory only.`, e);
+    const quota = e instanceof DOMException && e.name === 'QuotaExceededError';
+    const next: StorageStatus = quota ? 'full' : 'unavailable';
+    // Unavailable is terminal and outranks full: a database that cannot be opened cannot later
+    // turn out to merely need room.
+    if (status === 'unavailable' || status === next) return;
+    status = next;
+    console.warn(`Loop Recorder: storage ${next} (${what}).`, e);
+    announce();
   }
 
   const opening = new Promise<IDBDatabase | undefined>((resolve) => {
@@ -109,7 +135,8 @@ export function persistentStore(dbName = DB_NAME): Store {
 
   async function tx(store: string, mode: IDBTransactionMode): Promise<IDBObjectStore | undefined> {
     const open = await opening;
-    if (!open || broken) return undefined;
+    // Only `unavailable` stops everything. A full store must still serve the delete that empties it.
+    if (!open || status === 'unavailable') return undefined;
     try {
       return open.transaction(store, mode).objectStore(store);
     } catch (e) {
@@ -129,8 +156,53 @@ export function persistentStore(dbName = DB_NAME): Store {
     });
   }
 
+  /**
+   * Write one take, and remember it if storage refuses.
+   *
+   * A refused take is **not lost** — it is in memory and it plays; what it has lost is durability.
+   * Keeping the samples here is what lets a later delete make it permanent after all, rather than
+   * the user having to notice and re-record.
+   */
+  async function writeTake(id: string, audio: TakeAudio): Promise<boolean> {
+    const store = await tx(TAKES, 'readwrite');
+    if (!store) {
+      refused.set(id, audio);
+      announce();
+      return false;
+    }
+    const before = status;
+    const ok = (await run(store.put({ id, ...audio }), 'save take')) !== undefined;
+    if (ok) {
+      if (refused.delete(id)) announce();
+      // A write that lands means the room came back.
+      if (before === 'full' && refused.size === 0) {
+        status = 'ok';
+        announce();
+      }
+    } else {
+      refused.set(id, audio);
+      announce();
+    }
+    return ok;
+  }
+
+  /** Retry everything storage refused. Called wherever space may have been freed. */
+  async function flush() {
+    for (const [id, audio] of [...refused]) {
+      if (!(await writeTake(id, audio))) return; // still no room; stop hammering it
+    }
+  }
+
   return {
-    available: () => !broken,
+    status: () => status,
+    unsaved: () => [...refused.keys()],
+    onStatusChange(listener) {
+      listeners.push(listener);
+      return () => {
+        const at = listeners.indexOf(listener);
+        if (at >= 0) listeners.splice(at, 1);
+      };
+    },
 
     async loadProjects() {
       const meta = await tx(META, 'readonly');
@@ -164,6 +236,9 @@ export function persistentStore(dbName = DB_NAME): Store {
       void (async () => {
         const store = await tx(PROJECTS, 'readwrite');
         await run(store?.delete(id), 'delete project');
+        // Deleting is how a full store is emptied, so it is the moment to retry the refused
+        // takes rather than leaving them memory-only until the next recording happens to land.
+        await flush();
       })();
     },
 
@@ -177,14 +252,7 @@ export function persistentStore(dbName = DB_NAME): Store {
     },
 
     saveTake(id, buffer) {
-      void (async () => {
-        const store = await tx(TAKES, 'readwrite');
-        if (!store) return;
-        await run(
-          store.put({ id, samples: samplesOf(buffer), sampleRate: buffer.sampleRate }),
-          'save take',
-        );
-      })();
+      void writeTake(id, { samples: samplesOf(buffer), sampleRate: buffer.sampleRate });
     },
 
     sweep(keep) {

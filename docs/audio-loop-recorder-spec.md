@@ -1177,6 +1177,16 @@ arcs were complete and then how far into the next — three judgments for one va
 
 - **Positioned at the far LEFT of a row, opposite the speaker.** They were neighbours, which put "start recording" a thumb-width from "mute". The consequences are asymmetric: a mis-hit on mute is one tap to undo, a mis-hit on record starts or stops a pass.
 - **Arming is exclusive** — arming one layer clears any other.
+- **Running out of room does not end the session.** A take that storage refuses is still in
+  memory and still plays; what it has lost is durability, so recording carries on and the screen
+  says which takes are not safe and what frees room. They are written as soon as there is space —
+  a delete retries them — so the recovery needs no re-recording.
+
+  **Full and unavailable are different states.** Unavailable is a private window or blocked site
+  data: nothing will ever be written and the user cannot change it from here. Full is a working
+  store with no room, where reads and *deletes* still work — so treating a quota error as
+  unavailable would turn a recoverable state into a permanent one and disable the delete that
+  fixes it.
 - **A row cannot arm without an input.** The dot means "this will record", so it must not light up
   when there is nothing to record with. Arming is where the microphone is opened — a prompt raised
   at the downbeat instead is answered seconds into a running take — and if it is refused the row
@@ -1694,7 +1704,6 @@ touch-action: none;                         /* on gesture surfaces */
 | Item | Notes |
 |------|-------|
 | **Row density** | Empty and armed layers occupy full-height rows; with two of seven recorded, much of the screen is placeholder. |
-| **Storage full mid-recording** | How gracefully the session ends. |
 
 ## 6.2 Not yet designed
 

@@ -89,6 +89,16 @@ export function playbackScreen(opts: {
   onBack(): void;
   onExport(): void;
   /**
+   * Whether takes are reaching storage, and how many are not (§6.1).
+   *
+   * Read on mount and whenever `onStorageChange` says so — the store is the source of truth and
+   * announces its own transitions, so polling it from the render loop was both wasteful and
+   * dependent on that loop running.
+   */
+  storage?(): { readonly kind: 'ok' | 'full' | 'unavailable'; readonly unsaved: number };
+  /** Subscribe to storage changes. Returns an unsubscribe, called on teardown. */
+  onStorageChange?(listener: () => void): () => void;
+  /**
    * A take started or ended, so the shell can dim the controls it owns. **Paint only** — what
    * refuses a navigation is `takeInProgress`, asked at the moment of teardown, so enforcement
    * never depends on this notification having arrived.
@@ -147,7 +157,10 @@ export function playbackScreen(opts: {
   /** Only ever visible when the input failed; see `paintInputState`. */
   const inputNote = el('div', 'input-note');
   inputNote.style.display = 'none';
-  header.append(titleRow, statsRow, inputNote, transportEl);
+  /** Only ever visible when a take has not reached storage; see `paintStorageState`. */
+  const storageNote = el('div', 'input-note');
+  storageNote.style.display = 'none';
+  header.append(titleRow, statsRow, inputNote, storageNote, transportEl);
 
   /**
    * Two lines for two kinds of number. Tempo, bars and time signature are what the project *is*,
@@ -460,6 +473,34 @@ export function playbackScreen(opts: {
     missing: 'No microphone found. Connect one, then arm the layer again.',
     insecure: 'Recording needs a secure connection — open this over https, or on localhost.',
   };
+
+  /**
+   * Say when a take is not being saved.
+   *
+   * **The take is not lost** — it is in memory and it plays — so this is not an error to stop for,
+   * and recording carries on. What it has lost is durability, and the only thing the user can act
+   * on is freeing room. Silence here was the whole defect: a quota error warned the console and
+   * left the recording looking exactly as saved as any other.
+   */
+  function paintStorageState() {
+    const state = opts.storage?.();
+    // Full says the same thing two ways, because a refused *project* write leaves no take in
+    // the unsaved list and "0 takes" would read as nothing being wrong.
+    const message =
+      state?.kind === 'full'
+        ? state.unsaved > 0
+          ? `Storage is full, so ${state.unsaved} take${state.unsaved === 1 ? '' : 's'} ` +
+            `exist${state.unsaved === 1 ? 's' : ''} only in this tab and will be lost on reload. ` +
+            'Delete or compress a project to free room — they are saved as soon as there is space.'
+          : 'Storage is full, so changes are no longer being saved. Delete or compress a project ' +
+            'to free room.'
+        : state?.kind === 'unavailable'
+          ? 'This browser is not storing anything, so the session is lost on reload. Private ' +
+            'windows and blocked site data both do this.'
+          : '';
+    storageNote.textContent = message;
+    storageNote.style.display = message ? '' : 'none';
+  }
 
   function paintInputState() {
     const failure = opts.engine.inputError();
@@ -878,6 +919,8 @@ export function playbackScreen(opts: {
   (root.children[3] as HTMLElement).style.marginTop = '10px';
 
   paintTitle();
+  paintStorageState();
+  const unsubscribeStorage = opts.onStorageChange?.(paintStorageState);
   let observer: ResizeObserver | undefined;
   // Measuring needs the nodes on the page; the guard is for a screen destroyed before that.
   let mounted = true;
@@ -907,6 +950,7 @@ export function playbackScreen(opts: {
     takeInProgress: () => capturingIndex() >= 0,
     destroy() {
       mounted = false;
+      unsubscribeStorage?.();
       frames.stop();
       observer?.disconnect();
       document.removeEventListener('keydown', onKey);

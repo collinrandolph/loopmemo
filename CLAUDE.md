@@ -632,6 +632,16 @@ the second editor §1.5 warns about, because there is one stored value; but the 
 a **local mirror**, since `opts.project` is the snapshot that screen was built with and never sees
 the write coming back.
 
+**A quota error is `full`, never `unavailable`, and the difference is the whole recovery.** A full
+store still reads and deletes — deleting is how it is emptied — so disabling it would remove the
+fix. Only `unavailable` stops everything. Refused takes are kept in memory in `refused` and
+rewritten by `flush()` when a delete frees room, so nothing has to be re-recorded.
+
+**The storage banner is driven by a subscription, not the render loop.** The store announces its
+own transitions, so polling was both wasteful and dependent on a loop that a hidden tab pauses —
+which is also why it could not be tested. `onStatusChange` returns an unsubscribe, and the screen
+calls it on teardown or the listener list grows with every navigation.
+
 **`store.ts`'s `migrate` is where a new `Project` field gets its default on load.** A field added
 today reads `undefined` on every project saved before today, and for a boolean that silently means
 *off* — so a default of true inverts itself for existing work without it.

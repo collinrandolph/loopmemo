@@ -201,6 +201,8 @@ function render() {
             onEdit: (layerIndex) => navigate({ screen: 'edit', layerIndex }),
             onSettings: () => navigate({ screen: 'settings', mode: 'edit' }),
             onBack: () => navigate({ screen: 'library' }),
+            storage: () => ({ kind: store.status(), unsaved: store.unsaved().length }),
+            onStorageChange: (listener) => store.onStatusChange(listener),
             onExport: () => navigate({ screen: 'export', from: 'playback' }),
             // The tab bar belongs to the shell, so the screen cannot dim it itself. Enforcement
             // is still `navigate`; this only stops the bar from advertising a way out that a
