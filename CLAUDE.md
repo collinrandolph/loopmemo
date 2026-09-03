@@ -539,46 +539,24 @@ or the seed has a seam the original never had.
 would let the bounce and the export disagree about the same project. It is structurally typed for
 the same reason, so a layer and a backing track can both be asked.
 
-**What a bounce does with the backing tracks is deliberately unresolved** (§2.7, §6.1), and there
-are two coupled questions, not one: is the backing in the mixdown, and do its settings carry to
-the seeded project. They constrain each other — carrying the settings *and* baking the audio
-plays the drums twice, while baking without carrying freezes a groove that §1.2 says never locks.
-`bouncePlan` therefore still takes the backing as an **argument** rather than reading
-`project.backing`, so the choice stays visible at the call site instead of being settled by a
-default. `bounceSeed` lands on `defaultBacking()` as a placeholder. Do not turn either into a
-decision before §2.7 is settled.
+**The backing is not in a bounce; its settings carry instead** (§2.7, settled). Baking the audio
+*and* carrying the settings plays the drums twice; baking without carrying freezes a groove §1.2 says
+never locks. Excluding the audio and copying `project.backing` verbatim — mute flags included —
+means the new sketch opens on the same groove, live and still editable. `bouncePlan` therefore takes
+no backing argument at all, and `isAudibleInMixdown` is an **export** predicate, not a bounce one.
 
-## Persistence, and why the boot stays synchronous
+**Export and bounce render through `render.ts`, never their own path.** `renderOffline` is the one
+place a project becomes a buffer, because a second path is a second set of decisions about
+crossfades, splices and pan law. `MixSource` in `bouncePlan` is the domain's account of what goes
+in, not a recipe the browser follows — a platform without an engine to render through needs it.
 
-**Two sizes, two stores.** A `Project` is a few kilobytes of JSON; a take is megabytes of samples.
-The split that matters is that **`waveformPeaks` travels with the project**, so every waveform on
-every screen is right the instant the app boots — `barAmplitude` reads peaks, never buffers. Audio
-is only needed to *hear* something, so it streams in behind `render()` and re-pushes itself at the
-engine as each take lands. `scheduleSegments` already skips a segment whose session has no buffer,
-so a screen opened early draws correctly and is briefly silent.
+**`wrapTail` folds the overhang onto the head.** A Surround layer's delayed last bar has nowhere to
+go in a fixed-length render, and truncating leaves a seam the live loop never had, so a bounce
+renders `frames + tailFrames` and adds the overhang back at the start. **Export does not do this
+yet** — it still truncates (§6.1).
 
-**Storage failing is never fatal.** A private window, blocked storage or a quota error leaves the
-app exactly as it was before `store.ts` existed — everything in memory, lost on reload. One warning,
-then carry on.
-
-**The saved list is authoritative once it exists, including when it is empty.** The demo shelf is a
-first-run seed, not a floor: a user who deleted every project meant it, and re-seeding over that
-would be the app arguing with them. `meta.seeded` is what tells the two apart — an empty
-`projects` store is ambiguous on its own.
-
-**Never sweep against a list you did not load.** `sweep` deletes every take no live project refers
-to, which is right after a compress or a delete and catastrophic if the project list is a freshly
-seeded shelf that references none of them. `boot` passes `saved !== undefined` for exactly that.
-
-**The write-through is on the take store, not at the call sites.** Recording and compress both go
-through `put`, so neither has to remember to persist; `restore` is the one that does not write
-back, which is what stops a hydration pass rewriting everything it just read.
-
-**Takes are Float32, as captured.** Twice the size of the 16-bit PCM §2.7 prices a project at, and
-the trade is that a take reads back exactly as recorded rather than being quantised on the way to
-disk — a conversion live playback does not do, so a reload would otherwise change the audio.
-`verify-store.ts` writes a ramp valued by its own frame number and reads it back: 882,000 frames,
-worst sample error 0, peaks identical.
+**Both destructive-ish actions refuse audio that is not in this session.** `hasAudioFor` is shared:
+compress would bake a gap into the only copy, bounce would seed a project with a silent layer 1.
 
 ## Compress writes audio, and the caller is the one that has to
 

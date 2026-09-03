@@ -60,9 +60,11 @@ describe('the mixdown rule (§2.6)', () => {
     assert.equal(isAudibleInMixdown(ref({ muted: true })), false, 'mute is how you exclude');
   });
 
-  it('carries audible backing tracks into the plan', () => {
-    const plan = bouncePlan(withLayers(project(), 2), [ref(), ref({ id: 'chords', muted: true })]);
-    assert.deepEqual(plan?.backing.map((r: BackingMixSource) => r.id), ['drums']);
+  it('has no bearing on a bounce, which mixes the layers only', () => {
+    // The predicate still exists for export and for the Playback rows; §2.7 simply does not put
+    // the backing in a mixdown, so a plan carries no backing at all to be audible or not.
+    const plan = bouncePlan(withLayers(project(), 2));
+    assert.equal('backing' in (plan ?? {}), false);
   });
 });
 
@@ -150,17 +152,11 @@ describe('bouncePlan', () => {
       assert.equal(bouncePlan(project()), undefined);
     });
 
-    it('refuses when every layer is muted and no reference is audible', () => {
+    it('refuses when every layer is muted', () => {
+      // The backing cannot rescue it: a bounce is the layers, so all-muted is a loop of silence
+      // and declining is better than seeding one.
       const p = withLayers(project(), 3, (l) => ({ ...l, muted: true }));
       assert.equal(bouncePlan(p), undefined);
-      assert.equal(bouncePlan(p, [ref({ muted: true })]), undefined);
-    });
-
-    it('allows a reference-only mixdown', () => {
-      // Every layer muted but the drum loop audible is still something to hear.
-      const p = withLayers(project(), 2, (l) => ({ ...l, muted: true }));
-      assert.deepEqual(bouncePlan(p, [ref()])?.layers, []);
-      assert.equal(bouncePlan(p, [ref()])?.backing.length, 1);
     });
   });
 });

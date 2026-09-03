@@ -22,6 +22,19 @@ import { type TakeStore, takeUrl } from './takes.ts';
 const CHANNELS = 1;
 
 /**
+ * Is every audio bar in this plan backed by a buffer that is actually here?
+ *
+ * Shared by compress, which refuses rather than baking a gap into the only copy, and by bounce,
+ * which refuses rather than seeding a new project with a silent layer 1.
+ */
+export function hasAudioFor(
+  bars: readonly RetainedBar[],
+  buffers: readonly (AudioBuffer | undefined)[],
+): boolean {
+  return bars.every((bar) => bar.kind !== 'audio' || !!buffers[bar.region.sessionIndex]);
+}
+
+/**
  * One loop of audio for a plan, or undefined when a bar it needs has no buffer behind it.
  *
  * **Refused rather than filled with silence.** Compress is irreversible and keeps only what it

@@ -24,8 +24,10 @@ import { helpControl } from './help.ts';
 import { LR, el } from './kit.ts';
 import type { BackingEngine } from './audio.ts';
 import type { RecordingSession } from '../../src/domain/pass-index.ts';
-import { compressedTake } from './compress.ts';
-import { simSession } from './demo.ts';
+import { compressedTake, hasAudioFor } from './compress.ts';
+import { renderOffline, silentBacking, wrapTail } from './render.ts';
+import { takeUrl } from './takes.ts';
+import { computePeaks } from './peaks.ts';
 import { annotationRow, confirmPanel, formatBytes } from './screen.ts';
 import type { TakeStore } from './takes.ts';
 
@@ -344,6 +346,42 @@ export function projectSettingsScreen(opts: {
     );
   }
 
+  /**
+   * Render the mixdown, file it, and seed the new project with it (§2.7).
+   *
+   * **Layers only, backing silenced.** The backing is not in a bounce; its *settings* carry
+   * instead, which `bounceSeed` does — so the new sketch opens on the same groove, live and still
+   * editable, rather than with the drums baked into layer 1.
+   *
+   * Rendered through the engine that plays the project, so the mixdown is what was heard. The
+   * tail is folded back onto the head: a Surround layer's delayed last bar has nowhere to go in a
+   * fixed-length render, and truncating it leaves a seam the live loop never had.
+   */
+  async function runBounce(p: Project, frames: number, tailFrames: number) {
+    const rendered = await renderOffline(p, silentBacking(), opts.takes, frames + tailFrames);
+    const buffer = wrapTail(rendered, frames, tailFrames);
+    const id = `${p.id}-mix-${Date.now().toString(36)}`;
+    const session: RecordingSession = {
+      id,
+      audioFileURL: takeUrl(id),
+      recordedFrames: buffer.length,
+      recordedAt: new Date().toISOString(),
+      waveformPeaks: computePeaks(buffer),
+    };
+    opts.takes.put(session, buffer);
+    // `bounceSeed`, not `compressedProject`. Both leave one loop on the layer, but the seed is a
+    // *new* project and §2.7 is explicit that `isCompressed` must be false on it: the flag means
+    // recorded passes were discarded, and a project that never had any would wear a label that lies.
+    opts.onBounce(
+      p,
+      bounceSeed(p, session, {
+        id,
+        name: `${p.name} mix`,
+        now: new Date().toISOString(),
+      }),
+    );
+  }
+
   function askBounce() {
     const p = commit();
     const plan = bouncePlan(p);
@@ -366,24 +404,24 @@ export function projectSettingsScreen(opts: {
       false,
       () => {
         opts.engine.stop();
-        // `bounceSeed`, not `compressedProject`. Both leave one loop on the layer, but the seed is
-        // a *new* project and §2.7 is explicit that `isCompressed` must be false on it: the flag
-        // means recorded passes were discarded, and a project that never had any would wear a
-        // label that lies.
-        //
-        // **The mixdown itself is not rendered**, so this seeds a layer pointing at audio nobody
-        // wrote — the same defect `compress.ts` fixes for compress, and it will behave the same
-        // way: silent, drawing a generated waveform. Rendering it needs §2.7's open question
-        // answered first (is the backing in the mixdown, and do its settings carry?), so the
-        // placeholder stays visible rather than being quietly half-built.
-        opts.onBounce(
-          p,
-          bounceSeed(p, simSession(`${p.id}-mix`, plan.frameCount), {
-            id: `${p.id}-mix-${Date.now().toString(36)}`,
-            name: `${p.name} mix`,
-            now: new Date().toISOString(),
-          }),
+        // Same reason compress refuses: a mixdown of audio that is not in this session is a loop
+        // of silence, and seeding a new project with one is worse than declining.
+        const missing = plan.layers.find(
+          (m) => !hasAudioFor(m.bars, opts.takes.buffersFor(p.layers[m.layerIndex]!)),
         );
+        if (missing) {
+          const layer = p.layers[missing.layerIndex]!;
+          ask(
+            `<b>${p.name}</b> cannot be bounced here: the audio for ` +
+              `<b>${layer.name || `Layer ${missing.layerIndex + 1}`}</b> is not in this session. ` +
+              'The browser build keeps takes in memory only, so a reload loses them.',
+            'Close',
+            false,
+            () => {},
+          );
+          return;
+        }
+        void runBounce(p, plan.frameCount, plan.tailFrames);
       },
     );
   }

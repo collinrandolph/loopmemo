@@ -26,25 +26,17 @@ import { loopFrames } from './timing.ts';
  * looks like; the audio layer does the summing.
  */
 
-/**
- * The backing tracks, flattened for the mixdown rule by `backingMixSources`.
- *
- * **What a bounce should do with them is open** (§2.7, §6.1) — whether they belong in the mixdown,
- * and whether their settings carry to the seeded project. Taken as an argument rather than read
- * off `project.backing`, so the choice stays visible at the call site.
- */
 export type { BackingMixSource } from './backing.ts';
 
 /**
- * §2.6's export rule: *what you hear is what you export*, and it applies identically to a
- * bounce mixdown. To exclude a backing track, mute it.
+ * §2.6's export rule: *what you hear is what you export*. Used by **export**, for whether a
+ * backing track writes a stem, and by the Playback rows for whether one reads as audible.
  *
- * Shared with export deliberately — two implementations of "was this audible" would let the
- * bounced mixdown and the exported file disagree about the same project.
+ * **Not by bounce.** A bounce mixes the layers only (§2.7), so a backing track's mute has no
+ * bearing on it either way.
  *
- * **Layers and backing tracks diverge past this point, and deliberately.** A muted *layer* is a
- * performance the user made and is not using right now, so it still exports as a stem. A muted
- * *backing track* is a decision that the sketch does not have one, so it produces nothing.
+ * A muted *layer* is a performance the user made and is not using right now, so it still exports
+ * as a stem. A muted *backing track* is a decision that the sketch does not have one.
  */
 export function isAudibleInMixdown(track: { readonly muted: boolean }): boolean {
   return !track.muted;
@@ -64,7 +56,6 @@ export type BouncePlan = {
   /** The mixdown is exactly one loop, which is what makes it Pass 1 of the new project. */
   readonly frameCount: number;
   readonly layers: readonly MixSource[];
-  readonly backing: readonly BackingMixSource[];
   /**
    * Frames of delay tail that must **wrap to the start of the loop** rather than being
    * truncated (§2.8).
@@ -84,15 +75,22 @@ function contributes(bars: readonly RetainedBar[]): boolean {
 /**
  * What the mixdown is made of, or undefined if it should not be offered.
  *
+ * **The layers only — the backing tracks are not in a bounce** (§2.7). Their settings carry to
+ * the seeded project instead (`bounceSeed`), so the drums and the bed come across live and still
+ * editable rather than baked into layer 1. Baking them *and* carrying them would play the drums
+ * twice; baking without carrying would freeze a groove §1.2 says never locks.
+ *
+ * **`MixSource` is the domain's account of what goes in, not a rendering recipe the browser
+ * follows.** `ui/` renders a bounce through the same engine that plays the project, because a
+ * second rendering path is a second set of decisions about crossfades, splices and pan law. A
+ * platform without that option has everything it needs here.
+ *
  * Refused in two cases. A slot pointing at audio that does not exist means the project is in
  * a broken state, and baking a hole into the seed is not a repair — the same reason compress
  * refuses, even though bounce leaves the original intact. And a mixdown with nothing audible
  * in it would seed a project with a loop of silence, which is worse than declining.
  */
-export function bouncePlan(
-  project: Project,
-  backing: readonly BackingMixSource[] = [],
-): BouncePlan | undefined {
+export function bouncePlan(project: Project): BouncePlan | undefined {
   const t = projectTiming(project);
   const layers: MixSource[] = [];
   let usesDelay = false;
@@ -116,13 +114,11 @@ export function bouncePlan(
     });
   }
 
-  const audibleBacking = backing.filter(isAudibleInMixdown);
-  if (layers.length === 0 && audibleBacking.length === 0) return undefined;
+  if (layers.length === 0) return undefined;
 
   return {
     frameCount: loopFrames(t),
     layers,
-    backing: audibleBacking,
     tailFrames: usesDelay ? haasDelayFrames(t) : 0,
   };
 }
@@ -140,11 +136,11 @@ export function bouncePlan(
  * therefore sits at the source's sample rate, so seeding a project at any other rate would need
  * a resample at every splice — precisely what snapshotting quality at creation exists to prevent.
  *
- * **The seeded project starts on the default backing, and that is a placeholder rather than an
- * answer.** Whether the source's pattern, kit, slots, chord pattern, tone and octave should carry is
- * open (§2.7), and it is coupled to whether the backing was in the mixdown at all — carrying the
- * settings *and* baking the audio plays the drums twice. Defaults are what `createProject` gives;
- * nothing here has decided anything. Resolve §2.7 before changing this line.
+ * **The backing carries across verbatim, mute flags included** (§2.7). It is not in the mixdown,
+ * so there is no double-tracking to avoid, and copying it whole means the new sketch opens on the
+ * groove the old one was played against — still live, still editable, never frozen into layer 1
+ * (§1.2). Carried even when a track is muted: that is the user's setting, and the new project is
+ * the place to change it.
  *
  * **`isCompressed` is false.** The flag means this project's recorded passes were discarded;
  * a new project never had any, so the label would be a lie in the Library.
@@ -174,5 +170,5 @@ export function bounceSeed(
     ...Array.from({ length: LAYER_COUNT - 1 }, (_, i) => emptyLayer(i + 1)),
   ];
 
-  return { ...seeded, bouncedFromProjectId: source.id, layers };
+  return { ...seeded, bouncedFromProjectId: source.id, backing: source.backing, layers };
 }

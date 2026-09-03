@@ -769,33 +769,33 @@ bounce is **compress applied to every layer at once, plus a mix**. The mixdown i
 which is what makes it Pass 1 — so it is filled through the ordinary recording lifecycle (§1.6) and
 bounce needs no arrangement logic of its own.
 
-#### Unresolved: what a bounce does with the backing tracks
+#### The backing tracks: not in the mixdown, but their settings carry
 
-**Do not implement either reading until this is settled.** The current direction is that backing
-tracks stop being part of a bounce, but "part of" has two separate meanings and they are decided
-independently:
+**Settled.** The two questions were decided together, because they constrain each other:
 
-| Question | Readings |
+| Question | Answer |
 |---|---|
-| Is the backing **in the mixdown**? | It is baked into layer 1 alongside the layers — or the mixdown is layers only, and a bounce is a stem of the performance rather than of the sketch. |
-| Do the **settings** carry to the new project? | Pattern, kit, slots, tone, octave and chord pattern are preset from the source — or the new project starts on defaults. |
+| Is the backing **in the mixdown**? | **No.** A bounce is a stem of the performance, not of the sketch — the layers only. |
+| Do the **settings** carry to the new project? | **Yes, verbatim, mute flags included.** Pattern, kit, slots, tone, octave, chord pattern and level are copied from the source. |
 
-**The two questions constrain each other, which is why neither can be answered alone.** If the
-backing is in the mixdown *and* the settings carry live, the drums play twice and the bounce does
-not sound like its source. If it is in the mixdown and the settings do not carry, the groove is
-frozen into the audio and can never be changed again — which contradicts §1.2's rule that backing
-never locks, in the one place it would matter most. If it is not in the mixdown but the settings
-carry, the bounce is quiet where the source was full but is otherwise recoverable in a tap.
+Taken together these avoid both failures. Baking the audio *and* carrying the settings would play
+the drums twice; baking without carrying would freeze the groove into layer 1, contradicting §1.2's
+rule that backing never locks in the one place it would matter most. Excluding the audio and
+carrying the settings means the new sketch opens on the same groove — live, still editable, one tap
+from a different kit — and the mixdown is exactly the playing.
 
-**It also reaches §2.6's export rule**, which currently says *what you hear is what you export*
-applies identically to a bounce mixdown. A layers-only mixdown makes bounce the sole exception to
-that rule, so the rule has to be narrowed deliberately rather than left to be contradicted in
-passing.
+The settings carry **even when a track is muted**. That is the user's setting, and the new project
+is the place to change it; dropping it would be the app deciding the mute was a mistake.
+
+**This narrows §2.6's export rule rather than contradicting it.** *What you hear is what you
+export* governs export, where a muted backing track writes no stem. A bounce is not an export: it
+never contains the backing, so a backing mute has no bearing on it either way. `isAudibleInMixdown`
+is therefore an **export** predicate, not a bounce one.
 
 **Refused in two cases**: a slot pointing at audio that does not exist, since baking a hole into the
 seed is not a repair even though the original survives; and a mixdown with nothing audible in it,
-which would seed a project with a loop of silence. Every layer muted but a backing track unmuted
-is still a valid bounce.
+which would seed a project with a loop of silence. Every layer muted is now exactly that second
+case — the backing cannot rescue it, because the backing is not in the mixdown.
 
 **A Surround layer's delay tail must wrap.** Live, the delayed copy of the last bar runs past the
 loop point and the delay line keeps going; a bounce renders a fixed length, so that tail has nowhere
@@ -1612,8 +1612,7 @@ touch-action: none;                         /* on gesture surfaces */
 | **Microphone permission and first-run** | The first record tap triggers the system prompt; a denial needs a defined state. The only §5.1-class item still open. |
 | **Row density** | Empty and armed layers occupy full-height rows; with two of seven recorded, much of the screen is placeholder. |
 | **Backing voices that outlive their onset gap** | A voice can still be ringing when the next onset in the same pattern fires. Three different policies are in play and none is settled: chords cap each voice's ring to the gap before the next onset, the hat chokes its predecessor outright, and kick and snare do neither. Decide one model — cap, choke, or overlap — and apply it consistently, or state deliberately why a voice type differs. |
-| **Backing tails at the loop point** | Live it is correct; a fixed-length bounce or export truncates it into a seam. See §2.6, and `tailFrames`, which currently accounts only for the pan delay. |
-| **What a bounce does with the backing tracks** | Two coupled questions — is the backing in the mixdown, and do its settings carry to the new project. Current direction is that it stops being part of a bounce. See §2.7. |
+| **Backing tails at the loop point** | Settled for bounce: `tailFrames` is rendered and folded onto the head (`wrapTail`). Still open for **export**, whose fixed-length render truncates both a layer's pan delay and a backing voice still ringing at the loop point. `tailFrames` also still accounts only for the pan delay, not for a chord's own decay. |
 | **Input gain staging** | Reported as "working but very quiet". Two of the three contributors are settled: the shared bus no longer attenuates, and the live waveform is the meter (§5.2). What is left is whether there should be anything to *set* — an input trim, or a normalise-on-commit, or neither. `autoGainControl` stays off either way (§2.3 — a rider is a moving gain and ruins two takes of the same playing), so without one of those the system level governs entirely. |
 | **Storage full mid-recording** | How gracefully the session ends. |
 | **Showing the pass range** (`P2/4`) | Makes the wrap predictable. |

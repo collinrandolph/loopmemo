@@ -1,9 +1,9 @@
-import { type BackingTracks, defaultBacking } from '../../src/domain/backing.ts';
+import type { BackingTracks } from '../../src/domain/backing.ts';
 import type { ExportFile, ExportPlan } from '../../src/domain/export.ts';
 import { panGains } from '../../src/domain/effects.ts';
 import { type Layer, type Project, QUALITY_SPEC, projectTiming } from '../../src/domain/project.ts';
 import { loopFrames } from '../../src/domain/timing.ts';
-import { audioEngine } from './audio.ts';
+import { renderOffline, silentBacking } from './render.ts';
 import type { OutputFile } from './save.ts';
 import type { TakeStore } from './takes.ts';
 import { encodeWav } from './wav.ts';
@@ -54,32 +54,13 @@ function soloLayer(project: Project, index: number, treated: boolean): Project {
   };
 }
 
-function silentBacking(): BackingTracks {
-  const base = defaultBacking();
-  return {
-    drums: { ...base.drums, muted: true },
-    chords: { ...base.chords, muted: true },
-  };
-}
-
-/**
- * Render one pass through the engine, offline. Always two channels — the merger has two inputs
- * and the pan law fills both — so how many to *write* stays a property of the file, not the render.
- */
-async function renderThroughEngine(
+/** Both live in `render.ts`, so export and bounce cannot render a project differently. */
+const renderThroughEngine = (
   ctx: RenderContext,
   project: Project,
   backing: BackingTracks,
   frames: number,
-): Promise<AudioBuffer> {
-  const t = projectTiming(project);
-  const offline = new OfflineAudioContext(2, frames, t.sampleRate);
-  const engine = audioEngine(t.sampleRate, offline);
-  engine.setBacking(backing, t);
-  engine.setLayers(project, ctx.takes);
-  engine.prerender(t.barCount);
-  return offline.startRendering();
-}
+) => renderOffline(project, backing, ctx.takes, frames);
 
 /** Drop to one channel, with the centre-pan makeup applied. */
 function toMono(buffer: AudioBuffer, makeup = CENTRE_MAKEUP): AudioBuffer {
