@@ -214,6 +214,16 @@ stacking overdubs cannot have the OS force speaker output at the moment of recor
 It may be avoidable with headphones that have no mic (the spec's ideal configuration anyway),
 but it is a fragile foundation. **Test on a real device before betting anything on the web.**
 
+**`docs/device-check.md` is that test**, and running it costs nothing. `Tools/make-cert.sh` plus
+`npm run ui` serves the existing build over HTTPS on the local network — required rather than
+tidy, since `getUserMedia` and `AudioWorklet` are secure-context only and a LAN IP is not one.
+The checklist covers the routing bug across four output routes, iOS storage eviction, the
+real-time half of §8, and the visual judgements that have only ever been made on a desktop.
+
+**What makes this worth doing now rather than when this document was written:** `ui/` was a probe
+then and is a whole app now — library, recording, editing, compress, bounce, export, persistence.
+The session tests the product rather than a toy, and it settles route 1 either way.
+
 ### Android costs nothing, and that is the deferral
 
 EAS builds an Android APK with **no developer account**; install it directly, no expiry, no
