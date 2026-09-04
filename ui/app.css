@@ -344,9 +344,10 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
 .header-controls input[type=range] { width: 120px; }
 
 /* --- Project Library; lifted from docs/mockups/project-library-mockup.html --- */
-.storage { font-size: 11px; color: rgba(255,255,255,.62); margin-left: auto;
-           font-variant-numeric: tabular-nums; }
-.sort-note { font-size: 11px; color: rgba(255,255,255,.5); margin-top: 6px; }
+/* No colour here — it comes from the header ink rule below, with every other header label.
+   It was hardcoded white at 62%, which predated the theme and so read a shade off the same
+   label on the Playback screen in all four colourways. */
+.storage { font-size: 11px; margin-left: auto; font-variant-numeric: tabular-nums; }
 .new-btn { margin-top: 14px; width: 100%; justify-content: center; display: flex;
            align-items: center; gap: 8px; padding: 12px; font-size: 13px; }
 .new-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor;
@@ -800,7 +801,7 @@ body { font-family: 'Hanken Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe 
 /* Inside the header everything is on the dark surface and inherits the cream, so nothing here
    may take a body colour — that is how a title turns dark-on-dark and disappears. */
 .lr-header .lr-title { color: var(--lr-ink); }
-.lr-header .sort-note, .lr-header .lr-meta, .lr-header .lr-settings { color: var(--lr-ink-dim); }
+.lr-header .lr-meta, .lr-header .lr-settings, .lr-header .storage { color: var(--lr-ink-dim); }
 
 /* The other direction of the same mistake, and the more common one: a token named for its role
    rather than its surface gets reused on the opposite surface and disappears. `.setting-figure`

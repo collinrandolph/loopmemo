@@ -77,7 +77,10 @@ export function libraryScreen(opts: {
     '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg> New project',
   );
   newBtn.addEventListener('click', () => opts.onNew());
-  header.append(titleRow, el('div', 'sort-note', 'Most recently modified first'), newBtn);
+  // No sort note. §4.1 fixes the order at most-recently-modified and offers no other, so the line
+  // announced a rule that cannot change rather than telling anyone something they could act on —
+  // and the dates down the right of every card already say it. The sort itself is unchanged.
+  header.append(titleRow, newBtn);
 
   const listEl = el('div', 'lr-rows');
 
