@@ -372,12 +372,9 @@ export function playbackScreen(opts: {
     });
     layersEl.classList.toggle('is-capturing', capturingIndex() >= 0);
     lockExits();
-    // The armed equivalent of `is-capturing`: the kit tints every empty open row's dot in the
-    // record colour, so without this they all look as live as the one actually armed.
-    layersEl.classList.toggle(
-      'is-arming',
-      rows.some((r) => r.rec === 'armed'),
-    );
+    // There was an `is-arming` toggle here, the armed equivalent of `is-capturing`, whose only
+    // job was letting CSS out-specify the kit's empty-open record hint. The hint is gone, so
+    // `.is-armed` paints the armed row on its own and this described nothing.
 
     if (stopped) {
       // The take ends where it ends, and the downbeat is where the next pass will start.

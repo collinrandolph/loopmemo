@@ -434,8 +434,8 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
    note — the record colour, because both are "the thing you asked for did not happen". */
 .export-error {
   margin-top: 10px; padding: 8px 10px; border-radius: 8px;
-  color: #fff; background: rgba(255,107,107,.16);
-  box-shadow: inset 0 0 0 1px rgba(255,107,107,.45);
+  color: var(--lr-ink); background: rgba(var(--lr-rec-rgb), .16);
+  box-shadow: inset 0 0 0 1px rgba(var(--lr-rec-rgb), .45);
 }
 /* Format is inert when only the raw copy is selected — nothing is being rendered to choose a
    format for. Dimmed rather than removed, so the row does not jump in and out of the layout. */
@@ -527,58 +527,31 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
    take is wasted, quiet enough not to look like a permanent part of the header. */
 .input-note {
   margin: 8px 0 0; padding: 7px 10px; border-radius: 6px;
-  background: rgba(255, 138, 128, .16); border: 1px solid rgba(255, 138, 128, .34);
-  color: #ffd9d4; font-size: 12px; line-height: 1.45;
+  background: rgba(var(--lr-rec-rgb), .16); border: 1px solid rgba(var(--lr-rec-rgb), .34);
+  color: var(--lr-ink); font-size: 12px; line-height: 1.45;
 }
 
 /* Waiting on the microphone prompt. The dot pulses in the record colour without going solid:
    the intent is real, the permission is not granted yet, and the row has not armed. */
 .lr-row.is-pending .lr-rec {
-  background: rgba(255,107,107,.45);
+  background: rgba(var(--lr-rec-rgb), .45);
   animation: lr-pulse 1s ease-in-out infinite;
   cursor: progress;
 }
 
 /* ------------------------------------------------ one layer claims the input -- */
-/* The kit hints an empty layer whose panel is open by tinting its record dot the *record*
-   colour and pulsing a halo out of it. That is a good prompt while nothing is armed and a bad
-   one the moment something is: the hint and the armed state are the same colour and both
-   animate, so opening three empty layers and arming one produced three dots that all looked
-   live, with nothing to say which take was about to happen.
+/* Nothing is needed here any more, and the deletion is the point.
 
-   While anything is armed, every other record control drops back to neutral. It stays visible
-   and tappable — arming a different layer is still one tap, and that tap disarms the first (see
-   `onPointerDownAnywhere`) — it just stops claiming to be the one.
+   All of it — a neutral override for non-armed dots, its hover, a restatement of the armed
+   dot, a restatement of the recording dot — existed to out-specify one kit rule: the red
+   pulsing hint on an empty layer whose panel was open. Four classes beat `.is-armed`'s three,
+   so the row about to be recorded was the palest, stillest thing on screen, and every open
+   empty layer looked as live as it did.
 
-   The kit already does the stronger version during recording, hiding the other dots outright
-   while keeping their space so nothing shifts. That is deliberately left alone: a pass in
-   progress owns the input, and there is nothing useful to tap. */
-.lr-rows.is-arming .lr-row:not(.is-armed) .lr-rec {
-  background: rgba(255, 255, 255, .22);
-  animation: none;
-  box-shadow: none;
-}
-/* The hint outranks the kit's own hover rule, so the neutral state needs its hover back. */
-.lr-rows.is-arming .lr-row:not(.is-armed) .lr-rec:hover {
-  background: rgba(255, 255, 255, .34);
-}
-
-/* And the armed row has to look armed, which it did not.
-   `.lr-row.is-empty.is-open .lr-rec` is four classes and `.lr-row.is-armed .lr-rec` is three,
-   so on an empty layer with its panel open — which is the *normal* way to arm one — the hint
-   won the background and the dot stayed at the hint's 55% red instead of the full record
-   colour. The kit then switches the animation off for that combination, so the armed dot did
-   not pulse either. The row about to be recorded was the palest, stillest thing on screen.
-   Recording had the same problem: it kept its square shape and lost its colour. */
-.lr-rows.is-arming .lr-row.is-armed .lr-rec {
-  background: var(--lr-rec);
-  animation: lr-pulse 1.4s ease-in-out infinite;
-  box-shadow: none;
-}
-.lr-rows.is-capturing .lr-row.is-recording .lr-rec {
-  background: var(--lr-rec);
-  box-shadow: none;
-}
+   The hint is gone from the kit (a user reported it reading as armed on a row that was not),
+   so the kit's own two- and three-class state rules win unopposed and say the right things.
+   The kit's `is-capturing` rule, which hides other dots outright during a take, is untouched:
+   a pass in progress owns the input and there is nothing useful to tap. */
 
 /* A choice this build cannot honour. Visibly present and visibly not selectable — removing it
    would say "never", and the format is fine on a native platform. */

@@ -64,6 +64,13 @@ colours, these two have to move with them.
 A spent line must stay *visible against its tile* while being clearly less prominent than an
 unplayed one. It is not "faded to background" — it is a second, quieter colour.
 
+**`--lr-rec-rgb` is a third bare triple and is *not* one of these.** Nothing in JavaScript reads
+it; it exists so CSS can choose its own alpha — `rgba(var(--lr-rec-rgb), .45)` — for the four
+surfaces that want a translucent record colour: the pending dot, the input note, the export error
+and the armed row's inset rule. Those had each hardcoded the pre-theme red, so they stayed one hue
+across all four colourways while everything around them changed. Breaking this one is visible
+rather than silent: an invalid `rgba()` simply does not paint.
+
 ---
 
 ## 3. Styles JavaScript overwrites every frame
@@ -143,8 +150,21 @@ this, and `.tile.is-selected .tile-label` brightens to `--lr-ink`.
 circle → square (`border-radius: 4px`, `transform: scale(.78)`) and the pulse stops. Keep both
 signals; colour alone is not enough for the one control that must never be misread.
 
-**Record dot has a fourth state**: empty + open gets a pulsing expanding ring
-(`lr-rec-hint`) to say "record here", explicitly suppressed once armed or recording.
+**The record dot has three states, not four.** There was a fourth — empty + open got a pulsing
+expanding ring (`lr-rec-hint`) meaning "record here" — and it is **removed**, from the kit and from
+all three mockups. Two reasons, and the second is the one to remember:
+
+- It was the record colour and it pulsed, which is exactly how `.is-armed` reads. A user reported
+  an open empty layer looking armed or already recording when it was neither.
+- Its selector was four classes, so it outranked `.is-armed` and `.is-pending` at three. On an
+  empty open row — *the normal way to arm a layer* — the real states could not paint themselves:
+  the armed dot stayed at the hint's paler red and did not pulse, and the pending dot never showed
+  its own animation at all. About 25 lines in `ui/app.css` and an `is-arming` class existed purely
+  to win that specificity fight, and were deleted with it.
+
+The lesson generalises: **a hint keyed to a container state will outrank the element states it
+sits on top of.** If you add one, give it a selector no more specific than the states it must
+yield to, or it will quietly win.
 
 **`.lr-pass-badge.is-provisional`** — opacity .45, meaning "this pass has not been earned yet"
 (§1.4). Not decoration; it is a preview of whether the take will survive the stop.
