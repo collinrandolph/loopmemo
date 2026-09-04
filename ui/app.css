@@ -350,19 +350,22 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
 /* Six, not the kit five: see THUMB_HEIGHT in library.ts — even heights survive snapEven. */
 .library .lr-wave--thumb { height: 6px; }
 
-.p-main { flex: 1 1 auto; min-width: 0; }
-/* `min-width: 0` on both, and the tags wrap rather than push: a flex item's default
-   `min-width: auto` refuses to shrink below its content, so a long name plus two tags widened
-   the row instead of ellipsising inside it. */
+/* Three stacked lines — name, what it is, how big and how recent — per the design study's
+   `.m-pmain`. A grid with one gap rather than per-child margins, so the rhythm is one number. */
+.p-main { flex: 1 1 auto; min-width: 0; display: grid; gap: 3px; }
+/* `min-width: 0` and the tag wraps rather than pushes: a flex item's default `min-width: auto`
+   refuses to shrink below its content, so a long name plus a tag widened the row instead of
+   ellipsising inside it. */
 .p-name { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 7px;
-          min-width: 0; flex-wrap: wrap; }
-.p-meta { font-size: 11px; color: var(--lr-ink-dim); margin-top: 3px; }
-.p-right { font-size: 11px; color: var(--lr-ink-faint); text-align: right; min-width: 74px;
-           font-variant-numeric: tabular-nums; }
-/* The readouts swap in one fixed box, so the row does not change width when a preview starts. */
+          min-width: 0; flex-wrap: wrap; line-height: 1.25; }
+.p-meta { color: var(--lr-ink-faint); font-variant-numeric: tabular-nums; }
+/* The second line carries the two facts you scan for, so it steps up one level of ink. */
+.p-meta--b { color: var(--lr-ink-dim); }
+/* The readouts swap in place, so the line does not reflow when a preview starts. Size and
+   elapsed time are both tabular, so the text after them does not shift either. */
 .lr-row.is-playing .p-size { display: none; }
 .p-time { display: none; color: var(--lr-ink); }
-.lr-row.is-playing .p-time { display: block; }
+.lr-row.is-playing .p-time { display: inline; }
 
 .lr-play--sm { width: 34px; height: 34px; flex-basis: 34px;
                background: rgba(255,255,255,.14); color: #fff;
@@ -580,9 +583,8 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
   .lr-screen { border-radius: 0; box-shadow: none; }
 
   .lr-header { padding: 14px 12px 10px; }
-  .lr-section-label { padding: 0 12px; }
-  .lr-rows { padding: 4px 12px 14px; }
-  .backing { padding: 0 12px 6px; }
+  /* The row and heading rhythm is NOT here — see the media block beside the base rules further
+     down. Putting it here loses to them on source order, which is the hazard described above. */
   .lr-footer { padding: 10px 12px; }
   .grid { padding: 12px; }
   .lr-panel-inner { padding: 10px; }
@@ -612,14 +614,12 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
      variable and put the dead column back. */
   .layer-name { max-width: 64px; }
 
-  /* The library row is five columns wide and the mockup sizes them for a 760px card. On a
-     phone the metadata was down to ~65px and wrapping to five lines, so the two fixed columns
-     either side of it give ground: the thumbnail is still a colour signature at 56, and the
-     size readout only ever holds "24.7 MB". */
-  .library .lr-rows { padding: 6px 12px 14px; }
+  /* The library row was five columns and the mockup sized them for a 760px card, so on a phone
+     the metadata was down to ~65px and wrapping to five lines. It is three columns now — the
+     size moved into the meta itself — and the thumbnail still gives ground, being a colour
+     signature at 56 as much as at 84. (`.library .lr-rows` is set once, above.) */
   .library .lr-row-head { gap: 10px; padding: 10px; }
   .thumb { width: 56px; flex-basis: 56px; }
-  .p-right { min-width: 52px; }
   .library .lr-panel-inner { padding: 0 10px 10px; }
   .layer-ops { padding: 0 12px; }
   .is-ops-open .layer-ops { padding: 10px 12px; }
@@ -748,12 +748,36 @@ body { font-family: 'Hanken Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe 
 
 /* Rows and tiles are cards ON the light body, so they keep the cream ink. */
 .lr-row, .tile { color: var(--lr-ink); }
-.lr-rows, .backing { padding: 10px 14px 14px; display: flex; flex-direction: column; gap: 8px; }
+/* Spacing from the design study (`.m-rows`, `.m-plist`, `.m-sec`). The cards are the content, so
+   the gap between them is a seam and not a margin — 8px read as a list of separate things, where
+   2px reads as one stack. The breathing room moves to the section headings, which is what makes
+   Backing tracks and Layers legible as groups rather than as more rows. */
+.lr-rows, .backing { padding: 0 14px; display: flex; flex-direction: column; gap: 2px; }
+/* The library is one ungrouped list with no heading above it, so it takes the space back at the
+   top and opens its gap by a hair — cards there are three lines tall and need the separation. */
+.library .lr-rows { padding: 12px 14px 4px; gap: 3px; }
 .lr-row { border-radius: 10px; }
 .lr-row-head { padding: 9px 12px; }
 
 /* --- ink on the light body ------------------------------------------------ */
-.lr-section-label { color: var(--lr-label-ink); opacity: .75; padding-top: 4px; }
+/* Space above, close below: the heading belongs to the rows under it, so the gap that separates
+   one group from the previous one has to be clearly larger than the gap it leaves before its own
+   content. `padding-top` alone could not express that, and the kit's `padding: 0 20px` had to be
+   overridden anyway now that the body owns the horizontal rhythm. */
+.lr-section-label { color: var(--lr-label-ink); opacity: .75; padding: 0 14px; margin: 15px 0 7px; }
+
+/* The same rhythm at 12px, and it has to live HERE rather than in the phone block near the top
+   of this file. A media query carries no extra specificity, so an equal-specificity base rule
+   further down simply wins — which is what happened: the phone was computing 14px padding and a
+   15px heading margin from the rules above, and the block up there was inert. That file-wide
+   trap is documented at the block itself; this is the second time it has bitten.
+   It restates the gaps as well as the padding for the same reason: overriding only padding would
+   leave the phone on whichever gap the base rule happened to carry. */
+@media (max-width: 640px) {
+  .lr-section-label { padding: 0 12px; margin: 14px 0 6px; }
+  .lr-rows, .backing { padding: 0 12px; gap: 2px; }
+  .library .lr-rows { padding: 10px 12px 4px; gap: 3px; }
+}
 .lr-footer { border-top: 1px solid var(--lr-label-line); color: var(--lr-label-ink); }
 /* The Export screen straddles both surfaces, so it is split by where a thing is painted rather
    than by its name. `.export-title` / `.export-detail` / `.export-files` / `.export-size` are

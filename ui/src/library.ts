@@ -113,11 +113,19 @@ export function libraryScreen(opts: {
 
     const thumb = el('div', 'thumb');
     const main = el('div', 'p-main');
-    const right = el('div', 'p-right', '<span class="p-size"></span><span class="p-time">0:00</span>');
-    head.append(play, thumb, main, right);
+    head.append(play, thumb, main);
     rowEl.appendChild(head);
 
-    const row: Row = { project: initial, el: rowEl, lanes: [] as WaveNode[], play, time: right.querySelector('.p-time')!, rebuild };
+    // `time` is replaced by every `rebuild`; it is set there rather than found here, because
+    // `main.innerHTML` throws the previous node away.
+    const row: Row = {
+      project: initial,
+      el: rowEl,
+      lanes: [] as WaveNode[],
+      play,
+      time: main,
+      rebuild,
+    };
 
     function rebuild() {
       const p = row.project;
@@ -141,18 +149,37 @@ export function libraryScreen(opts: {
         row.lanes.push(lane);
       }
 
-      const tags =
-        (p.audioQuality === 'high' ? '<span class="lr-tag lr-tag--hq">HQ</span>' : '') +
-        (p.isCompressed ? '<span class="lr-tag">Compressed</span>' : '') +
-        (p.bouncedFromProjectId ? '<span class="lr-tag lr-tag--bounced">Bounced</span>' : '');
+      /**
+       * **HQ and Compressed are gone**, and only Bounced remains (§4.1's design study). The two
+       * removed were *settings* wearing the costume of provenance: every project has a quality,
+       * and compression is a state the same project moves in and out of, so as badges they sat
+       * beside the name claiming to say what a sketch *is*. Both are still in project settings,
+       * which is where they can be acted on. Bounced stays because it says where a project came
+       * from, which nothing else on the row does and no setting reports.
+       */
+      const tags = p.bouncedFromProjectId
+        ? '<span class="lr-tag lr-tag--bounced">Bounced</span>'
+        : '';
 
+      /**
+       * Three stacked lines, not two lines and a right-hand column. The size used to sit in its
+       * own right-aligned box, which took width from the meta and wrapped it mid-phrase —
+       * "3 layers / · 7 passes · Today". It belongs with the date: both answer "how big and how
+       * recent", where the line above answers "what is it".
+       */
       main.innerHTML =
-        `<div class="p-name">${p.name} ${tags}</div>` +
-        `<div class="p-meta">${p.bpm} BPM · ${p.barCount} bars · ${layers} layer${layers === 1 ? '' : 's'}` +
+        `<div class="p-name">${p.name}${tags}</div>` +
         // §2.7: pass count drives size, not layer count, which is why the row shows it.
-        ` · ${passes} pass${passes === 1 ? '' : 'es'} · ${modified(p.lastModified)}</div>`;
-      right.querySelector('.p-size')!.textContent = formatBytes(sizeProjection(p).uncompressedBytes);
-
+        `<div class="p-meta">${p.bpm} BPM · ${p.barCount} bars · ${layers} layer${layers === 1 ? '' : 's'}` +
+        ` · ${passes} pass${passes === 1 ? '' : 'es'}</div>` +
+        `<div class="p-meta p-meta--b">${modified(p.lastModified)} · ` +
+        `<span class="p-size"></span><span class="p-time">0:00</span></div>`;
+      main.querySelector('.p-size')!.textContent = formatBytes(
+        sizeProjection(p).uncompressedBytes,
+      );
+      // Rebuilt markup means a new node, so the render loop's handle has to follow it or the
+      // position readout writes to an element that is no longer in the document.
+      row.time = main.querySelector('.p-time')!;
     }
 
     // The whole row opens the project; there is no second action on it.
