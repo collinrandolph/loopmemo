@@ -126,20 +126,27 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
 }
 .lr-stats { margin-top: 2px; display: flex; align-items: center; gap: 10px; }
 .stats-text { flex: 1; min-width: 0; }
+/* The gear ends the title line, so the tempo stops taking the auto margin — otherwise it pushes
+   the gear off the right edge instead of sitting beside it. `.lr-title-row` aligns on the
+   baseline and an icon has none worth aligning to, so it centres against the text instead. */
+.lr-title-row .lr-settings { margin-left: auto; }
+.lr-title-row .header-gear { align-self: center; margin-left: 2px; }
 /* The way into project settings. Sized and coloured like the help control rather than like a
-   button, because it is a route rather than an action — and pushed to the right of the stats it
-   sits beside, where the row was otherwise empty. */
+   button, because it is a route rather than an action. */
 .header-gear {
   flex: none; padding: 0; border: none; background: none; cursor: pointer; line-height: 0;
   -webkit-tap-highlight-color: transparent;
 }
 .header-gear svg {
   width: 19px; height: 19px; display: block;
-  fill: none; stroke: rgba(255,255,255,.62); stroke-width: 2;
+  /* The same ink as the tempo and bar count it now sits beside — the line reads as one thing
+     rather than as a label with a brighter control stuck on the end. Hardcoded white at 62%
+     before, which was the pre-theme value and did not follow the colourway. */
+  fill: none; stroke: var(--lr-ink-dim); stroke-width: 2;
   stroke-linecap: round; stroke-linejoin: round;
   transition: stroke .12s;
 }
-.header-gear:hover svg { stroke: #fff; }
+.header-gear:hover svg { stroke: var(--lr-ink); }
 /* A pass in progress owns the screen, not only the input: every route off it is disabled for
    the length of the take, because reaching one tears the screen down and takes the capture
    worklet with it. `.lr-btn:disabled` covers Projects, Export and Edit Layer; the gear and the
@@ -862,3 +869,42 @@ html, body { touch-action: manipulation; }
    out. This is the project name field, and it was 15px. The size is not a design choice worth a
    permanent zoom. */
 .setting-name { font-size: 16px; }
+
+/* --- three colour corrections -------------------------------------------- */
+/* New project takes the play button's colour rather than the accent. It is the primary action on
+   the Library and it sits on the dark header, where the near-grey accent was the quietest thing
+   in the room; the light neutral is rung 1 of the study's prominence ladder, and the play buttons
+   below it already use exactly that pair. Scoped to `.new-btn` — Export, Done and Save are rung 4
+   and stay on the accent. */
+.new-btn { background: var(--lr-play-bg); color: var(--lr-play-ink); border-color: transparent; }
+.new-btn:hover { background: var(--lr-play-bg); filter: brightness(1.04); }
+
+/* The help control lives in the footer, which is on the LIGHT body, and it was taking
+   `--lr-ink` — the cream meant for dark surfaces — from the rule it shares with the backing-track
+   icons, which are on cards and correctly keep it. Cream on putty, so the question mark was
+   nearly invisible. The contrast audit in restyling.md §8 could not see this: it compares `color`
+   against the painted background and an icon's ink is `stroke`. */
+.lr-footer .lr-help svg { stroke: var(--lr-label-ink); }
+.lr-footer .lr-help:hover svg { stroke: var(--lr-label-strong); }
+
+/* Every slider's lane is the progress bar's lane. The kit leaves ranges native with
+   `accent-color: #fff`, so the groove was whatever grey the platform chose and the fill was pure
+   white — neither following the colourway, and the master volume sat beside the progress bar
+   looking like a different control. `appearance: none` is what makes the groove paintable at all.
+   The thumb stays the light ink so it reads on the lane at every position. */
+input[type=range] {
+  appearance: none; -webkit-appearance: none;
+  background: var(--lr-track); height: 4px; border-radius: 99px;
+  outline: none; cursor: pointer;
+}
+input[type=range]::-webkit-slider-thumb {
+  appearance: none; -webkit-appearance: none;
+  width: 13px; height: 13px; border-radius: 50%; border: none;
+  background: var(--lr-ink); cursor: pointer;
+}
+input[type=range]::-moz-range-thumb {
+  width: 13px; height: 13px; border-radius: 50%; border: none;
+  background: var(--lr-ink); cursor: pointer;
+}
+/* Firefox paints its own groove inside the element rather than using the background. */
+input[type=range]::-moz-range-track { background: var(--lr-track); height: 4px; border-radius: 99px; }

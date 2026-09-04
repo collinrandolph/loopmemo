@@ -148,9 +148,17 @@ export function playbackScreen(opts: {
    * name on this screen renames it in place, so tapping the project name to navigate away would
    * teach the opposite lesson two rows apart.
    *
-   * The stats live in their own span because `paintTitle` rewrites them, and writing
-   * `textContent` on the row would take the button with it.
+   * It sits on the **title** line, level with the project name and the tempo, rather than on the
+   * stats line below: the settings it opens are what the project *is*, which is what that line
+   * says. It reads at the weight of the tempo beside it for the same reason.
+   *
+   * Every piece of text here is its own element, and `paintTitle` writes `textContent` into them.
+   * The row used to be redrawn with `innerHTML`, which is fine for text and destroys a button —
+   * the old comment noted exactly that hazard about the stats row, and moving the gear up brought
+   * it along.
    */
+  const titleEl = el('div', 'lr-title');
+  const titleMeta = el('div', 'lr-settings');
   const statsRow = el('div', 'lr-meta lr-stats');
   const statsText = el('span', 'stats-text');
   const gearBtn = el('button', 'header-gear', `<svg viewBox="0 0 24 24">${SETTINGS_ICON}</svg>`);
@@ -158,7 +166,8 @@ export function playbackScreen(opts: {
   gearBtn.setAttribute('aria-label', 'Project settings');
   gearBtn.addEventListener('click', () => opts.onSettings());
   exits.push(gearBtn as HTMLButtonElement);
-  statsRow.append(statsText, gearBtn);
+  titleRow.append(titleEl, titleMeta, gearBtn);
+  statsRow.append(statsText);
   const transportEl = el('div', 'lr-transport');
   /** Only ever visible when the input failed; see `paintInputState`. */
   const inputNote = el('div', 'input-note');
@@ -179,9 +188,12 @@ export function playbackScreen(opts: {
     const live: Project = { ...project, layers: rows.map((r) => r.layer) };
     const passes = projectTotalPasses(live);
     const size = sizeProjection(live);
-    titleRow.innerHTML =
-      `<div class="lr-title">${project.name}</div>` +
-      `<div class="lr-settings">${project.bpm} BPM · ${project.barCount} Bars · ${project.beatsPerBar}/4</div>`;
+    titleEl.textContent = project.name;
+    // The time signature is deliberately absent. Nothing in the app can change it — §4.6 lists no
+    // control and `beatsPerBar` is only ever the default — so printing it spent a third of the
+    // line on a number that never varies and cannot be acted on. It is still in the `Project` and
+    // still drives the arithmetic; put it back here when there is a way to set it.
+    titleMeta.textContent = `${project.bpm} BPM · ${project.barCount} Bars`;
     statsText.textContent =
       `${passes} Pass${passes === 1 ? '' : 'es'} · ${(size.uncompressedBytes / 1e6).toFixed(1)} MB`;
   }

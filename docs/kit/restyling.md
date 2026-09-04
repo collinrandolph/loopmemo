@@ -251,12 +251,19 @@ for (const e of document.querySelectorAll('.lr-screen *')) {
   const cs = getComputedStyle(e);
   if (cs.display === 'none' || cs.visibility === 'hidden' || +cs.opacity < .05) continue;
   const b = bg(e); if (b === 'GRADIENT') continue;
-  const fg = cs.color.match(/[\d.]+/g).slice(0, 3).map(Number);
+  const ink = e.tagName === 'svg' && cs.stroke !== 'none' ? cs.stroke : cs.color;
+  const fg = ink.match(/[\d.]+/g).slice(0, 3).map(Number);
   const [a, z] = [lum(fg), lum(b)].sort((x, y) => y - x);
   const r = (a + .05) / (z + .05);
-  if (r < 3) console.warn(e.className, JSON.stringify(e.textContent.trim().slice(0, 20)), r.toFixed(2));
+  if (r < 3) console.warn(e.className || e.tagName, JSON.stringify(e.textContent.trim().slice(0, 20)), r.toFixed(2));
 }
 ```
+
+**An icon's ink is `stroke`, not `color`** — the line above exists because the first version of
+this checked only `color` and reported every screen clean while the footer's question mark was
+cream on the light body, invisible. It shares a rule with the backing-track icons, which are on
+dark cards and correctly keep the cream. Same two-surface trap as §8's table, in a property the
+audit was not looking at.
 
 Run it on all seven screens **in every colourway** — the four bodies differ in lightness, so a
 token can clear the bar in Wine and fail in Moss. That is how `--lr-ink-faint` was set: L55 measured
