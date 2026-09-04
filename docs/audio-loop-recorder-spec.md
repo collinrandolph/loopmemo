@@ -1576,7 +1576,8 @@ Global, and — unless stated — they apply live.
 | Setting | Options | Applies |
 |---------|---------|---------|
 | **Recording quality** | Standard (16-bit / 44.1k) · High (24-bit / 48k) | **New projects only.** Snapshotted at creation and immutable thereafter (§2.7). |
-| **Count-in** | Off · 1 bar · 2 bars | Live. Never recorded, so it needs no per-project snapshot (§5.1 #3). |
+| **Count-in length** | Off · 1 · 2 · 3 · 4 bars | Live. Never recorded, so it needs no per-project snapshot (§5.1 #3). Widened from 2 bars during the build. |
+| **Count-in sound** | Full loop · Drums only | Live. The count-in is the loop's own tail played into the wrap, so this chooses how much of it sounds. Added during the build; there is still no click (§5.1 #8). |
 | **Export format** | WAV · MP3, with quality | Default for the export screen |
 | **EQ / pan preset defaults** | Which preset a new layer starts on | Live |
 | **Master level limiting** | On / off | Live |

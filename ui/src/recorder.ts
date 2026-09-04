@@ -162,3 +162,47 @@ export const MUSIC_CONSTRAINTS: MediaTrackConstraints & { latency?: number } = {
   channelCount: 1,
   latency: 0,
 };
+
+/**
+ * Drop everything a capture holds from before the downbeat.
+ *
+ * **This is what makes §5.1 #3 true.** A count-in runs the transport for a bar or more before the
+ * take begins, and the microphone is open across all of it — arming opens the input early on
+ * purpose, so that the downbeat is never missed waiting on a permission prompt. What arrives in
+ * those bars is real audio that must not become part of the session: §5.1 #3 requires the
+ * session's first frame to *be* the downbeat, because `passExists`, `regionFor` and every bar
+ * boundary in the app measure from it.
+ *
+ * Trimming rather than starting the recorder late is deliberate. Starting late would mean timing
+ * a call against the audio clock from the main thread, which is the free-running-clock mistake
+ * §2.4 rules out; the chunks are already stamped with the worklet's own frame, so where the
+ * downbeat falls is arithmetic rather than a race.
+ *
+ * Returns the capture unchanged when nothing needs dropping, so the no-count-in path allocates
+ * nothing and stays bit-identical to what `verify-capture.ts` measures.
+ */
+export function trimToDownbeat(capture: Capture, downbeatFrame: number): Capture {
+  const drop = Math.round(downbeatFrame - capture.arrivedAtFrame);
+  if (drop <= 0) return capture;
+  if (drop >= capture.buffer.length) {
+    // Stopped during the count-in. There is no take, and the domain declines it anyway — this
+    // only has to avoid handing back a negative length.
+    const empty = new OfflineAudioContext(1, 1, capture.buffer.sampleRate).createBuffer(
+      capture.buffer.numberOfChannels,
+      1,
+      capture.buffer.sampleRate,
+    );
+    return { buffer: empty, frames: 0, arrivedAtFrame: downbeatFrame };
+  }
+
+  const length = capture.buffer.length - drop;
+  const out = new OfflineAudioContext(1, length, capture.buffer.sampleRate).createBuffer(
+    capture.buffer.numberOfChannels,
+    length,
+    capture.buffer.sampleRate,
+  );
+  for (let c = 0; c < capture.buffer.numberOfChannels; c++) {
+    out.copyToChannel(capture.buffer.getChannelData(c).subarray(drop), c);
+  }
+  return { buffer: out, frames: length, arrivedAtFrame: downbeatFrame };
+}

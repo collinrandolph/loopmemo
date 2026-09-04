@@ -113,6 +113,24 @@ bleed into the mic and pile onto each new take.
 > armed (red, pulsing), recording (red square). Label "tap to advance, hold while armed to
 > cancel".
 
+#### Count-in
+
+Bars of the loop that play before the take starts, so you can come in on the beat instead of
+from silence.
+
+- **Length** — Off, or 1 to 4 bars. On the project settings screen (the **gear**), below Rec offset.
+- **Sound** — **Full loop** plays the ending you're joining, drums, chords and every layer.
+  **Drums only** keeps the beat clear when the arrangement is busy.
+- **It's never recorded.** The count-in is the *end* of the loop played into the wrap, so your take
+  still begins on the downbeat and bar 1 is bar 1. Stop during the count-in and nothing is kept.
+- **Both settings apply to every project**, and save the moment you tap them — Cancel doesn't
+  undo them.
+- **While it runs**, the layer's lane shows one dot per beat, filling up to the downbeat. The dot
+  at the start of each bar is larger.
+
+> **ILLUSTRATION — a row counting in.** The record dot as a red square, the pass badge in place of
+> the name, and the lane showing eight beat dots with five lit.
+
 #### Recording a pass
 
 - **Tap the armed dot again** to start. Recording always begins at the top of the loop.

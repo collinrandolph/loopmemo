@@ -1021,3 +1021,54 @@ a fixed-height gesture layout breaks when zoomed rather than helping, but it is 
 drive the page for verification refuse a self-signed certificate, and `localhost` is a secure
 context over HTTP anyway — so the flag exists rather than deleting and re-issuing certificates
 around every check.
+
+## The count-in is time before the take, not audio at the head of it
+
+`src/domain/count-in.ts`. §5.1 #3 is the whole feature in one sentence: **"the session's first frame
+is the downbeat of Pass 1, or every boundary is offset by a bar."** `passExists`, `regionFor`, pass
+numbering and the arrangement all measure from that frame, so a count-in that reached the captured
+audio would move every bar line in the app.
+
+**It runs over the loop's own tail.** `countInStartFrame` is `loopFrames - bars × framesPerBar`, so
+the transport starts early and the take begins on the wrap — the frame recording has always started
+on. There is no click and no new sound source: §5.1 #8 rules out a metronome because every project
+has a drum track, and playing the ending you are about to join is more use to an overdub than a cue
+that stops. It can never be negative — the shortest loop is 4 bars and the longest count-in is 4 —
+and `tests/count-in.test.ts` sweeps every tempo, length and rate to prove the tightest case is
+exactly zero.
+
+**Two settings, and both are preferences**, stored beside the theme and the monitoring level rather
+than on a `Project`: length (Off · 1 · 2 · 3 · 4) and sound (Full loop · Drums only). §4.6 said Off ·
+1 · 2 with no sound choice; both were widened during the build and the spec table records it. They
+are edited on the project settings screen because that is where recording is set up — one row below
+Rec offset — and they apply immediately rather than on Save, because Cancel cannot undo a setting
+every project shares.
+
+**Drums only is a scheduling rule, not a mute, and it could not have been a mute.** Mute here means
+*schedules nothing*, so flipping it at the downbeat is impossible: `topUp` runs `AHEAD_SECONDS`
+ahead and at 240 BPM a bar is one second, so the downbeat is often already scheduled before the
+count-in starts. `setCountIn(untilFrame)` makes `scheduleBar` decide per bar, which is the last
+moment the answer is still open. A render never calls it, so no exported file has a count-in in it.
+
+**The capture is trimmed, not started late.** The microphone is open across the count-in — arming
+opens it early so the downbeat is never spent waiting on a prompt — so `trimToDownbeat` drops what
+arrived before it. Starting the recorder late instead would mean timing a call against the audio
+clock from the main thread, which is the free-running-clock mistake §2.4 rules out; the chunks are
+already stamped with the worklet's own frame, so the trim is arithmetic rather than a race. It
+returns the capture unchanged when there is nothing to drop, so the no-count-in path stays exactly
+what `verify-capture.ts` measures.
+
+**Bit-identity is the wrong bar for the drums-only window, and measuring is how that surfaced.**
+`verify-count-in.ts` first asserted the audio after the downbeat matched an ungated render exactly.
+It does not: ~16% of samples differ, at drum onsets. Not a timing error — correlation is best at
+zero shift — and the energy matches to 0.4%. It is the `DynamicsCompressor` every voice runs
+through, which is **stateful**: four quieter bars leave it with less gain reduction. Identical
+scheduling does not imply identical samples once the audio before it differs. The check is energy
+and alignment instead.
+
+**The indicator is one pip per beat, in the lane.** That space is empty for the whole count-in and
+for the first lines of the take, so the countdown costs no layout and lands where attention already
+is. Beats rather than bars because coming in on time is a beat-level question; the first pip of each
+bar is larger so four pips read as a bar. **`buildLanes` has to re-append it** — `build` replaces the
+lane's children, and forgetting it left the indicator alive only on layers that had never been
+recorded, which is the set you are least likely to be counting into.

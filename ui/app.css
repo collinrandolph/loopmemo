@@ -913,3 +913,24 @@ input[type=range]::-moz-range-thumb {
 }
 /* Firefox paints its own groove inside the element rather than using the background. */
 input[type=range]::-moz-range-track { background: var(--lr-track); height: 4px; border-radius: 99px; }
+
+/* --- the count-in indicator ----------------------------------------------- */
+/* One pip per beat, in the lane the waveform is about to fill. That space is empty for the whole
+   count-in — and for the first lines of the take, since a line is only drawn once its span has
+   been heard — so the countdown costs no layout and appears where attention already is.
+   Absolutely positioned like `.lr-note`, which shares the lane for the same reason. */
+.count-in {
+  position: absolute; inset: 0; display: flex;
+  align-items: center; justify-content: center; gap: 5px;
+  pointer-events: none;
+}
+.count-in i {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--lr-hint);
+  transition: background .09s linear, transform .09s ease-out;
+}
+/* The first beat of each bar is larger, so four pips read as a bar rather than as four of eight. */
+.count-in i.is-downbeat { width: 10px; height: 10px; }
+/* Lit in the record colour: this is the record path, and nothing else on the row is using it
+   while the dot is a solid square. */
+.count-in i.is-lit { background: var(--lr-rec); transform: scale(1.15); }

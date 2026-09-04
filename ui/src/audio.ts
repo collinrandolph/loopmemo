@@ -101,6 +101,20 @@ export type BackingEngine = Engine & {
   /** Loudest input sample since the last call; resets on read. 0 when nothing is capturing. */
   inputPeak(): number;
   /**
+   * Bars starting before `untilFrame` are a **drums-only count-in**: chords and recorded layers
+   * are not scheduled for them (§4.6). 0 disables it, which is every case but one.
+   *
+   * It has to be a scheduling rule rather than a mute, and that is not a preference. Mute here
+   * means *schedules nothing* — a muted track produces no voices at all — so flipping it at the
+   * downbeat cannot work: `topUp` runs `AHEAD_SECONDS` ahead, and at 240 BPM a bar is one second,
+   * so the downbeat is often already scheduled before the count-in has even started. Deciding per
+   * bar at schedule time is the only place the answer is still open.
+   *
+   * Set before `start`. Nothing clears it — once the transport is past `untilFrame` every bar
+   * schedules in full — and a render never sets it, so an exported file has no count-in in it.
+   */
+  setCountIn(untilFrame: number): void;
+  /**
    * How loud the loop is *monitored* at (§4.2) — not part of the mix.
    *
    * The last stage before the destination, and deliberately the one thing a render never sees:
@@ -166,6 +180,8 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
   let bus: DynamicsCompressorNode | undefined;
   let drumGain: GainNode | undefined;
   let chordGain: GainNode | undefined;
+  /** Bars before this frame schedule drums only — see `setCountIn`. 0 for everything else. */
+  let countInUntilFrame = 0;
   /** Monitoring, not mix. Unity until the shell says otherwise, which it never does offline. */
   let masterGain: GainNode | undefined;
   let masterLevel = 1;
@@ -752,6 +768,11 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
       else hat(c, drumGain!, at, kit.hat, onset.voice === 'hatOpen');
     }
 
+    // A drums-only count-in stops here: the beat is scheduled, the chords and the layers under it
+    // are not. Decided per bar at schedule time because that is the last moment the answer is
+    // still open — see `setCountIn`.
+    if (barStartFrame < countInUntilFrame) return;
+
     // The recorded layers, on the same anchor and bar grid as the backing (§0.4). `segments()`
     // decides what plays for the slot the transport resolved, placed at *this* bar's frame — so
     // bar preview repeats one slot's audio the same way it repeats one slot's chord.
@@ -959,6 +980,10 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
     hasInput: () => !!recorder,
 
     inputPeak: () => (recorder?.recording() ? recorder.peak() : 0),
+
+    setCountIn(untilFrame) {
+      countInUntilFrame = Math.max(0, untilFrame);
+    },
 
     setMaster(level, muted) {
       // An engine handed a context is rendering (`render.ts`), and monitoring is not part of the
