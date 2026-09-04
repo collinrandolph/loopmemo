@@ -110,12 +110,11 @@ Everything else in this repo is checked by `npm run check` or by driving the bro
 cannot be, because the environment the agent works in has no microphone, no ears and no screen it
 can judge. Each is verified *in parts*; none is verified end to end.
 
-- **Arming with a microphone that is actually granted.** The refusal path is reproduced and
-  covered (§3.5); the grant path uses the same call in the same order and has never run. The tell
-  that it is wrong: a pulsing dot on any arm *after* the first, which would mean `hasInput()` is
-  answering false when the stream is open.
-- **Recording end to end on real hardware** — capture is bit-exact (`verify-capture.ts`) and the
-  recording offset is applied at scheduling, but no take has been made here.
+- ~~**Arming with a microphone that is actually granted.**~~ Done on an iPhone, 2026-09-04,
+  including the deny-then-re-grant path.
+- ~~**Recording end to end on real hardware.**~~ Done on an iPhone, 2026-09-04: takes recorded and
+  played back, and the recording offset was judged by ear and reported sufficient. Two defects
+  came out of that session and are fixed — see the take-id and zoom sections below.
 - **Transport's colour feather.** Verified numerically against the kit across 32,768 played-set
   states and 144,000 line-frames, which is not the same as looking right.
 - **`SURROUND_WET_DB = -1.5`.** Surround is the only preset whose two paths both carry signal, so
@@ -975,3 +974,50 @@ rendered loop has a seam the live one never had — see "Perfect loop, and the t
   something that looks arbitrary — several were built once and removed.
 - The renaming warning in §0.1 is real: the glossary's right-hand column contains retired
   words, and a blind find-and-replace across the spec has destroyed it once already.
+
+## Take ids are unique by construction, never derived from position
+
+`newTakeId` in `takes.ts` mints every one. **`layer.id` is `layer-0`..`layer-6` in every project**,
+so `${layer.id}-take-${sessions.length + 1}` produced `layer-0-take-1` for the first take on the
+first layer of *every* project — and recording a second project overwrote the first project's
+audio, in the in-memory map and in IndexedDB.
+
+**It was silent, and it looked like a playback bug.** Waveform peaks live on the project's own
+`RecordingSession`, so the lanes still drew correctly; only the sound was someone else's. Reported
+from an iPhone as "the waveforms of the first track still look correct but the audio is
+mismatched" — the audio was not mismatched, it was gone.
+
+`takes.ts` already said identity is not position, because `sessions` is appended to and replaced
+wholesale by a compress. The ids contradicted the doc above them. Three of the four mint sites were
+affected: recording, `edit-layer.ts`'s per-layer compress (`${layer.id}-c`, which collided across
+projects *and* on every repeat), and `settings.ts`'s project compress (`${p.id}-c${i}`, on repeat).
+`verify-take-ids.ts` reproduces the old collision before proving the new scheme does not, because a
+uniqueness test that never saw the bug proves nothing about it.
+
+## Zoom is suppressed four ways, and it takes all four
+
+Reported from an iPhone: double-tapping any section zooms, and an interface made of swipe targets
+is unnavigable zoomed.
+
+- **`touch-action: manipulation` on `html, body`** is the only one iOS honours — it has ignored
+  `user-scalable=no` since iOS 10. Touch-action is not inherited, but the browser intersects the
+  values from the touched element up through its ancestors, so this covers every descendant and
+  the tiles' `touch-action: none` still wins, `none` being the stricter value.
+- **The viewport meta** (`maximum-scale=1, user-scalable=no`) for every browser that is not iOS.
+- **A 16px floor on text inputs.** iOS zooms the viewport when a field smaller than that takes
+  focus and does not zoom back out. `.setting-name` was 15px.
+- **`preventDefault` on Safari's `gesture*` events** in `app.ts`, for pinch, which CSS cannot
+  reach. `passive: false` is required — a passive listener may not call `preventDefault`, and the
+  default for touch-adjacent events is passive, so omitting it looks right and does nothing.
+
+Whole-app rules, not per-element: the report was "throughout the app", and a list of elements is a
+list to keep in sync with the markup. **This costs pinch-zoom as an accessibility affordance** —
+a fixed-height gesture layout breaks when zoomed rather than helping, but it is a trade.
+
+## `LR_HTTP=1` forces the dev server to plain HTTP
+
+`Tools/serve.js` speaks HTTPS whenever `Tools/certs/` holds a pair, which a phone needs
+(`getUserMedia` and `AudioWorklet` are secure-context only and a LAN IP is not one). Tools that
+drive the page for verification refuse a self-signed certificate, and `localhost` is a secure
+context over HTTP anyway — so the flag exists rather than deleting and re-issuing certificates
+around every check.

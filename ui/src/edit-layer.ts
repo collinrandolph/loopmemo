@@ -35,7 +35,7 @@ import type { BackingEngine } from './audio.ts';
 import { type Rgb, type WaveNode, LR, clamp01, el, motion, ramp, sizing } from './kit.ts';
 import { amp } from './demo.ts';
 import { compressedTake } from './compress.ts';
-import type { TakeStore } from './takes.ts';
+import { type TakeStore, newTakeId } from './takes.ts';
 import { barAmplitude } from './peaks.ts';
 import { confirmPanel, formatBytes, renderLoop } from './screen.ts';
 
@@ -203,7 +203,7 @@ export function editLayerScreen(opts: {
         () => {
           // Written before the layer is changed. Compress keeps only what it writes, so a layer
           // whose audio is not in this session must be refused rather than compressed to silence.
-          const session = compressedTake(layer, bars, opts.takes, t.sampleRate, `${layer.id}-c`);
+          const session = compressedTake(layer, bars, opts.takes, t.sampleRate, newTakeId(`${layer.id}-c`));
           if (!session) {
             askOps(
               `<b>${name}</b> cannot be compressed here: its audio is not in this session. The ` +

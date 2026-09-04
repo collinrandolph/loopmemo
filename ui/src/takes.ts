@@ -35,6 +35,32 @@ export function takeUrl(sessionId: string): string {
   return `${TAKE_URL_SCHEME}//${sessionId}`;
 }
 
+/**
+ * A take's id. **Unique by construction, never derived from position.**
+ *
+ * Every id here used to be built from the layer and a count — `${layer.id}-take-${n}` for a
+ * recording, `${layer.id}-c` for a compressed loop. `layer.id` is `layer-0`..`layer-6` in *every*
+ * project, so the first take on the first layer of every project was `layer-0-take-1`.
+ *
+ * **Recording a second project therefore overwrote the first project's audio**, in this map and
+ * in IndexedDB, and it was silent: the waveform still drew correctly because the peaks live on
+ * the project's own `RecordingSession`, so only the sound was someone else's. Reported from an
+ * iPhone as "the waveforms of the first track still look correct but the audio is mismatched."
+ * The audio was not mismatched — it was gone.
+ *
+ * The store's own doc already said identity is not position, because `sessions` is appended to
+ * and replaced wholesale by a compress. The ids contradicted it. `prefix` is for reading logs;
+ * nothing may depend on it.
+ */
+export function newTakeId(prefix: string): string {
+  const unique =
+    globalThis.crypto?.randomUUID?.() ??
+    // Plain HTTP has no `randomUUID` — it needs a secure context. Dev only; the device build is
+    // HTTPS because the recorder needs a secure context too.
+    `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  return `${prefix}-${unique}`;
+}
+
 export function takeStore(onPut?: (sessionId: string, buffer: AudioBuffer) => void): TakeStore {
   const held = new Map<string, AudioBuffer>();
   return {

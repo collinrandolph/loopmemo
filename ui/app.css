@@ -842,3 +842,26 @@ body { font-family: 'Hanken Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe 
 .theme-dot.is-active {
   box-shadow: 0 0 0 2px var(--lr-body), 0 0 0 3.5px var(--lr-label-ink);
 }
+
+/* --- suppressing zoom on iOS ---------------------------------------------- */
+/* Reported from an iPhone: double-tapping any section zooms, and on a screen made almost entirely
+   of swipe targets a stuck zoom makes the app unnavigable.
+
+   `touch-action: manipulation` is the part that actually works on iOS, which has ignored
+   `user-scalable=no` since iOS 10. It means "auto, minus double-tap zoom". Touch-action is not
+   inherited, but the browser intersects the values from the touched element up through its
+   ancestors, so setting it here covers every descendant — and the tiles' `touch-action: none`
+   still wins where it is set, because none is the stricter value.
+
+   Deliberately a whole-app rule and not per-element: the report was "throughout the app", and a
+   list of elements is a list to keep in sync with the markup.
+
+   This does cost pinch-zoom as an accessibility affordance. The app is a fixed-height, no-scroll
+   layout built from gestures, so a zoomed viewport breaks it rather than helping — but that is a
+   trade, not a free win, and worth revisiting if anyone needs magnification. */
+html, body { touch-action: manipulation; }
+
+/* iOS zooms the viewport when a text field smaller than 16px takes focus, and does not zoom back
+   out. This is the project name field, and it was 15px. The size is not a design choice worth a
+   permanent zoom. */
+.setting-name { font-size: 16px; }

@@ -19,6 +19,11 @@ const PORT = Number(process.env.PORT ?? 5173);
 const CERTS = path.join(import.meta.dirname, 'certs');
 
 function credentials() {
+  // `LR_HTTP=1` forces plain HTTP even when certificates exist. `localhost` is a secure context
+  // over HTTP, so nothing is lost locally — and tools that drive the page for verification
+  // (the Browser pane among them) refuse a self-signed certificate outright, which otherwise
+  // means deleting the certificates to run a check and re-issuing them afterwards.
+  if (process.env.LR_HTTP) return undefined;
   try {
     return {
       key: fs.readFileSync(path.join(CERTS, 'dev-key.pem')),

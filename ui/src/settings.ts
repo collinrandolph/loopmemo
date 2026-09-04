@@ -26,7 +26,7 @@ import type { BackingEngine } from './audio.ts';
 import type { RecordingSession } from '../../src/domain/pass-index.ts';
 import { compressedTake, hasAudioFor } from './compress.ts';
 import { renderOffline, silentBacking, wrapTail } from './render.ts';
-import { takeUrl } from './takes.ts';
+import { newTakeId, takeUrl } from './takes.ts';
 import { computePeaks } from './peaks.ts';
 import { annotationRow, confirmPanel, formatBytes } from './screen.ts';
 import type { TakeStore } from './takes.ts';
@@ -344,7 +344,7 @@ export function projectSettingsScreen(opts: {
         const rate = projectTiming(p).sampleRate;
         for (const { layerIndex, bars } of plan.layers) {
           const layer = p.layers[layerIndex]!;
-          const session = compressedTake(layer, bars, opts.takes, rate, `${p.id}-c${layerIndex}`);
+          const session = compressedTake(layer, bars, opts.takes, rate, newTakeId(`${p.id}-c${layerIndex}`));
           if (!session) {
             ask(
               `<b>${p.name}</b> cannot be compressed here: the audio for ` +
@@ -380,7 +380,7 @@ export function projectSettingsScreen(opts: {
     const tail = p.perfectLoop ? tailFrames : 0;
     const rendered = await renderOffline(p, silentBacking(), opts.takes, frames + tail);
     const buffer = wrapTail(rendered, frames, tail);
-    const id = `${p.id}-mix-${Date.now().toString(36)}`;
+    const id = newTakeId(`${p.id}-mix`);
     const session: RecordingSession = {
       id,
       audioFileURL: takeUrl(id),

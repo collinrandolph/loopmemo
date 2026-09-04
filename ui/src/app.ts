@@ -383,4 +383,18 @@ async function boot() {
   void hydrate(saved !== undefined);
 }
 
+/**
+ * Pinch-zoom, which is the one route CSS cannot close.
+ *
+ * `touch-action: manipulation` removes double-tap zoom and `user-scalable=no` is ignored by iOS,
+ * so pinch is what is left. Safari raises its own non-standard `gesture*` events for it; other
+ * browsers raise nothing here and the listeners cost nothing.
+ *
+ * `passive: false` is required — a passive listener may not call `preventDefault`, and the
+ * default for touch-adjacent events is passive, so omitting it looks correct and does nothing.
+ */
+for (const name of ['gesturestart', 'gesturechange', 'gestureend']) {
+  document.addEventListener(name, (e) => e.preventDefault(), { passive: false });
+}
+
 void boot();

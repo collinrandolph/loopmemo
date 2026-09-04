@@ -104,8 +104,11 @@ moment of recording.
 
 Test it in this order, because the answers differ and the difference matters:
 
-- [ ] **Wired headphones with a microphone** (the common case). Play the loop, arm a layer, record.
-      Does the backing stay in the headphones, or jump to the speaker?
+- [x] **Wired headphones with a microphone** (the common case). **Run 2026-09-04 on an iPhone:
+      output stayed in the headphones.** The bug did not occur on the configuration most likely to
+      trigger it, which is what keeps this route alive. iOS picked the headset microphone with no
+      way to choose another; the Recording offset absorbed the route's latency, which is also the
+      first confirmation that control works on hardware.
 - [ ] **Wired headphones without a microphone.** §2.2's ideal configuration anyway. The bug may be
       specific to a headset that offers an input route.
 - [ ] **Bluetooth headphones.** Expect the worst here — recording typically forces the HFP profile,

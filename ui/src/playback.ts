@@ -30,7 +30,7 @@ import { amp } from './demo.ts';
 import { renderLoop, syncCollapse } from './screen.ts';
 import { barAmplitude, computePeaks, drawnHeight } from './peaks.ts';
 import type { BackingEngine } from './audio.ts';
-import { type TakeStore, takeUrl } from './takes.ts';
+import { type TakeStore, newTakeId, takeUrl } from './takes.ts';
 
 const TARGET_LINES = 40; // lanes are an overview: the count follows the container
 const LANE_AMPLITUDE = 34; // peak line height; the lane box is 40, see `.lr-wave--lane`
@@ -425,7 +425,7 @@ export function playbackScreen(opts: {
   }
 
   function capturedSession(layer: Layer, frames: number): RecordingSession {
-    const id = `${layer.id}-take-${layer.sessions.length + 1}`;
+    const id = newTakeId(`${layer.id}-take`);
     return {
       id,
       audioFileURL: takeUrl(id),

@@ -196,6 +196,25 @@ as one implementation of "measure the latency", not as the definition.
   unsigned device IPA from EAS is not a supported flow, and free-ID sideloading means
   **7-day expiry, weekly re-signing, 3 apps maximum**.
 
+### Tested on an iPhone, 2026-09-04: the routing bug did not occur
+
+**With wired headphones that have a microphone**, playing the loop and recording kept output in
+the headphones. The failure described below did not happen, on the exact configuration most likely
+to trigger it.
+
+That is the single result this document was most waiting on, and it keeps route 1 alive. Read it
+narrowly: one handset, one iOS version, one headset, wired. The other routes in
+`docs/device-check.md` §1 — no-mic headphones, Bluetooth, USB-C — are still unrun, and Bluetooth
+is the one still expected to misbehave, since recording typically forces the HFP profile.
+
+Also observed: **iOS chooses the headset microphone with no way to pick another**, and the app
+offers no input picker either (none is in the spec). Not a blocker — §2.3's *Recording offset*
+absorbs the route's latency, and it was reported as sufficient in use, which is the first
+confirmation that the control works on hardware at all.
+
+Two defects surfaced, both fixed and neither about audio routing: double-tap zoom made a
+gesture-driven interface unnavigable, and take ids collided across projects. See §8 #7.
+
 ### The PWA route has a flaw specific to this app
 
 Worth recording because "free, no account, no signing, no expiry" is genuinely attractive and
@@ -293,13 +312,30 @@ In rough priority order. The first two decide whether the architecture holds at 
    the first attempt's, repeated. It is being replaced rather than finished: the offset moves to
    playback scheduling and becomes a control, so `latencyFrames` leaves the capture path entirely
    and there is one place it can be applied instead of two.
-3. **Simultaneous playback and recording** without the output route collapsing (the failure
-   mode §6 describes for Safari — confirm native RN does not share it). Promoted: for the web
-   route this is the question that decides everything, and it is answerable today for free.
+3. ~~**Simultaneous playback and recording** without the output route collapsing.~~ **Answered
+   2026-09-04 on an iPhone, for wired headphones with a microphone: output stayed in the
+   headphones.** See §6. Still open for the other three routes, Bluetooth especially. Nothing here
+   speaks for native React Native, which is a different engine and a different audio session.
 4. **Mid-bar splice** entering at an arbitrary offset, sample-accurately (§2.5).
 5. **Fourteen concurrent source nodes** without dropouts.
 6. **The two synthesis gaps in §4** — a bus limiter without `DynamicsCompressorNode`, and
    whether an oscillator can be connected into an `AudioParam`.
+
+7. **What the first device session actually found**, recorded because both were invisible on a
+   desktop and neither was on this list:
+
+   - **Double-tap zoom.** iOS Safari zooms to a block on double-tap, and this interface is made of
+     swipe targets — a zoomed viewport made it unnavigable. Four separate mechanisms were needed:
+     `touch-action: manipulation` (the only one iOS honours, since `user-scalable=no` has been
+     ignored since iOS 10), the viewport meta for every other browser, a 16px floor on text inputs
+     because iOS zooms on focus below that and does not zoom back, and a `gesturestart` guard for
+     pinch. Any one alone leaves a way in.
+   - **Take ids collided across projects**, which was data loss rather than a display fault — see
+     `newTakeId`. A desktop session never hit it because it takes two recorded projects to see.
+
+   The lesson for the next device session is that the untested surface was *platform interaction*,
+   not audio. The audio architecture was measured to death and held; what broke was everything
+   around it that a desktop browser answers differently.
 
 The `pitchCorrection` check that used to sit at #3 is gone. Synthesis removed the requirement,
 so there is nothing left to confirm by ear.
