@@ -22,7 +22,7 @@ Your list of sketches, newest first. The app opens here.
 
 - **Tap a row** — open the project.
 - **Play button** — hear it without opening. One plays at a time. The thumbnail dims as it plays.
-- **Row shows** — colour thumbnail (one stripe per layer), then `BPM · bars · layers · passes · last modified`, then file size. Tags: HQ, Compressed, Bounced.
+- **Row shows** — colour thumbnail (one stripe per layer), then the name, then `BPM · bars · layers · passes`, then `last modified · file size`. The size becomes the playing position while the row previews. One tag: Bounced.
 - **New project** — button in the header.
 - **Export, Bounce, Compress, Delete** — open the project, then tap the settings gear.
 
@@ -42,6 +42,7 @@ Your list of sketches, newest first. The app opens here.
 - **Tempo** — drag the slider (60–240 BPM). The **play button** next to it loops one bar of drums to preview the tempo.
 - **Bars** — pick a chip, 4 to 32 (multiples of 4).
 - **Recording quality** — Standard (16-bit/44.1 kHz) or High (24-bit/48 kHz). Set once, at creation; can't change later.
+- **Rec offset** — corrects for headphone/mic delay so a take lands on the beat. See *Playback → Recording → Adjusting latency*. Never locks.
 - **Tempo and bar count lock after the first recording.** Set them first.
 - **Backing tracks aren't here** — set them from the Playback screen, any time.
 
@@ -81,20 +82,11 @@ The hub for a project: set up backing, record layers, mix, and open the editor.
 
 Left to right: record dot · name / pass badge · waveform · speaker (level + mute).
 
-- **Record** — tap the dot to arm, tap to start, tap to stop. **Hold** while armed to cancel.
-- Recording starts at the top of the loop. Other layers play; the one you're recording stays silent.
-- **Pass badge** — the pass being captured. Provisional until it completes one full bar; stop before that and nothing is kept.
 - **Tap a row** to expand: volume, **EQ**, **pan**, and **Edit Layer**. EQ / pan / Edit appear once the layer has a pass.
 - **Rename** — tap the name (12 characters).
-- **Use headphones** — on speaker, backing and recorded layers bleed into the mic.
 
-> **ILLUSTRATION — the record dot, three states in a row.** Unarmed (grey, translucent),
-> armed (red, pulsing), recording (red square). Label "tap to advance, hold while armed to
-> cancel".
->
 > **ILLUSTRATION — one layer row, annotated.** record dot · label column (name / pass badge)
-> · waveform lane · speaker. Show a second copy with the row armed so the badge reads
-> "Pass 3" in place of the name.
+> · waveform lane · speaker.
 >
 > **ILLUSTRATION — an expanded layer panel, two states.** With a pass: volume, EQ presets,
 > pan presets, Edit Layer button. Empty layer: volume only, plus the "Record a pass to start
@@ -105,6 +97,55 @@ Left to right: record dot · name / pass badge · waveform · speaker (level + m
 >
 > **ILLUSTRATION — the chord row expanded.** The four chord slots, one slot open showing its
 > Note / Sign / Type wheels, and the Pattern / Tone / Octave controls plus Randomize chords.
+
+### Recording
+
+**Use headphones.** On the speaker, the drums, chords and every layer you've already recorded
+bleed into the mic and pile onto each new take.
+
+#### Arming a track
+
+- **Tap the record dot** to arm the layer. It turns red and pulses. Arming one layer disarms
+  any other.
+- **Hold** the dot while armed to cancel without recording.
+
+> **ILLUSTRATION — the record dot, three states in a row.** Unarmed (grey, translucent),
+> armed (red, pulsing), recording (red square). Label "tap to advance, hold while armed to
+> cancel".
+
+#### Recording a pass
+
+- **Tap the armed dot again** to start. Recording always begins at the top of the loop.
+- Every other layer plays at its current level, mute, EQ and pan. **The layer you're
+  recording onto stays silent** — you're playing over the rest, not against the take you're
+  replacing.
+- **Tap once more** to stop.
+
+##### Pass indicator
+
+- From the moment you arm, a **pass badge** takes the layer name's place and counts the pass
+  being captured.
+- It reads **provisional** (dimmed) until that pass completes one full bar. Stop before then
+  and nothing is kept — the number carries over to your next take instead.
+
+> **ILLUSTRATION — the pass badge, two states.** Provisional (dim, "Pass 6", a sparse waveform
+> just started) vs earned (full brightness, "Pass 6", a fuller waveform).
+
+#### Adjusting latency
+
+Headphones and a microphone both add a small delay, so a take can land audibly late even
+when you played it on the beat. **Rec offset** corrects for that — it's on the project's
+settings screen, not here: tap the **gear** next to the project name, then find **Rec
+offset** near the bottom.
+
+- **Drag the slider** (0–250 ms) while the loop plays and listen for your playing to land on
+  the beat. The **play button** beside it loops the arrangement so you can judge by ear.
+- Reads **Off** at 0 ms.
+- It's a playback correction, not a recording change — it can be adjusted at any time, even
+  long after a layer is recorded, and never locks.
+
+> **ILLUSTRATION — the Rec offset row (Project settings).** Label, slider, ms readout, play
+> button, and the note beneath it: "How far earlier your recording plays than it arrived…".
 
 ---
 
