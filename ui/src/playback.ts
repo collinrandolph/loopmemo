@@ -148,9 +148,10 @@ export function playbackScreen(opts: {
    * name on this screen renames it in place, so tapping the project name to navigate away would
    * teach the opposite lesson two rows apart.
    *
-   * It sits on the **title** line, level with the project name and the tempo, rather than on the
-   * stats line below: the settings it opens are what the project *is*, which is what that line
-   * says. It reads at the weight of the tempo beside it for the same reason.
+   * It ends the **title** line, opposite the project name, and the two number lines sit under it:
+   * passes and size to the left, tempo and bar count right-aligned beneath the gear. So the right
+   * edge reads as one column — the control, then the settings it opens — and the left edge is the
+   * name over what the project has become.
    *
    * Every piece of text here is its own element, and `paintTitle` writes `textContent` into them.
    * The row used to be redrawn with `innerHTML`, which is fine for text and destroys a button —
@@ -166,8 +167,8 @@ export function playbackScreen(opts: {
   gearBtn.setAttribute('aria-label', 'Project settings');
   gearBtn.addEventListener('click', () => opts.onSettings());
   exits.push(gearBtn as HTMLButtonElement);
-  titleRow.append(titleEl, titleMeta, gearBtn);
-  statsRow.append(statsText);
+  titleRow.append(titleEl, gearBtn);
+  statsRow.append(statsText, titleMeta);
   const transportEl = el('div', 'lr-transport');
   /** Only ever visible when the input failed; see `paintInputState`. */
   const inputNote = el('div', 'input-note');

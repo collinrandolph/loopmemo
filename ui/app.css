@@ -126,11 +126,15 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
 }
 .lr-stats { margin-top: 2px; display: flex; align-items: center; gap: 10px; }
 .stats-text { flex: 1; min-width: 0; }
-/* The gear ends the title line, so the tempo stops taking the auto margin — otherwise it pushes
-   the gear off the right edge instead of sitting beside it. `.lr-title-row` aligns on the
-   baseline and an icon has none worth aligning to, so it centres against the text instead. */
-.lr-title-row .lr-settings { margin-left: auto; }
-.lr-title-row .header-gear { align-self: center; margin-left: 2px; }
+/* The gear ends the title line and takes the auto margin, so it is the right edge of the header.
+   `.lr-title-row` aligns on the baseline and an icon has none worth aligning to, so it centres
+   against the name instead.
+   The tempo sits on the stats line under it, right-aligned: `.stats-text` already takes the free
+   space with `flex: 1`, so this only has to stop growing and stay on one line. Both lines are the
+   same 9px mono, so the right column reads as one stack rather than two labels of different
+   sizes that happen to be near each other. */
+.lr-title-row .header-gear { align-self: center; margin-left: auto; }
+.lr-stats .lr-settings { flex: 0 0 auto; margin-left: 10px; white-space: nowrap; }
 /* The way into project settings. Sized and coloured like the help control rather than like a
    button, because it is a route rather than an action. */
 .header-gear {
