@@ -13,37 +13,81 @@ different engine with different gaps — see §4 of the platform doc for those.
 
 ---
 
-## Before you start
+## Setup
+
+**No apps to install, on either device.** Everything below uses Safari and Settings, both built in.
+Nothing is downloaded from the internet and nothing leaves the local network.
+
+Both devices must be on **the same Wi-Fi**. If the PC is on Ethernet and the iPad on Wi-Fi that is
+still fine, as long as it is one network.
+
+### Why any of this is needed
+
+`getUserMedia` and `AudioWorklet` are **secure-context only**, and `http://192.168.x.x` is not a
+secure context. Over plain HTTP the app loads, looks completely normal, and then refuses to arm —
+which reads as a bug in the app rather than a property of the URL. So the local server has to speak
+HTTPS, and a certificate it issues itself has to be trusted once by the iPad.
+
+### On the PC — twice, then leave it running
 
 ```bash
 bash Tools/make-cert.sh
 ```
 
-Then `npm run ui`. It prints the LAN URL to open on the device.
+Once, ever. Writes a certificate for this machine's LAN address, good for a year. Re-run it if the
+PC's IP changes — the certificate names a specific address and WebKit checks it.
 
-**HTTPS is not optional and not about secrecy.** `getUserMedia` and `AudioWorklet` are
-secure-context only, and `http://192.168.x.x` is not a secure context. Over plain HTTP the app
-loads and then simply refuses to arm — which looks like a bug in the app rather than a property of
-the URL, and has cost people a day.
+```bash
+npm run ui
+```
 
-### Trusting the certificate on iOS — two steps, in two different screens
+Leave this running for the whole session. It prints two URLs; you need both:
 
-Doing only the first is the usual failure, and it fails *silently* by looking like an ordinary
-"this connection is not private" warning that no longer goes away.
+```
+  on this network: https://192.168.0.104:5173     ← the app
+On the iPhone or iPad, FIRST open:
+  http://192.168.0.104:5174   (plain http — this is the certificate)
+```
 
-1. Open the URL on the device. Safari refuses. **Download** the certificate when offered, or mail
-   `Tools/certs/dev-cert.pem` to yourself and open it.
-2. **Settings → General → VPN & Device Management → install the profile.**
-3. **Settings → General → About → Certificate Trust Settings → enable full trust for it.**
-   This screen is separate from step 2 and does not appear until step 2 is done.
+**If Windows Firewall prompts about Node, allow it on Private networks.** If no prompt appears and
+the iPad cannot reach either URL, that is the first thing to check — the server is running fine and
+the packets are being dropped before they arrive.
 
-Then reload. If Safari still refuses, check `openssl x509 -in Tools/certs/dev-cert.pem -noout -ext
-subjectAltName` lists the IP you are actually browsing to — WebKit ignores the Common Name
-entirely and matches only on SAN.
+### On the iPad — five taps, in two different Settings screens
 
-**The alternative, if the trust dance goes wrong:** any HTTPS tunnel to `localhost:5173`
-(`cloudflared tunnel --url`, `npx localtunnel --port 5173`) gives a publicly-trusted URL and skips
-all of the above. Slower, and it puts the app on the public internet for the duration.
+Open **`http://192.168.0.104:5174`** in Safari. Plain `http`, and the second port. That page exists
+only to hand over the certificate, and it repeats these steps on screen.
+
+1. Tap **Download the certificate**, and allow the download.
+2. **Settings → General → VPN & Device Management** → tap the downloaded profile → **Install**.
+3. **Settings → General → About → Certificate Trust Settings** → switch it on.
+
+**Step 3 is a different screen from step 2, and skipping it is the usual failure.** It does not
+appear at all until step 2 is done, and its absence looks identical to the certificate simply not
+working. If Safari still refuses after all three, you are probably not on step 3.
+
+Then open **`https://192.168.0.104:5173`** — the app.
+
+Optionally **Share → Add to Home Screen**. Worth doing: iOS treats an installed web app differently
+from a tab for storage, and §2 below is partly about exactly that.
+
+### Why the certificate comes over plain HTTP
+
+Because otherwise it is a loop — the certificate has to be trusted before the HTTPS server will
+load, and the certificate is on the HTTPS server. The usual way out is mailing the file to
+yourself, which drags a mail client and an account into a local-network test.
+
+That helper serves the certificate and nothing else. A certificate is public by definition — it is
+what every browser on the network is about to be shown — so there is nothing to give away. **The
+private key is served by neither listener**, which needed saying in code: the document root is the
+repo root, so the moment this server learned to speak HTTPS, `/Tools/certs/dev-key.pem` was a live
+URL. It is now 403 on both ports.
+
+### If the trust flow goes wrong anyway
+
+Any HTTPS tunnel to `localhost:5173` — `cloudflared tunnel --url`, `npx localtunnel --port 5173` —
+gives a publicly-trusted URL and skips all of it. That does need an external tool, it is slower,
+and it puts the app on the public internet for the duration. It is the fallback, not the plan.
 
 ---
 

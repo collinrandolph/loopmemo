@@ -62,4 +62,4 @@ openssl req -x509 -newkey rsa:2048 -sha256 -days 365 -nodes \
 echo
 echo "Wrote $out/dev-cert.pem and dev-key.pem (both gitignored)."
 echo "Restart the server:  npm run ui"
-echo "Then open  https://$ip:5173  on the device and follow docs/device-check.md."
+echo "Then, on the device, open the cert URL the server prints. See docs/device-check.md."

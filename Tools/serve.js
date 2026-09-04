@@ -52,8 +52,12 @@ const handler = (req, res) => {
     const rel = url === '/' ? 'ui/index.html' : url.replace(/^\/+/, '');
     const file = path.join(ROOT, rel);
 
-    // Never serve outside the repo, however the path is spelled.
-    if (!file.startsWith(ROOT)) {
+    // Never serve outside the repo, however the path is spelled — and never the TLS material,
+    // which lives inside it. The private key was reachable at `/Tools/certs/dev-key.pem` the
+    // moment this server learned to speak HTTPS: the repo root is the document root, so adding a
+    // secret to the repo published it. The certificate is handed out deliberately, by the helper
+    // below, and nothing needs the key over the wire.
+    if (!file.startsWith(ROOT) || file.startsWith(CERTS)) {
       res.writeHead(403).end('forbidden');
       return;
     }
@@ -72,14 +76,72 @@ const handler = (req, res) => {
   }
 };
 
+/**
+ * A plain-HTTP listener on the next port whose only job is handing out the certificate.
+ *
+ * Without it the device is in a loop: the certificate has to be trusted before the HTTPS server
+ * will load, and the certificate lives on the HTTPS server. The usual way out is mailing the file
+ * to yourself, which drags a mail client and an account into a local-network test.
+ *
+ * **It serves the certificate and nothing else** — one hardcoded path, no directory traversal to
+ * get wrong. Handing out a public certificate over HTTP gives nothing away; it is public by
+ * definition and is what every browser on the network is about to be shown. The private key is
+ * never read here.
+ *
+ * `application/x-x509-ca-cert` is what makes iOS treat the download as a profile to install
+ * rather than a file to drop in Downloads.
+ */
+function startCertHelper(cert, port) {
+  const page = (address) => `<!doctype html><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Loop Recorder — trust this certificate</title>
+<style>body{font:16px/1.5 -apple-system,system-ui,sans-serif;margin:0;padding:28px 22px;max-width:34em}
+h1{font-size:20px;margin:0 0 4px}p{color:#444}ol{padding-left:22px}li{margin:10px 0}
+a.btn{display:inline-block;margin:18px 0;padding:14px 20px;background:#111;color:#fff;
+text-decoration:none;border-radius:10px;font-weight:600}code{background:#eee;padding:2px 5px;border-radius:4px}</style>
+<h1>Trust the dev certificate</h1>
+<p>So this iPad can record from the Loop Recorder build running on your PC.</p>
+<a class="btn" href="/cert">Download the certificate</a>
+<ol>
+<li>Tap the button. Allow the download when asked.</li>
+<li><b>Settings → General → VPN &amp; Device Management</b> → tap the downloaded profile → <b>Install</b>.</li>
+<li><b>Settings → General → About → Certificate Trust Settings</b> → switch it on.
+<br>This is a <i>different screen</i> from step 2 and only appears once step 2 is done. Skipping it
+is the usual failure, and it looks exactly like the certificate not working at all.</li>
+<li>Open <code>https://${address}:${PORT}</code></li>
+</ol>`;
+
+  http
+    .createServer((req, res) => {
+      if ((req.url ?? '/').startsWith('/cert')) {
+        res.writeHead(200, {
+          'content-type': 'application/x-x509-ca-cert',
+          'content-disposition': 'attachment; filename="loop-recorder-dev.crt"',
+        });
+        res.end(cert);
+        return;
+      }
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      res.end(page(lanAddresses()[0] ?? 'localhost'));
+    })
+    .listen(port);
+}
+
 const tls = credentials();
 const scheme = tls ? 'https' : 'http';
 const server = tls ? https.createServer(tls, handler) : http.createServer(handler);
 
 server.listen(PORT, () => {
   console.log(`serving ${ROOT} on ${scheme}://localhost:${PORT}`);
-  for (const address of lanAddresses()) console.log(`  on this network: ${scheme}://${address}:${PORT}`);
-  if (!tls) {
+  const lan = lanAddresses();
+  for (const address of lan) console.log(`  on this network: ${scheme}://${address}:${PORT}`);
+  if (tls) {
+    startCertHelper(tls.cert, PORT + 1);
+    console.log('\nOn the iPhone or iPad, FIRST open:');
+    for (const address of lan) console.log(`  http://${address}:${PORT + 1}   (plain http — this is the certificate)`);
+    console.log('Follow the three steps on that page, then load the app URL above.');
+    console.log('Details and what to test: docs/device-check.md');
+  } else {
     console.log('\nHTTP only. A phone or tablet can load the app but NOT record:');
     console.log('getUserMedia and AudioWorklet need a secure context, and a LAN IP is not one.');
     console.log('Run  bash Tools/make-cert.sh  and restart to serve HTTPS.');
