@@ -316,7 +316,11 @@ export function editLayerScreen(opts: {
       node.append(
         label,
         wave,
-        el('div', 'swipe-hint', '<span class="hint-pass">↕ pass</span><span>↔ bar</span>'),
+        el(
+          'div',
+          'swipe-hint',
+          '<span class="hint-pass">↕ pass</span><span class="hint-bar">↔ bar</span>',
+        ),
       );
       rowEl.appendChild(node);
       attachGestures(node, slot);
