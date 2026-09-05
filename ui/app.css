@@ -533,12 +533,9 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
 .lr-help-body { display: grid; gap: 16px; }
 .lr-help-text { font-size: 12px; line-height: 1.7; color: var(--lr-ink-dim); }
 
-/* The one line worth reading first, so it carries the record colour's weight without being red:
-   full ink, and a rule down its left rather than a box, which would make it a second card. */
-.lr-help-lede {
-  font-size: 12.5px; line-height: 1.6; color: var(--lr-ink);
-  border-left: 2px solid var(--lr-rec); padding-left: 10px;
-}
+/* The one line worth reading first. Full ink is enough to carry that — it had a record-coloured
+   rule down its left as well, which read as a warning on a sentence that is not one. */
+.lr-help-lede { font-size: 12.5px; line-height: 1.6; color: var(--lr-ink); }
 /* Section headings match the panel labels on the screen behind, so the sheet reads as part of the
    app rather than as a document that opened on top of it. */
 .lr-help-h {
@@ -750,7 +747,12 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
    backwards is how a control disappears.
    ========================================================================= */
 
-body { font-family: 'Hanken Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+/* `.ax` is named here, not only `body`, because it is the one arrow glyph that lives *inside* a
+   mono element — `.tile-label` — and so inherited the mono face while the full-height tiles'
+   `.swipe-hint` kept the body one. Same character, two different arrows depending on how tall the
+   tile happened to be. The rule below already says the hints are deliberately not mono; this is
+   what makes that true in the compact layout too. */
+body, .ax { font-family: 'Hanken Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
 
 /* Data rather than prose: counts, times, sizes, pass numbers. **Mono only at 9–11px** — it is
    a wider face, and at body size the meta lines wrap where the sans did not. The swipe hints are
