@@ -606,15 +606,20 @@ export function projectSettingsScreen(opts: {
 
   const help = helpControl({
     title: creating ? 'New project' : 'Project settings',
-    content: () => [
-      'Tempo and bar count lock after the first recording. Everything the app derives — bar ' +
-        'boundaries, pass numbers, where each slot reads from — is computed from them, so they ' +
-        'cannot move once there is audio measured against them.',
-      'Recording quality is chosen once. A project’s layers have to share a sample rate, or every ' +
-        'splice between them would need a resample.',
-      'The backing tracks are never locked, and they are not on this screen. Change the drum ' +
-        'pattern, kit, chords, tone or octave from their rows on the Playback screen, whenever ' +
-        'you like.',
+    pages: [
+      {
+        label: creating ? 'New project' : 'Project settings',
+        content: () => [
+          'Tempo and bar count lock after the first recording. Everything the app derives — bar ' +
+            'boundaries, pass numbers, where each slot reads from — is computed from them, so they ' +
+            'cannot move once there is audio measured against them.',
+          'Recording quality is chosen once. A project’s layers have to share a sample rate, or every ' +
+            'splice between them would need a resample.',
+          'The backing tracks are never locked, and they are not on this screen. Change the drum ' +
+            'pattern, kit, chords, tone or octave from their rows on the Playback screen, whenever ' +
+            'you like.',
+        ],
+      },
     ],
   });
 

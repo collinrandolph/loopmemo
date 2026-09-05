@@ -960,3 +960,109 @@ input[type=range]::-moz-range-track { background: var(--lr-track); height: 4px; 
 /* Lit in the record colour: this is the record path, and nothing else on the row is using it
    while the dot is a solid square. */
 .count-in i.is-lit { background: var(--lr-rec); transform: scale(1.15); }
+
+/* --- the help sheet's tabs and figures ------------------------------------ */
+/* Three pages, each sized to be read without scrolling — so the tabs replace the title rather
+   than sitting under it. They are the app's chips at a smaller size, not a new control. */
+.lr-help-tabs { display: flex; gap: 4px; flex: 1; min-width: 0; }
+.lr-help-tab {
+  flex: 1; min-width: 0; white-space: nowrap; overflow: hidden;
+  font-size: 8.5px; font-weight: 500; letter-spacing: .02em; text-transform: none;
+  padding: 5px 3px; border-radius: 6px; border: none; cursor: pointer;
+  background: rgba(255,255,255,.08); color: var(--lr-ink-dim);
+  font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.lr-help-tab.is-active { background: var(--lr-play-bg); color: var(--lr-play-ink); font-weight: 600; }
+
+/* A figure is the real control, shown small. `--bare` is for shapes that already read as
+   objects — the record dots, the pass badges — where a card around them would say "row". */
+.hs-figure {
+  display: flex; align-items: center; gap: 7px;
+  background: rgba(255,255,255,.06); border: 1px solid var(--lr-label-line);
+  border-radius: 7px; padding: 7px 9px;
+}
+.hs-figure--bare { background: none; border: none; padding: 2px 0; gap: 18px; }
+.hs-figure--icons { gap: 4px; padding: 5px 6px; }
+.hs-figure--icons > span {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  padding: 4px 0; border-radius: 5px; background: rgba(255,255,255,.08); color: var(--lr-ink-dim);
+}
+.hs-figure--icons > span.on { background: var(--lr-play-bg); color: var(--lr-play-ink); }
+.hs-figure--icons svg { display: block; }
+
+.hs-lbl {
+  font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: var(--lr-ink-faint);
+  flex: 0 0 auto;
+  font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.hs-name { font-size: 11px; font-weight: 500; flex: 1; min-width: 0; color: var(--lr-ink); }
+.hs-ax { color: var(--lr-hint); fill: none; stroke: currentColor; stroke-width: 2;
+         stroke-linecap: round; stroke-linejoin: round; flex: 0 0 auto; }
+.hs-ico { width: 12px; height: 12px; vertical-align: -2px; color: var(--lr-ink);
+          fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+
+.hs-chips { display: flex; gap: 4px; flex: 0 0 auto; }
+.hs-chips b {
+  font-size: 10.5px; font-weight: 600; padding: 3px 8px; border-radius: 4px;
+  background: rgba(255,255,255,.1); color: var(--lr-ink);
+}
+.hs-chips b.on { background: var(--lr-play-bg); color: var(--lr-play-ink); }
+.hs-div { width: 1px; align-self: stretch; background: var(--lr-label-line); flex: 0 0 auto; }
+.hs-wheels { display: flex; gap: 4px; flex: 1; min-width: 0; }
+.hs-wheels i {
+  flex: 1; min-width: 0; font-style: normal;
+  background: rgba(255,255,255,.08); border-radius: 5px; padding: 4px 3px;
+  display: flex; align-items: center; justify-content: center; gap: 3px;
+  font-size: 10.5px; font-weight: 600; color: var(--lr-ink);
+}
+
+.hs-dot { display: flex; flex-direction: column; align-items: center; gap: 4px;
+          font-size: 9px; color: var(--lr-ink-faint);
+          font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace; }
+.hs-dot i { width: 17px; height: 17px; border-radius: 50%; background: rgba(255,255,255,.22); }
+.hs-dot i.armed { background: var(--lr-rec); }
+
+.hs-badge { display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+            font-size: 9px; color: var(--lr-ink-faint);
+            font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+/* The transport's lane, small. `--v` is where the thumb sits; the unity tick is the level
+   fader's own mark, drawn below the track for the same reason it is there. */
+.hs-slider {
+  flex: 1; height: 4px; border-radius: 999px; position: relative; min-width: 40px;
+  background: linear-gradient(to right, var(--lr-ink) var(--v,50%), var(--lr-track) var(--v,50%));
+}
+.hs-slider::after {
+  content: ''; position: absolute; left: var(--v,50%); top: 50%; translate: -50% -50%;
+  width: 10px; height: 10px; border-radius: 50%; background: var(--lr-ink);
+}
+.hs-slider--unity::before {
+  content: ''; position: absolute; left: 50%; bottom: -6px;
+  width: 2px; height: 4px; margin-left: -1px; border-radius: 1px; background: var(--lr-hint);
+}
+.hs-figure:has(.hs-slider--unity) { padding-bottom: 12px; }
+.hs-val { font-size: 10px; font-weight: 600; color: var(--lr-ink); flex: 0 0 auto; min-width: 34px;
+          text-align: right;
+          font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+/* A section whose points continue the one above it needs no second heading. */
+.lr-help-h:empty { display: none; }
+
+/* The pass badge is the kit's, and the kit hardcodes the pre-theme red in every one of its
+   states — so it stayed one hue while the colourways moved around it. Same substitution as the
+   other four record surfaces. */
+.lr-pass-badge {
+  background: rgba(var(--lr-rec-rgb), .18); color: var(--lr-ink);
+  border-color: rgba(var(--lr-rec-rgb), .4);
+}
+.lr-row.is-armed .lr-pass-badge,
+.lr-row.is-recording .lr-pass-badge {
+  background: rgba(var(--lr-rec-rgb), .28); color: var(--lr-ink);
+}
+/* In a help figure it is an example rather than a live badge, so it is not inside a recording
+   row and the kit's `display: none` would hide it. Shown at the armed size, which is the state
+   the caption beside it is describing. */
+.hs-badge .lr-pass-badge {
+  display: block; font-size: 12px; padding: 3px 8px;
+  background: rgba(var(--lr-rec-rgb), .28);
+}

@@ -148,11 +148,16 @@ export function editLayerScreen(opts: {
   const legend = el('div', 'legend');
   const help = helpControl({
     title: 'Edit Layer',
-    content: () => [
-      'tap · repeat bar (tap again to stop) &nbsp; double tap · play loop from here' +
-        ' &nbsp; hold · mute / unmute &nbsp; swipe · change pass / bar' +
-        ' <span style="color:rgba(255,255,255,.4)">(locked while muted)</span>',
-      legend,
+    pages: [
+      {
+        label: 'Edit Layer',
+        content: () => [
+          'tap · repeat bar (tap again to stop) &nbsp; double tap · play loop from here' +
+            ' &nbsp; hold · mute / unmute &nbsp; swipe · change pass / bar' +
+            ' <span style="color:rgba(255,255,255,.4)">(locked while muted)</span>',
+          legend,
+        ],
+      },
     ],
   });
 

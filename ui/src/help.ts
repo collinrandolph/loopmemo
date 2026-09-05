@@ -32,7 +32,14 @@ export function helpSection(title: string, points: string[]): HTMLElement {
 export function helpLede(text: string): HTMLElement {
   return el('p', 'lr-help-lede', text);
 }
-export function helpControl(opts: { title: string; content(): (HTMLElement | string)[] }): {
+/**
+ * One page of a sheet. A screen with a single page shows its title; a screen with several shows
+ * them as tabs, which is what lets the Playback sheet cover backing, recording and mixing without
+ * any of the three needing to scroll.
+ */
+export type HelpPage = { label: string; content(): (HTMLElement | string)[] };
+
+export function helpControl(opts: { title: string; pages: HelpPage[] }): {
   node: HTMLElement;
   destroy(): void;
 } {
@@ -59,17 +66,42 @@ export function helpControl(opts: { title: string; content(): (HTMLElement | str
   function open() {
     close();
     const sheet = el('div', 'lr-help-sheet');
-    const head = el('div', 'lr-help-head', `<span>${opts.title}</span>`);
+    const head = el('div', 'lr-help-head');
+    const body = el('div', 'lr-help-body');
+
+    /**
+     * Each page is built on demand and the body replaced, rather than all of them being built and
+     * hidden. They hold live nodes — the Edit Layer legend is one `refresh` keeps painted — and
+     * three copies of those would be two that quietly go stale.
+     */
+    function show(index: number) {
+      body.innerHTML = '';
+      for (const part of opts.pages[index]!.content()) {
+        body.append(typeof part === 'string' ? el('p', 'lr-help-text', part) : part);
+      }
+      for (const [i, tab] of tabs.entries()) tab.classList.toggle('is-active', i === index);
+      body.scrollTop = 0;
+    }
+
+    const tabs: HTMLElement[] = [];
+    if (opts.pages.length > 1) {
+      const strip = el('div', 'lr-help-tabs');
+      for (const [i, page] of opts.pages.entries()) {
+        const tab = el('button', 'lr-help-tab', page.label);
+        tab.setAttribute('type', 'button');
+        tab.addEventListener('click', () => show(i));
+        tabs.push(tab);
+        strip.appendChild(tab);
+      }
+      head.appendChild(strip);
+    } else {
+      head.appendChild(el('span', '', opts.title));
+    }
+
     const closeBtn = el('button', 'lr-help-close', '×');
     closeBtn.setAttribute('aria-label', 'Close');
     head.appendChild(closeBtn);
-
-    const body = el('div', 'lr-help-body');
-    for (const part of opts.content()) {
-      // Callers hand over live nodes as well as strings — the Edit Layer legend is one element
-      // that `refresh` keeps painted, so it is moved in rather than copied and left to go stale.
-      body.append(typeof part === 'string' ? el('p', 'lr-help-text', part) : part);
-    }
+    show(0);
 
     sheet.append(head, body);
     overlay = el('div', 'lr-help-overlay');
@@ -90,4 +122,15 @@ export function helpControl(opts: { title: string; content(): (HTMLElement | str
       document.removeEventListener('keydown', onKey, true);
     },
   };
+}
+
+/**
+ * A strip of real controls under a point, showing what it is talking about.
+ *
+ * They are built from the app's own icon renderers and class names rather than redrawn, so a
+ * preset added or a badge restyled cannot leave the help illustrating something that no longer
+ * exists. `hs-figure--bare` drops the card, for figures that are already shapes on their own.
+ */
+export function helpFigure(html: string, variant = ''): HTMLElement {
+  return el('div', `hs-figure ${variant}`.trim(), html);
 }

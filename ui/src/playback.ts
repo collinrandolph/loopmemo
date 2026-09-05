@@ -1,5 +1,5 @@
 import { isSilentAt } from '../../src/domain/arrangement.ts';
-import type { BackingTracks } from '../../src/domain/backing.ts';
+import { type BackingTracks, drumPattern } from '../../src/domain/backing.ts';
 import { toAbsolute } from '../../src/domain/bar-ref.ts';
 import { PAN_PRESETS, type PanPresetId, panPreset } from '../../src/domain/effects.ts';
 import { EQ_PRESETS, type EqPresetId } from '../../src/domain/eq.ts';
@@ -22,9 +22,9 @@ import {
 import { type CountIn, countInFrames, countInStartFrame } from '../../src/domain/count-in.ts';
 import { framesPerBar, loopFrames, loopSeconds } from '../../src/domain/timing.ts';
 import { bindChips, levelPercent, levelSlider } from './controls.ts';
-import { helpControl, helpLede, helpSection } from './help.ts';
+import { helpControl, helpFigure, helpLede, helpSection } from './help.ts';
 import { type RecordState, type WaveNode, LR, el, motion, ramp, sizing } from './kit.ts';
-import { SETTINGS_ICON } from './icons.ts';
+import { SETTINGS_ICON, SWIPE_Y_ICON } from './icons.ts';
 import { eqIconSvg, panIconSvg } from './preset-icons.ts';
 import { backingRows } from './backing-rows.ts';
 import { amp } from './demo.ts';
@@ -1018,49 +1018,116 @@ export function playbackScreen(opts: {
   document.addEventListener('keydown', onKey);
 
   /**
-   * The Playback screen's half of the manual (§4.7), condensed from `docs/user-guide.md`'s
-   * "Screen 3 — Playback". The guide has room for illustrations and the whole app; this has room
-   * for a screenful, so it keeps what a person cannot work out by looking and drops what they can.
+   * The Playback sheet (§4.7), from the approved copy in the "Playback Help Sheet" study: three
+   * tabbed pages, each sized to be read without scrolling on the smallest current phone.
    *
-   * The headphones line leads because it is the one thing that silently ruins takes, and the
-   * count-in and Rec offset entries both point at the gear: they are set on another screen, which
-   * is exactly why nobody finds them from here.
+   * **The illustrations are built from the app's own renderers**, not redrawn. `eqIconSvg` and
+   * `panIconSvg` take the real presets out of `src/domain`, and the swipe arrow and gear are the
+   * icons the screen itself uses — so a preset added or an icon changed cannot leave the help
+   * showing something the app no longer does.
    */
-  const help = helpControl({
-    title: 'Playback',
-    content: () => [
-      helpLede(
-        '<b>Use headphones.</b> On the speaker, the drums and every layer you have already ' +
-          'recorded bleed into the mic and pile onto each new take.',
-      ),
-      helpSection('Backing', [
-        'Tap a row to open it. The <b>speaker</b> mutes it, and a muted track stays out of exports.',
-        '<b>Drums</b> — pattern and kit are independent, so any kit plays any pattern.',
-        '<b>Chords</b> — tap a slot for its note, sign and type. Pattern, tone and octave apply to all four.',
-      ]),
-      helpSection('Layers', [
-        '<b>Tap a row</b> to expand it: volume, EQ, pan, and Edit Layer. The last three appear once the layer has a pass.',
-        '<b>Tap the name</b> to rename it.',
-        'The <b>speaker</b> sets level and mute. Level runs past unity to +6 dB, and a double tap returns it to unity.',
-      ]),
-      helpSection('Recording', [
-        '<b>Tap the dot</b> to arm, again to start, again to stop. <b>Hold</b> while armed to cancel.',
-        'Recording begins at the top of the loop. Every other layer plays; <b>the one you are recording stays silent</b>.',
-        'The <b>pass badge</b> replaces the name and counts the pass being captured. It stays dim until that pass completes one full bar — stop before then and nothing is kept.',
-      ]),
-      helpSection('Count-in', [
-        'Bars of the loop that play before the take starts, so you can come in on the beat.',
-        'Set the <b>length</b> and whether you hear the <b>full loop or drums only</b> under the <b>gear</b>, below Rec offset. Both apply to every project.',
-        '<b>It is never recorded</b> — it is the end of the loop played into the wrap, so your take still begins on the downbeat.',
-        'While it runs the lane shows one dot per beat, larger on each bar’s first beat.',
-      ]),
-      helpSection('If a take lands late', [
-        'Headphones and a microphone both add delay, so playing on the beat can still record behind it.',
-        '<b>Rec offset</b>, under the <b>gear</b>, corrects it. Play the loop and drag until your playing sits on the beat.',
-        'It is a playback correction, so it can be changed long after a layer is recorded and never locks.',
-      ]),
-    ],
-  });
+  const swipeArrow = (size = 11) =>
+    `<svg class="hs-ax" viewBox="0 0 24 24" width="${size}" height="${size}">${SWIPE_Y_ICON}</svg>`;
+
+  const helpPages = [
+    {
+      label: 'Backing Tracks',
+      content: () => [
+        helpLede(
+          'You don’t have to start completely from scratch — backing tracks can help you lock ' +
+            'into a groove.',
+        ),
+        helpSection('Drum Loops', ['Tap the drum track, then swipe to choose a pattern and kit.']),
+        helpFigure(
+          `<span class="hs-lbl">Pattern</span><span class="hs-name">${
+            drumPattern(project.backing.drums.patternId).name
+          }</span>${swipeArrow()}`,
+        ),
+        helpSection('Chord Progressions', [
+          'Select a chord by tapping it, then change it by swiping the selection wheels.',
+        ]),
+        helpFigure(
+          '<span class="hs-chips"><b class="on">C</b><b>C</b><b>C</b><b>C</b></span>' +
+            '<span class="hs-div"></span>' +
+            `<span class="hs-wheels"><i>C${swipeArrow(7)}</i><i>♮${swipeArrow(7)}</i>` +
+            `<i>Maj${swipeArrow(7)}</i></span>`,
+        ),
+        helpSection('', [
+          'Tap the chord track, then swipe to choose a pattern and instrument tone — experiment ' +
+            'by shifting the pitch up or down an octave.',
+        ]),
+        helpFigure(
+          '<span class="hs-lbl">Octave</span>' +
+            '<span class="hs-chips"><b>Low</b><b class="on">Default</b><b>High</b></span>',
+        ),
+      ],
+    },
+    {
+      label: 'Recording',
+      content: () => [
+        helpSection('Arming a track', [
+          'Tap a track’s record dot to arm it. It turns red and pulses. If you’re not ready to ' +
+            'record, tap anywhere else to cancel.',
+        ]),
+        helpFigure(
+          '<span class="hs-dot"><i></i>Unarmed</span><span class="hs-dot"><i class="armed"></i>Armed</span>',
+          'hs-figure--bare',
+        ),
+        helpSection('Recording a pass', [
+          'Once your track is armed, tap the dot again to start recording.',
+          'The label shows the current pass and turns solid once you’ve recorded a full bar; ' +
+            'passes that don’t reach one are discarded.',
+          'Don’t worry about recording over your old work — every time you record, it’s stored ' +
+            'as a new pass to choose from.',
+          'Tap the dot again to end the recording.',
+        ]),
+        helpFigure(
+          '<span class="hs-badge"><b class="lr-pass-badge is-provisional">Pass 6</b>recording…</span>' +
+            '<span class="hs-badge"><b class="lr-pass-badge">Pass 6</b>bar complete</span>',
+          'hs-figure--bare',
+        ),
+        helpSection('Adjusting for microphone latency', [
+          'If your recording sounds offbeat, adjust the timing with the latency slider in ' +
+            `Project settings (tap <svg class="hs-ico" viewBox="0 0 24 24">${SETTINGS_ICON}</svg>).`,
+        ]),
+        helpFigure(
+          '<span class="hs-lbl">Offset</span><span class="hs-slider" style="--v:44%"></span>' +
+            '<span class="hs-val">110ms</span>',
+        ),
+      ],
+    },
+    {
+      label: 'Mixing',
+      content: () => [
+        helpLede('Make each layer stand out with mixing presets.'),
+        helpSection('Volume', ['Adjust the volume of each layer independently.']),
+        helpFigure('<span class="hs-slider hs-slider--unity" style="--v:50%"></span>'),
+        helpSection('EQ', [
+          'Shape the sonic profile of each track to minimize frequency overlap between tracks.',
+        ]),
+        helpFigure(
+          EQ_PRESETS.map(
+            (p) =>
+              `<span class="${p.id === 'presence' ? 'on' : ''}">${eqIconSvg(p.id, 18)}</span>`,
+          ).join(''),
+          'hs-figure--icons',
+        ),
+        helpSection('Panning', [
+          'Balance your mix in the stereo field by panning different elements in different ' +
+            'directions.',
+        ]),
+        helpFigure(
+          PAN_PRESETS.map(
+            (p) =>
+              `<span class="${p.id === 'slightL' ? 'on' : ''}">${panIconSvg(p, 18)}</span>`,
+          ).join(''),
+          'hs-figure--icons',
+        ),
+      ],
+    },
+  ];
+
+  const help = helpControl({ title: 'Playback', pages: helpPages });
 
   // Up to the Library (§4.1). Secondary, because leaving is not what the screen is for.
   const backBtn = el(

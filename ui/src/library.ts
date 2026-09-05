@@ -239,8 +239,13 @@ export function libraryScreen(opts: {
 
   const help = helpControl({
     title: 'Projects',
-    content: () => [
-      'play a project without opening it · tap a row to open it · export, bounce, compress and delete live in that project’s settings',
+    pages: [
+      {
+        label: 'Projects',
+        content: () => [
+          'play a project without opening it · tap a row to open it · export, bounce, compress and delete live in that project’s settings',
+        ],
+      },
     ],
   });
 
