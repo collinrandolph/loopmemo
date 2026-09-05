@@ -2,20 +2,36 @@ import { HELP_ICON } from './icons.ts';
 import { el } from './kit.ts';
 
 /**
- * The help affordance §4.7 asks for: the gestures a screen supports, on request.
+ * The help affordance §4.7 asks for: what a screen does, on request.
  *
- * **This is a placeholder for the manual, not the manual.** §4.7 describes a real one: sections
- * on editing, recording setup and everything else, each readable in isolation, reached by deep
- * link from the control it explains, with "reading the gradient" named as the highest-value
- * entry — which is why the Edit Layer screen's legend lives in here now rather than under the
- * grid. What this holds is the text that was already on screen, moved rather than written.
- * Building it out properly is a later job (§4.7, and build order step 8).
+ * §4.7 describes a manual in sections, each readable in isolation and reached from the control it
+ * explains. `docs/user-guide.md` is where that copy is written; a screen's sheet is the part of it
+ * that belongs to that screen, condensed to what a phone-sized panel can hold. **The two are
+ * separate on purpose and they move together** — the guide has room for illustrations and the
+ * whole app, the sheet has room for a screenful, so this is a condensation rather than a copy.
  *
- * What it does buy now is the thing §4.7 is really about: the Edit Layer screen's interactions
- * are "powerful but undiscoverable", and a footer running the length of the screen is where
- * instructions go to be ignored. Behind a question mark they are at least somewhere a user
- * would think to look.
+ * What it buys is the thing §4.7 is really about: several of these interactions are "powerful but
+ * undiscoverable", and a footer running the length of the screen is where instructions go to be
+ * ignored. Behind a question mark they are at least somewhere a user would think to look.
  */
+
+/**
+ * A titled group of points. Strings may carry inline `<b>` and `<em>`, which is the whole of the
+ * markup the sheet needs — anything more is the guide's job, not a panel's.
+ */
+export function helpSection(title: string, points: string[]): HTMLElement {
+  const section = el('section', 'lr-help-section');
+  section.appendChild(el('h4', 'lr-help-h', title));
+  const list = el('ul', 'lr-help-list');
+  for (const point of points) list.appendChild(el('li', '', point));
+  section.appendChild(list);
+  return section;
+}
+
+/** A single emphasised line — the one thing on a screen worth reading before anything else. */
+export function helpLede(text: string): HTMLElement {
+  return el('p', 'lr-help-lede', text);
+}
 export function helpControl(opts: { title: string; content(): (HTMLElement | string)[] }): {
   node: HTMLElement;
   destroy(): void;

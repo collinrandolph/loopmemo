@@ -22,7 +22,7 @@ import {
 import { type CountIn, countInFrames, countInStartFrame } from '../../src/domain/count-in.ts';
 import { framesPerBar, loopFrames, loopSeconds } from '../../src/domain/timing.ts';
 import { bindChips, levelPercent, levelSlider } from './controls.ts';
-import { helpControl } from './help.ts';
+import { helpControl, helpLede, helpSection } from './help.ts';
 import { type RecordState, type WaveNode, LR, el, motion, ramp, sizing } from './kit.ts';
 import { SETTINGS_ICON } from './icons.ts';
 import { eqIconSvg, panIconSvg } from './preset-icons.ts';
@@ -88,16 +88,16 @@ export function playbackScreen(opts: {
   /** Backing edits, which are project state rather than layer state (§2.6). */
   onBackingChange(backing: BackingTracks): void;
   /**
-   * The monitoring level, owned by the shell. A preference of the person, not of a project — it
-   * is not on `Project`, does not travel with a bounce, and is not in an exported file.
-   */
-  /**
    * The count-in (§4.6), owned by the shell like the monitoring level: a preference of the person
    * rather than of a project, so it is not on `Project` and does not travel with a bounce.
    * Read at the moment recording starts, never cached — the settings screen can change it between
    * takes without this screen being rebuilt.
    */
   countIn(): CountIn;
+  /**
+   * The monitoring level, owned by the shell. A preference of the person, not of a project — it
+   * is not on `Project`, does not travel with a bounce, and is not in an exported file.
+   */
   master(): { readonly level: number; readonly muted: boolean };
   onMaster(next: { readonly level: number; readonly muted: boolean }): void;
   onEdit(layerIndex: number): void;
@@ -1017,10 +1017,48 @@ export function playbackScreen(opts: {
   };
   document.addEventListener('keydown', onKey);
 
+  /**
+   * The Playback screen's half of the manual (§4.7), condensed from `docs/user-guide.md`'s
+   * "Screen 3 — Playback". The guide has room for illustrations and the whole app; this has room
+   * for a screenful, so it keeps what a person cannot work out by looking and drops what they can.
+   *
+   * The headphones line leads because it is the one thing that silently ruins takes, and the
+   * count-in and Rec offset entries both point at the gear: they are set on another screen, which
+   * is exactly why nobody finds them from here.
+   */
   const help = helpControl({
     title: 'Playback',
     content: () => [
-      'tap the name to rename · row for its mixer · speaker to mute · dot to arm, again to record, hold to cancel',
+      helpLede(
+        '<b>Use headphones.</b> On the speaker, the drums and every layer you have already ' +
+          'recorded bleed into the mic and pile onto each new take.',
+      ),
+      helpSection('Backing', [
+        'Tap a row to open it. The <b>speaker</b> mutes it, and a muted track stays out of exports.',
+        '<b>Drums</b> — pattern and kit are independent, so any kit plays any pattern.',
+        '<b>Chords</b> — tap a slot for its note, sign and type. Pattern, tone and octave apply to all four.',
+      ]),
+      helpSection('Layers', [
+        '<b>Tap a row</b> to expand it: volume, EQ, pan, and Edit Layer. The last three appear once the layer has a pass.',
+        '<b>Tap the name</b> to rename it.',
+        'The <b>speaker</b> sets level and mute. Level runs past unity to +6 dB, and a double tap returns it to unity.',
+      ]),
+      helpSection('Recording', [
+        '<b>Tap the dot</b> to arm, again to start, again to stop. <b>Hold</b> while armed to cancel.',
+        'Recording begins at the top of the loop. Every other layer plays; <b>the one you are recording stays silent</b>.',
+        'The <b>pass badge</b> replaces the name and counts the pass being captured. It stays dim until that pass completes one full bar — stop before then and nothing is kept.',
+      ]),
+      helpSection('Count-in', [
+        'Bars of the loop that play before the take starts, so you can come in on the beat.',
+        'Set the <b>length</b> and whether you hear the <b>full loop or drums only</b> under the <b>gear</b>, below Rec offset. Both apply to every project.',
+        '<b>It is never recorded</b> — it is the end of the loop played into the wrap, so your take still begins on the downbeat.',
+        'While it runs the lane shows one dot per beat, larger on each bar’s first beat.',
+      ]),
+      helpSection('If a take lands late', [
+        'Headphones and a microphone both add delay, so playing on the beat can still record behind it.',
+        '<b>Rec offset</b>, under the <b>gear</b>, corrects it. Play the loop and drag until your playing sits on the beat.',
+        'It is a playback correction, so it can be changed long after a layer is recorded and never locks.',
+      ]),
     ],
   });
 
