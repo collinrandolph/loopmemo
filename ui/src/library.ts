@@ -9,7 +9,6 @@ import {
 } from '../../src/domain/project.ts';
 import { loopSeconds } from '../../src/domain/timing.ts';
 import type { BackingEngine } from './audio.ts';
-import { helpControl } from './help.ts';
 import { type WaveNode, LR, el, motion, ramp } from './kit.ts';
 import { amp } from './demo.ts';
 import { formatBytes, renderLoop } from './screen.ts';
@@ -29,8 +28,8 @@ const THUMB_HEIGHT = 6;
  *
  * **The thumbnail is the progress display.** One `thumb` lane per recorded layer in that layer's
  * `ramp.slice`, so a project is recognisable by its colour signature and stripe count before the
- * name is read, and playing a row recedes its lines rather than covering the artwork. The size
- * readout swaps to a position readout while playing, so the row does not change width.
+ * name is read, and playing a row recedes its lines rather than covering the artwork. The
+ * position readout has its own column and reserves it always, so nothing moves when it appears.
  *
  * **One preview at a time**, on one engine — §4.1 rules out standing up players per row.
  */
@@ -179,11 +178,19 @@ export function libraryScreen(opts: {
        * "3 layers / · 7 passes · Today". It belongs with the date: both answer "how big and how
        * recent", where the line above answers "what is it".
        */
+      /**
+       * One fact per line, so nothing wraps at any width: what the project *is*, what it *holds*,
+       * and how big and how recent. Four facts on one line wrapped mid-phrase on a phone —
+       * "3 layers / · 7 passes" — which is worse than a fourth line, because a wrap moves every
+       * row below it by an amount that depends on the name above.
+       *
+       * §2.7: pass count drives size, not layer count, which is why the row shows it.
+       */
       main.innerHTML =
         `<div class="p-name">${p.name}${tags}</div>` +
-        // §2.7: pass count drives size, not layer count, which is why the row shows it.
-        `<div class="p-meta">${p.bpm} BPM · ${p.barCount} bars · ${layers} layer${layers === 1 ? '' : 's'}` +
-        ` · ${passes} pass${passes === 1 ? '' : 'es'}</div>` +
+        `<div class="p-meta">${p.bpm} BPM · ${p.barCount} bars</div>` +
+        `<div class="p-meta">${layers} layer${layers === 1 ? '' : 's'} · ` +
+        `${passes} pass${passes === 1 ? '' : 'es'}</div>` +
         `<div class="p-meta p-meta--b">${modified(p.lastModified)} · ` +
         `<span class="p-size"></span></div>`;
       main.querySelector('.p-size')!.textContent = formatBytes(
@@ -243,17 +250,9 @@ export function libraryScreen(opts: {
     row.time.textContent = LR.fmtTime(position);
   });
 
-  const help = helpControl({
-    title: 'Projects',
-    pages: [
-      {
-        label: 'Projects',
-        content: () => [
-          'play a project without opening it · tap a row to open it · export, bounce, compress and delete live in that project’s settings',
-        ],
-      },
-    ],
-  });
+  // No help control here. §4.7 exists for interactions that are "powerful but undiscoverable",
+  // and this screen has none: a list you tap to open, with a play button on each row. Its sheet
+  // said so in one line, which is a question mark that costs a tap to learn nothing.
 
   /**
    * The colourway picker (§ not in the spec — flagged as an addition).
@@ -287,14 +286,13 @@ export function libraryScreen(opts: {
   paintThemes(document.documentElement.dataset['theme'] ?? '');
 
   const footer = el('div', 'lr-footer');
-  footer.append(help.node, themes);
+  footer.append(themes);
   root.append(header, listEl, footer);
 
   return {
     node: root,
     destroy() {
       loop.stop();
-      help.destroy();
       // Stop, not destroy: the shell owns the engine's lifetime and closes it on the way out.
       engine?.stop();
     },

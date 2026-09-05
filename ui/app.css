@@ -881,7 +881,9 @@ body, .ax { font-family: 'Hanken Grotesk', -apple-system, BlinkMacSystemFont, 'S
    the real accent is nearly grey and four near-greys would be indistinguishable as a control.
    The selected ring is drawn in two shadows so it reads on any of the four body colours: a
    gap in the body colour, then the line. */
-.theme-pick { display: flex; gap: 9px; align-items: center; }
+/* `margin-left: auto` because it is now the footer's only child — the help control used to hold
+   the left end and `space-between` did the rest, so removing it would have slid the dots left. */
+.theme-pick { display: flex; gap: 9px; align-items: center; margin-left: auto; }
 .theme-dot {
   width: 17px; height: 17px; padding: 0; border: none; border-radius: 50%;
   cursor: pointer; appearance: none;
