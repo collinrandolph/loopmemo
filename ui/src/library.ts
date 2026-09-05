@@ -179,20 +179,22 @@ export function libraryScreen(opts: {
        * recent", where the line above answers "what is it".
        */
       /**
-       * One fact per line, so nothing wraps at any width: what the project *is*, what it *holds*,
-       * and how big and how recent. Four facts on one line wrapped mid-phrase on a phone —
-       * "3 layers / · 7 passes" — which is worse than a fourth line, because a wrap moves every
-       * row below it by an amount that depends on the name above.
+       * One fact per line, so nothing wraps at any width. Four facts on one line wrapped
+       * mid-phrase on a phone — "3 layers / · 7 passes" — which is worse than a fourth line,
+       * because a wrap moves every row below it by an amount that depends on the name above.
+       *
+       * How recent and how big leads, directly under the name and in the brighter ink: those are
+       * what you scan a list of sketches for. What the project is, and what it holds, follow.
        *
        * §2.7: pass count drives size, not layer count, which is why the row shows it.
        */
       main.innerHTML =
         `<div class="p-name">${p.name}${tags}</div>` +
+        `<div class="p-meta p-meta--b">${modified(p.lastModified)} · ` +
+        `<span class="p-size"></span></div>` +
         `<div class="p-meta">${p.bpm} BPM · ${p.barCount} bars</div>` +
         `<div class="p-meta">${layers} layer${layers === 1 ? '' : 's'} · ` +
-        `${passes} pass${passes === 1 ? '' : 'es'}</div>` +
-        `<div class="p-meta p-meta--b">${modified(p.lastModified)} · ` +
-        `<span class="p-size"></span></div>`;
+        `${passes} pass${passes === 1 ? '' : 'es'}</div>`;
       main.querySelector('.p-size')!.textContent = formatBytes(
         sizeProjection(p).uncompressedBytes,
       );
