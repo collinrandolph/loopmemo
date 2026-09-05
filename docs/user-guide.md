@@ -27,12 +27,12 @@ Your list of sketches, newest first. The app opens here.
 - **Export, Bounce, Compress, Delete** — open the project, then tap the settings gear.
 
 > **ILLUSTRATION — one project row, annotated.** Crop to a single row from the list. Label:
-> play button, colour thumbnail (call out "one stripe per recorded layer"), the
-> `BPM · bars · layers · passes` metadata line, the size readout, and any tag chip.
+> play button, colour thumbnail (call out "one stripe per recorded layer — this is the layer
+> count"), the name, the `last modified · file size` line, and the `BPM · bars · passes` line.
 >
 > **ILLUSTRATION — the same row playing vs idle (two states, side by side).** Idle: full
-> thumbnail + size shown. Playing: thumbnail lines partly dimmed (progress), size readout
-> replaced by a running time. Caption the swap.
+> thumbnail, and the position column at the right empty. Playing: thumbnail lines partly dimmed
+> (progress), a running time in that column. Caption that nothing else moves.
 
 ---
 
