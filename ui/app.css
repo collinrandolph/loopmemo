@@ -381,9 +381,16 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
 .p-meta--b { color: var(--lr-ink-dim); }
 /* The readouts swap in place, so the line does not reflow when a preview starts. Size and
    elapsed time are both tabular, so the text after them does not shift either. */
-.lr-row.is-playing .p-size { display: none; }
-.p-time { display: none; color: var(--lr-ink); }
-.lr-row.is-playing .p-time { display: inline; }
+/* The position readout, in its own column at the end of the row and centred against the card.
+   **`visibility`, not `display`** — the space is reserved whether or not anything is playing, so
+   starting a preview cannot reflow the row under the finger that just tapped play, and the meta
+   above can never run under it. Tabular, so the row does not twitch as the seconds tick. */
+.p-time {
+  visibility: hidden; align-self: center; flex: 0 0 auto;
+  min-width: 34px; text-align: right;
+  color: var(--lr-ink); font-variant-numeric: tabular-nums;
+}
+.lr-row.is-playing .p-time { visibility: visible; }
 
 .lr-play--sm { width: 34px; height: 34px; flex-basis: 34px;
                background: rgba(255,255,255,.14); color: #fff;

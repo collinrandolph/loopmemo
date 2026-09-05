@@ -116,17 +116,26 @@ export function libraryScreen(opts: {
 
     const thumb = el('div', 'thumb');
     const main = el('div', 'p-main');
-    head.append(play, thumb, main);
+    /**
+     * The position readout: its own column at the end of the row, vertically centred, shown only
+     * while this row is previewing.
+     *
+     * **It used to replace the size**, which was a habit from the layout where both shared one
+     * right-hand box. They are different facts — how big it is, and where the preview has got to
+     * — and hiding one to show the other meant the size vanished from the row you were listening
+     * to. Outside `main` so `rebuild` cannot throw it away, which also means the render loop's
+     * handle is set once here rather than re-found on every repaint.
+     */
+    const time = el('div', 'p-time', '0:00');
+    head.append(play, thumb, main, time);
     rowEl.appendChild(head);
 
-    // `time` is replaced by every `rebuild`; it is set there rather than found here, because
-    // `main.innerHTML` throws the previous node away.
     const row: Row = {
       project: initial,
       el: rowEl,
       lanes: [] as WaveNode[],
       play,
-      time: main,
+      time,
       rebuild,
     };
 
@@ -176,13 +185,10 @@ export function libraryScreen(opts: {
         `<div class="p-meta">${p.bpm} BPM · ${p.barCount} bars · ${layers} layer${layers === 1 ? '' : 's'}` +
         ` · ${passes} pass${passes === 1 ? '' : 'es'}</div>` +
         `<div class="p-meta p-meta--b">${modified(p.lastModified)} · ` +
-        `<span class="p-size"></span><span class="p-time">0:00</span></div>`;
+        `<span class="p-size"></span></div>`;
       main.querySelector('.p-size')!.textContent = formatBytes(
         sizeProjection(p).uncompressedBytes,
       );
-      // Rebuilt markup means a new node, so the render loop's handle has to follow it or the
-      // position readout writes to an element that is no longer in the document.
-      row.time = main.querySelector('.p-time')!;
     }
 
     // The whole row opens the project; there is no second action on it.
