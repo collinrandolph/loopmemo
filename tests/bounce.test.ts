@@ -4,9 +4,11 @@ import { describe, it } from 'node:test';
 import { setSlot, setSlotMuted } from '../src/domain/arrangement.ts';
 import { barRef } from '../src/domain/bar-ref.ts';
 import {
+  BOUNCE_SUFFIX,
   type BackingMixSource,
   bouncePlan,
   bounceSeed,
+  bouncedName,
   isAudibleInMixdown,
 } from '../src/domain/bounce.ts';
 import { haasDelayFrames } from '../src/domain/effects.ts';
@@ -235,5 +237,30 @@ describe('bounceSeed', () => {
     const index = passIndex(short.layers[0]!.sessions, projectTiming(short));
     assert.equal(totalPasses(index), 1);
     assert.ok(short.layers[0]!.mutedSlots.length > 0, 'the bars with no audio start muted');
+  });
+
+  describe('the name carries the provenance', () => {
+    // With the `Bounced` badge gone the suffix is the only thing saying a project began as a
+    // mixdown, and it lives somewhere the user can edit — which is the point of it.
+    it('appends the suffix', () => {
+      assert.equal(bouncedName('Rooftop'), 'Rooftop (Bounce)');
+    });
+
+    it('does not stack when a bounce is bounced', () => {
+      assert.equal(bouncedName('Rooftop (Bounce)'), 'Rooftop (Bounce)');
+    });
+
+    it('ignores surrounding space rather than suffixing it', () => {
+      assert.equal(bouncedName('  Rooftop  '), 'Rooftop (Bounce)');
+      assert.equal(bouncedName('Rooftop (Bounce) '), 'Rooftop (Bounce)');
+    });
+
+    it('is what a seeded project is actually called', () => {
+      const seeded = bounceSeed(source, session(LOOP, 'named'), {
+        id: 'named',
+        name: bouncedName(source.name),
+      });
+      assert.ok(seeded.name.endsWith(BOUNCE_SUFFIX));
+    });
   });
 });

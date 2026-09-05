@@ -161,16 +161,12 @@ export function libraryScreen(opts: {
       }
 
       /**
-       * **HQ and Compressed are gone**, and only Bounced remains (§4.1's design study). The two
-       * removed were *settings* wearing the costume of provenance: every project has a quality,
-       * and compression is a state the same project moves in and out of, so as badges they sat
-       * beside the name claiming to say what a sketch *is*. Both are still in project settings,
-       * which is where they can be acted on. Bounced stays because it says where a project came
-       * from, which nothing else on the row does and no setting reports.
+       * **No tags on a row.** HQ and Compressed were settings wearing the costume of provenance —
+       * every project has a quality, and compression is a state a project moves in and out of —
+       * and both are in project settings where they can be acted on. Bounced outlived them and is
+       * gone too: it is now `BOUNCE_SUFFIX` on the name, which says the same thing somewhere the
+       * user can reword or delete it. A badge could only be read.
        */
-      const tags = p.bouncedFromProjectId
-        ? '<span class="lr-tag lr-tag--bounced">Bounced</span>'
-        : '';
 
       /**
        * Three stacked lines, not two lines and a right-hand column. The size used to sit in its
@@ -189,7 +185,7 @@ export function libraryScreen(opts: {
        * §2.7: pass count drives size, not layer count, which is why the row shows it.
        */
       main.innerHTML =
-        `<div class="p-name">${p.name}${tags}</div>` +
+        `<div class="p-name">${p.name}</div>` +
         `<div class="p-meta p-meta--b">${modified(p.lastModified)} · ` +
         `<span class="p-size"></span></div>` +
         `<div class="p-meta">${p.bpm} BPM · ${p.barCount} bars</div>` +

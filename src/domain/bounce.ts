@@ -173,3 +173,25 @@ export function bounceSeed(
 
   return { ...seeded, bouncedFromProjectId: source.id, backing: source.backing, layers };
 }
+
+/**
+ * What a bounce is called (§2.7).
+ *
+ * **The name carries the provenance, not a badge.** A bounced project used to wear a `Bounced`
+ * tag on its Library row, which said the right thing and could not be argued with — the user had
+ * no way to rename, qualify or dismiss it. A suffix says the same thing in a place they own: keep
+ * it, reword it, or delete it once the sketch has become its own piece.
+ *
+ * `bouncedFromProjectId` still records the source. That is a fact about the project rather than a
+ * label, and nothing renders it.
+ *
+ * **It does not stack.** Bouncing a bounce is a new generation, but the suffix only has one thing
+ * to say — that this started as a mixdown — and saying it twice only spends a name that is short
+ * to begin with.
+ */
+export const BOUNCE_SUFFIX = ' (Bounce)';
+
+export function bouncedName(sourceName: string): string {
+  const name = sourceName.trim();
+  return name.endsWith(BOUNCE_SUFFIX) ? name : `${name}${BOUNCE_SUFFIX}`;
+}

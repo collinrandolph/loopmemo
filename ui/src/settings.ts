@@ -1,5 +1,5 @@
 import { defaultBacking } from '../../src/domain/backing.ts';
-import { bouncePlan, bounceSeed } from '../../src/domain/bounce.ts';
+import { bouncePlan, bounceSeed, bouncedName } from '../../src/domain/bounce.ts';
 import {
   type AudioQuality,
   BPM_MAX,
@@ -477,7 +477,7 @@ export function projectSettingsScreen(opts: {
       p,
       bounceSeed(p, session, {
         id,
-        name: `${p.name} mix`,
+        name: bouncedName(p.name),
         now: new Date().toISOString(),
       }),
     );

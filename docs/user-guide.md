@@ -22,7 +22,7 @@ Your list of sketches, newest first. The app opens here.
 
 - **Tap a row** — open the project.
 - **Play button** — hear it without opening. One plays at a time. The thumbnail dims as it plays.
-- **Row shows** — colour thumbnail (one stripe per layer), then the name, then `BPM · bars · layers · passes`, then `last modified · file size`. The size becomes the playing position while the row previews. One tag: Bounced.
+- **Row shows** — colour thumbnail (one stripe per layer), then the name, then `last modified · file size`, `BPM · bars` and `layers · passes` on their own lines. The playing position appears at the right of the row while it previews. No tags.
 - **New project** — button in the header.
 - **Export, Bounce, Compress, Delete** — open the project, then tap the settings gear.
 
@@ -49,7 +49,7 @@ Your list of sketches, newest first. The app opens here.
 ### Actions (existing projects only)
 
 - **Export** — opens the Export screen.
-- **Bounce to new project** — mixes all layers into layer 1 of a new sketch, effects baked in. Original untouched.
+- **Bounce to new project** — mixes all layers into layer 1 of a new sketch, effects baked in. Original untouched. The new project is named after the old one with **(Bounce)** on the end; rename it whenever you like.
 - **Compress** — discards recorded passes, keeps each layer's edited loop. Shows the space saved. Still recordable after.
 - **Delete** — removes the project. Confirms first.
 
