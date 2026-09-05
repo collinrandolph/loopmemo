@@ -281,3 +281,29 @@ A fifth is four numbers, not a palette.
 - **A token defined anywhere below `:root` outranks the theme** for everything inside it.
   `--lr-accent` was hardcoded on `.lr-screen`, so the New Project button stayed violet in all four
   colourways and no theme could reach it. One definition per token.
+
+## 10. Translucent white is fine; opaque white is not
+
+`rgba(255,255,255,.1)` over a card is a **veil** — it lightens the card's own hue, so it moves with
+the colourway for free. Most of the whites in `app.css` are that, and they are correct.
+
+**Opaque and near-opaque white is a colour**, and it does not move. `rgba(255,255,255,.92)` on a
+selected chip stayed pure white in Moss and Cobalt while the New Project button an inch away took
+the theme's warm cream. The rule: **above about .5 alpha, use a token.** `--lr-play-bg` /
+`--lr-play-ink` is the pair for anything that reads as "the light neutral", which is rung 1 of the
+prominence ladder and what the selected state borrows.
+
+**Measure a colour claim against a token, not against your eye.** A chip at 92% white and one at
+`--lr-play-bg` look near-identical in Wine, which is where this residue survived four rounds of
+restyling — it only separates in the other three colourways.
+
+### And check for dead declarations while you are there
+
+Three rules were still carrying pre-theme whites that had not painted since the colourways landed,
+because a later rule of equal specificity replaced them: `.lr-settings`'s colour, `.lr-play--sm`'s
+background and ink, and the whole of `.app-nav button.is-active`. **Confirm with a computed style
+before deleting** — specificity reasoning is easy to get backwards, and the measurement is one line.
+
+**A transition will lie to a measurement.** Several of these carry `transition: stroke .12s` or
+`background .15s`, so a sweep that reads computed styles 250 ms after a click catches intermediate
+values and reports failures that settle on their own. Wait it out, or the audit invents work.

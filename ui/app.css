@@ -24,12 +24,13 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
 .app-nav {
   display: flex; gap: 6px; padding: 10px 20px 0;
 }
+/* Shape only. Colour comes from the pair near the bottom of this file, which is the same
+   specificity and later — the white background, border and ink that used to be here, and a whole
+   `.is-active` rule, had not painted since the colourways landed. */
 .app-nav button {
   font-size: 12px; padding: 6px 12px; border-radius: 6px; cursor: pointer;
-  background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.24);
-  color: #fff; font-weight: 500; font-family: inherit;
+  font-weight: 500; font-family: inherit;
 }
-.app-nav button.is-active { background: rgba(255,255,255,.94); color: var(--lr-ink-on-light); border-color: transparent; }
 
 .grid { padding: 20px; }
 
@@ -126,8 +127,10 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
    they are what the project *is*, lighter than the name because they are not what it is
    called. `margin-left: auto` rather than `space-between` so they stay right-aligned on the
    line of their own they take when a long name wraps them. */
+/* No colour here: `.lr-header .lr-settings` is two classes and wins, and this rule's own
+   `rgba(255,255,255,.86)` had not applied since the header ink rule was added. */
 .lr-settings {
-  font-size: 15px; font-weight: 600; color: rgba(255,255,255,.86);
+  font-size: 15px; font-weight: 600;
   margin-left: auto; white-space: nowrap;
 }
 .lr-stats { margin-top: 2px; display: flex; align-items: center; gap: 10px; }
@@ -163,7 +166,7 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
    shell's tab bar are not buttons of that kind, so they say it here. Matched to the kit's .35. */
 .header-gear:disabled { cursor: default; }
 .header-gear:disabled svg,
-.header-gear:disabled:hover svg { stroke: rgba(255,255,255,.22); }
+.header-gear:disabled:hover svg { stroke: var(--lr-ink-faint); opacity: .5; }
 .app-nav button:disabled { opacity: .35; cursor: default; }
 
 /* Fixed label column: the name and the pass badge swap inside one box, so a lane
@@ -272,8 +275,8 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
 /* The panel below belongs to this chord and to no other, so the slot has to say which one it
    is answering — the three fields are otherwise unlabelled as to their subject. */
 .chord.is-editing {
-  background: rgba(255,255,255,.9); border-color: transparent;
-  color: var(--lr-ink-on-light);
+  background: var(--lr-play-bg); border-color: transparent;
+  color: var(--lr-play-ink);
 }
 
 /* The chord fields are per-chord; volume and tone are the track's and stay put. The rule is
@@ -392,13 +395,13 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
 }
 .lr-row.is-playing .p-time { visibility: visible; }
 
+/* Size only. The background and ink come from `.lr-play` below, which is the same specificity
+   and later in the file — the white pair that used to be here never painted. */
 .lr-play--sm { width: 34px; height: 34px; flex-basis: 34px;
-               background: rgba(255,255,255,.14); color: #fff;
-               border: 1px solid rgba(255,255,255,.28); }
-.lr-play--sm:hover { background: rgba(255,255,255,.26); }
+               border: 1px solid var(--lr-label-line); }
+.lr-play--sm:hover { filter: brightness(1.04); }
 .lr-play--sm svg { width: 13px; height: 13px; }
-.lr-row.is-playing .lr-play--sm { background: rgba(255,255,255,.92);
-                                  color: var(--lr-ink-on-light); border-color: transparent; }
+.lr-row.is-playing .lr-play--sm { border-color: transparent; }
 
 .chev { width: 14px; height: 14px; flex: 0 0 14px; fill: none; stroke: var(--lr-ink-faint);
         stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
@@ -418,7 +421,7 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
 .lr-row.is-confirming .acts { display: none; }
 .lr-row.is-confirming .confirm { display: flex; }
 .confirm-text { font-size: 12px; color: var(--lr-ink); flex: 1; min-width: 220px; line-height: 1.5; }
-.confirm-text b { color: #fff; }
+.confirm-text b { color: var(--lr-ink); }
 .hint { font-size: 11px; color: var(--lr-ink-faint); flex-basis: 100%; margin-top: 2px; }
 
 /* --- Export screen (§4.5) --------------------------------------------------- */
@@ -445,7 +448,7 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
 .export-item.is-on .export-check { background: var(--lr-accent); border-color: transparent; }
 .export-item.is-on .export-check::after {
   content: ''; position: absolute; left: 5px; top: 1px; width: 5px; height: 10px;
-  border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg);
+  border: solid var(--lr-play-ink); border-width: 0 2px 2px 0; transform: rotate(45deg);
 }
 
 .export-text { flex: 1; min-width: 0; }
@@ -509,7 +512,6 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
   -webkit-tap-highlight-color: transparent;
 }
 .lr-help svg { transition: stroke .12s; }
-.lr-help:hover svg { stroke: #fff; }
 
 /* Fixed to the viewport, not to `.lr-screen`, which clips its own overflow. Bottom-anchored:
    the control that opens it is in the footer, and a thumb is already down there. */
@@ -565,10 +567,10 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
 @keyframes lr-help-rise { from { transform: translateY(14px) } to { transform: none } }
 
 .legend {
-  font-size: 12px; color: rgba(255,255,255,.8); margin-top: 14px; padding: 12px;
+  font-size: 12px; color: var(--lr-ink-dim); margin-top: 14px; padding: 12px;
   background: rgba(255,255,255,.1); border-radius: 6px; line-height: 1.6;
 }
-.legend strong { color: #fff; }
+.legend strong { color: var(--lr-ink); }
 .swatch { display: flex; height: 10px; border-radius: 999px; overflow: hidden; margin: 8px 0; }
 .swatch i { flex: 1; }
 
@@ -867,7 +869,7 @@ body, .ax { font-family: 'Hanken Grotesk', -apple-system, BlinkMacSystemFont, 'S
 .lr-chip.is-active { background: var(--lr-label-strong); color: var(--lr-ink); }
 /* Chips inside a card are on the dark side and keep the card's vocabulary. */
 .lr-row .lr-chip { background: rgba(255,255,255,.10); color: var(--lr-ink-dim); }
-.lr-row .lr-chip.is-active { background: rgba(255,255,255,.92); color: var(--lr-ink-on-light); }
+.lr-row .lr-chip.is-active { background: var(--lr-play-bg); color: var(--lr-play-ink); }
 
 /* The tile's pass number is where the accent lives on the Edit Layer grid. */
 .tile-label .pass { color: var(--lr-ink-pass); }

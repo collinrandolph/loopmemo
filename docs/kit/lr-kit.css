@@ -228,11 +228,7 @@ input[type=range] { accent-color: #fff; }
   background: rgba(255,107,107,.28); color: #FFD9D9;
 }
 
-/* --------------------------------------------------------------- tags ----- */
-.lr-tag {
-  font-size: 9px; letter-spacing: .05em; text-transform: uppercase;
-  padding: 2px 5px; border-radius: 3px; font-weight: 700;
-  background: rgba(255,255,255,.14); color: var(--lr-ink-dim);
-}
-.lr-tag--hq      { background: rgba(124,224,142,.18); color: #A9E8BB; }
-.lr-tag--bounced { background: rgba(122,168,255,.2);  color: #BBD1FF; }
+/* REMOVED: `.lr-tag` and its two variants. The Library row carried HQ, Compressed and
+   Bounced chips; all three are gone. The first two were settings wearing the costume of
+   provenance and live in project settings, and a bounce now says so in its name, where the
+   user can reword it. Nothing in `ui/` referenced these. */
