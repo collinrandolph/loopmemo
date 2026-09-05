@@ -4,7 +4,6 @@ import {
   layerHasRecording,
   projectTiming,
   projectTotalPasses,
-  recordedLayerCount,
   sizeProjection,
 } from '../../src/domain/project.ts';
 import { loopSeconds } from '../../src/domain/timing.ts';
@@ -141,7 +140,6 @@ export function libraryScreen(opts: {
     function rebuild() {
       const p = row.project;
       const passes = projectTotalPasses(p);
-      const layers = recordedLayerCount(p);
 
       // One lane per recorded layer, in that layer's slice of the ramp.
       thumb.innerHTML = '';
@@ -169,27 +167,20 @@ export function libraryScreen(opts: {
        */
 
       /**
-       * Three stacked lines, not two lines and a right-hand column. The size used to sit in its
-       * own right-aligned box, which took width from the meta and wrapped it mid-phrase —
-       * "3 layers / · 7 passes · Today". It belongs with the date: both answer "how big and how
-       * recent", where the line above answers "what is it".
-       */
-      /**
-       * One fact per line, so nothing wraps at any width. Four facts on one line wrapped
-       * mid-phrase on a phone — "3 layers / · 7 passes" — which is worse than a fourth line,
-       * because a wrap moves every row below it by an amount that depends on the name above.
+       * Two lines. How recent and how big leads, directly under the name and in the brighter ink,
+       * because that is what you scan a list of sketches for; what the project is follows.
        *
-       * How recent and how big leads, directly under the name and in the brighter ink: those are
-       * what you scan a list of sketches for. What the project is, and what it holds, follow.
+       * **The layer count is not here — the thumbnail already is it.** One lane per recorded
+       * layer, so the stripe count says three layers before the sentence beneath could be read,
+       * and printing the number again spent a line restating a picture.
        *
-       * §2.7: pass count drives size, not layer count, which is why the row shows it.
+       * §2.7: pass count drives size, not layer count, which is why the row keeps that one.
        */
       main.innerHTML =
         `<div class="p-name">${p.name}</div>` +
         `<div class="p-meta p-meta--b">${modified(p.lastModified)} · ` +
         `<span class="p-size"></span></div>` +
-        `<div class="p-meta">${p.bpm} BPM · ${p.barCount} bars</div>` +
-        `<div class="p-meta">${layers} layer${layers === 1 ? '' : 's'} · ` +
+        `<div class="p-meta">${p.bpm} BPM · ${p.barCount} bars · ` +
         `${passes} pass${passes === 1 ? '' : 'es'}</div>`;
       main.querySelector('.p-size')!.textContent = formatBytes(
         sizeProjection(p).uncompressedBytes,

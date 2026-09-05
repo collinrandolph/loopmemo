@@ -22,7 +22,7 @@ Your list of sketches, newest first. The app opens here.
 
 - **Tap a row** — open the project.
 - **Play button** — hear it without opening. One plays at a time. The thumbnail dims as it plays.
-- **Row shows** — colour thumbnail (one stripe per layer), then the name, then `last modified · file size`, `BPM · bars` and `layers · passes` on their own lines. The playing position appears at the right of the row while it previews. No tags.
+- **Row shows** — colour thumbnail (one stripe per layer), then the name, then `last modified · file size` and `BPM · bars · passes` on their own lines (the stripe count is the layer count). The playing position appears at the right of the row while it previews. No tags.
 - **New project** — button in the header.
 - **Export, Bounce, Compress, Delete** — open the project, then tap the settings gear.
 
