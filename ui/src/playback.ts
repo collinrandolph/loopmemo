@@ -1,5 +1,5 @@
 import { isSilentAt } from '../../src/domain/arrangement.ts';
-import { type BackingTracks, drumPattern } from '../../src/domain/backing.ts';
+import type { BackingTracks } from '../../src/domain/backing.ts';
 import { toAbsolute } from '../../src/domain/bar-ref.ts';
 import { PAN_PRESETS, type PanPresetId, panPreset } from '../../src/domain/effects.ts';
 import { EQ_PRESETS, type EqPresetId } from '../../src/domain/eq.ts';
@@ -19,12 +19,11 @@ import {
   recordingBadge,
   sizeProjection,
 } from '../../src/domain/project.ts';
-import { type CountIn, countInFrames, countInStartFrame } from '../../src/domain/count-in.ts';
 import { framesPerBar, loopFrames, loopSeconds } from '../../src/domain/timing.ts';
 import { bindChips, levelPercent, levelSlider } from './controls.ts';
-import { helpControl, helpFigure, helpLede, helpSection } from './help.ts';
+import { helpControl } from './help.ts';
 import { type RecordState, type WaveNode, LR, el, motion, ramp, sizing } from './kit.ts';
-import { SETTINGS_ICON, SWIPE_Y_ICON } from './icons.ts';
+import { SETTINGS_ICON } from './icons.ts';
 import { eqIconSvg, panIconSvg } from './preset-icons.ts';
 import { backingRows } from './backing-rows.ts';
 import { amp } from './demo.ts';
@@ -32,7 +31,6 @@ import { renderLoop, syncCollapse } from './screen.ts';
 import { barAmplitude, computePeaks, drawnHeight } from './peaks.ts';
 import type { BackingEngine } from './audio.ts';
 import { type TakeStore, newTakeId, takeUrl } from './takes.ts';
-import { trimToDownbeat } from './recorder.ts';
 
 const TARGET_LINES = 40; // lanes are an overview: the count follows the container
 const LANE_AMPLITUDE = 34; // peak line height; the lane box is 40, see `.lr-wave--lane`
@@ -64,9 +62,6 @@ type Row = {
   /** Re-measure the collapse after something changes the panel's content. */
   syncPanel(): void;
   live: HTMLElement[];
-  /** The count-in pips, rebuilt per take because the beat count depends on the setting. */
-  countIn: HTMLElement;
-  pips: HTMLElement[];
   resetA: number;
 };
 
@@ -87,13 +82,6 @@ export function playbackScreen(opts: {
   onChange(layer: Layer): void;
   /** Backing edits, which are project state rather than layer state (§2.6). */
   onBackingChange(backing: BackingTracks): void;
-  /**
-   * The count-in (§4.6), owned by the shell like the monitoring level: a preference of the person
-   * rather than of a project, so it is not on `Project` and does not travel with a bounce.
-   * Read at the moment recording starts, never cached — the settings screen can change it between
-   * takes without this screen being rebuilt.
-   */
-  countIn(): CountIn;
   /**
    * The monitoring level, owned by the shell. A preference of the person, not of a project — it
    * is not on `Project`, does not travel with a bounce, and is not in an exported file.
@@ -134,13 +122,6 @@ export function playbackScreen(opts: {
   let lineWidth = 3;
   let previousProgress = 0;
   let recordingFrom = 0;
-  /**
-   * The count-in window in engine frames, for the take in progress: the transport starts at
-   * `countInFrom` and the take begins at `countInUntil`. Equal (and 0) when the count-in is off,
-   * which is what makes every `frameNow() < countInUntil` test below false in that case.
-   */
-  let countInFrom = 0;
-  let countInUntil = 0;
   /** Loudest input since the last live line was drawn; see `pushLive`. */
   let livePeak = 0;
 
@@ -167,18 +148,9 @@ export function playbackScreen(opts: {
    * name on this screen renames it in place, so tapping the project name to navigate away would
    * teach the opposite lesson two rows apart.
    *
-   * It ends the **title** line, opposite the project name, and the two number lines sit under it:
-   * passes and size to the left, tempo and bar count right-aligned beneath the gear. So the right
-   * edge reads as one column — the control, then the settings it opens — and the left edge is the
-   * name over what the project has become.
-   *
-   * Every piece of text here is its own element, and `paintTitle` writes `textContent` into them.
-   * The row used to be redrawn with `innerHTML`, which is fine for text and destroys a button —
-   * the old comment noted exactly that hazard about the stats row, and moving the gear up brought
-   * it along.
+   * The stats live in their own span because `paintTitle` rewrites them, and writing
+   * `textContent` on the row would take the button with it.
    */
-  const titleEl = el('div', 'lr-title');
-  const titleMeta = el('div', 'lr-settings');
   const statsRow = el('div', 'lr-meta lr-stats');
   const statsText = el('span', 'stats-text');
   const gearBtn = el('button', 'header-gear', `<svg viewBox="0 0 24 24">${SETTINGS_ICON}</svg>`);
@@ -186,8 +158,7 @@ export function playbackScreen(opts: {
   gearBtn.setAttribute('aria-label', 'Project settings');
   gearBtn.addEventListener('click', () => opts.onSettings());
   exits.push(gearBtn as HTMLButtonElement);
-  titleRow.append(titleEl, gearBtn);
-  statsRow.append(statsText, titleMeta);
+  statsRow.append(statsText, gearBtn);
   const transportEl = el('div', 'lr-transport');
   /** Only ever visible when the input failed; see `paintInputState`. */
   const inputNote = el('div', 'input-note');
@@ -208,12 +179,9 @@ export function playbackScreen(opts: {
     const live: Project = { ...project, layers: rows.map((r) => r.layer) };
     const passes = projectTotalPasses(live);
     const size = sizeProjection(live);
-    titleEl.textContent = project.name;
-    // The time signature is deliberately absent. Nothing in the app can change it — §4.6 lists no
-    // control and `beatsPerBar` is only ever the default — so printing it spent a third of the
-    // line on a number that never varies and cannot be acted on. It is still in the `Project` and
-    // still drives the arithmetic; put it back here when there is a way to set it.
-    titleMeta.textContent = `${project.bpm} BPM · ${project.barCount} Bars`;
+    titleRow.innerHTML =
+      `<div class="lr-title">${project.name}</div>` +
+      `<div class="lr-settings">${project.bpm} BPM · ${project.barCount} Bars · ${project.beatsPerBar}/4</div>`;
     statsText.textContent =
       `${passes} Pass${passes === 1 ? '' : 'es'} · ${(size.uncompressedBytes / 1e6).toFixed(1)} MB`;
   }
@@ -353,29 +321,11 @@ export function playbackScreen(opts: {
 
 
       if (next === 'recording' && was !== 'recording') {
-        /**
-         * A pass always begins on the downbeat, so recording restarts the loop — and the count-in
-         * is the loop's own tail played into that restart (§4.6). `countInStartFrame` ends on the
-         * loop point, so `loop` is the downbeat in engine frames whatever the count-in length,
-         * and with it off the two collapse to the frame recording has always started on.
-         *
-         * `recordingFrom` is the downbeat, not the transport's start: the take's length is
-         * `frameNow() - recordingFrom`, so counting from the start would credit the count-in as
-         * recorded bars. Stopping *during* it gives a negative difference, which clamps to zero
-         * and the domain declines the take — which is the behaviour we want anyway.
-         */
-        const countIn = opts.countIn();
-        const lead = countInFrames(countIn.bars, t);
-        countInFrom = lead > 0 ? countInStartFrame(countIn.bars, t) : 0;
-        countInUntil = lead > 0 ? loop : 0;
-        heldFrame = countInFrom;
+        // A pass always begins on the downbeat, so recording restarts the loop.
+        heldFrame = 0;
         previousProgress = 0;
-        recordingFrom = countInUntil;
-        // Drums only silences the chords and every layer for those bars; the full-loop mode plays
-        // them, which is what tells you what you are joining.
-        opts.engine.setCountIn(countIn.mode === 'drums' ? countInUntil : 0);
-        opts.engine.start(countInFrom);
-        startCountIn(row, countIn.bars);
+        recordingFrom = 0;
+        opts.engine.start(0);
         // Told before the take rather than after: the layer being recorded onto is silent for
         // the duration (§2.2), and that has to be true from the first bar, not from the commit.
         opts.engine.setLayers(liveProject(), opts.takes, i);
@@ -411,7 +361,6 @@ export function playbackScreen(opts: {
         void commitCapture(row, session, updated.sessions.length > before);
         opts.onChange(updated);
         clearLive(row);
-        endCountIn(row);
         paintRow(row);
         paintTitle();
         buildLanes();
@@ -423,9 +372,12 @@ export function playbackScreen(opts: {
     });
     layersEl.classList.toggle('is-capturing', capturingIndex() >= 0);
     lockExits();
-    // There was an `is-arming` toggle here, the armed equivalent of `is-capturing`, whose only
-    // job was letting CSS out-specify the kit's empty-open record hint. The hint is gone, so
-    // `.is-armed` paints the armed row on its own and this described nothing.
+    // The armed equivalent of `is-capturing`: the kit tints every empty open row's dot in the
+    // record colour, so without this they all look as live as the one actually armed.
+    layersEl.classList.toggle(
+      'is-arming',
+      rows.some((r) => r.rec === 'armed'),
+    );
 
     if (stopped) {
       // The take ends where it ends, and the downbeat is where the next pass will start.
@@ -506,11 +458,7 @@ export function playbackScreen(opts: {
    * `recordSession` against the engine's frame count.
    */
   async function commitCapture(row: Row, session: RecordingSession, keep: boolean) {
-    const raw = await opts.engine.stopCapture();
-    // The microphone is open across the count-in — arming opens it early so the downbeat is never
-    // spent waiting on a prompt — so what it heard in those bars is trimmed off here rather than
-    // being allowed into the session. §5.1 #3: the first frame has to be the downbeat.
-    const captured = raw && countInUntil > 0 ? trimToDownbeat(raw, countInUntil) : raw;
+    const captured = await opts.engine.stopCapture();
     if (captured && keep) {
       opts.takes.put(session, captured.buffer);
       // Peaks go onto the session the domain already committed. Display only — nothing derives
@@ -613,17 +561,7 @@ export function playbackScreen(opts: {
     wave.style.flex = '1';
     const note = el('span', 'lr-note', '');
     const rule = el('div', 'rec-rule');
-    /**
-     * The count-in indicator, in the lane the waveform is about to fill. That space is empty for
-     * the whole count-in and for the first lines of the take, so a countdown costs no layout and
-     * lands exactly where attention already is.
-     *
-     * One pip per beat rather than a number per bar: coming in on time needs the beat, and the
-     * pips read as a bar of the grid the drums are playing.
-     */
-    const countInEl = el('div', 'count-in');
-    countInEl.style.display = 'none';
-    wave.append(note, rule, countInEl);
+    wave.append(note, rule);
 
     // Before the volume control, which calls `update()` in its constructor and reads `row.layer`.
     const row: Row = {
@@ -639,8 +577,6 @@ export function playbackScreen(opts: {
       pending: false,
       syncPanel() {},
       live: [],
-      countIn: countInEl,
-      pips: [],
       resetA: 0,
     };
 
@@ -838,10 +774,7 @@ export function playbackScreen(opts: {
           rgb: ramp.rgb(from + (to - from) * u),
         };
       });
-      // `build` replaces the lane's children, so everything that lives *beside* the lines has to
-      // be put back — the count-in included, or it survives only on layers that have never been
-      // recorded, which is exactly the set you are least likely to be counting into.
-      row.wave.append(row.note, row.rule, row.countIn);
+      row.wave.append(row.note, row.rule);
     }
   }
 
@@ -861,44 +794,6 @@ export function playbackScreen(opts: {
    *
    * Same display gain as the committed waveform, so a take does not change height at the stop.
    */
-  /**
-   * Build the pips for a take, one per beat of the count-in, and show them.
-   *
-   * Beats rather than bars: coming in on time is a beat-level question, and a bar of pips reads as
-   * the grid the drums are playing. `beatsPerBar` is the project's, not a constant — §5.1 #1 is
-   * explicit that 4 is never hardcoded even while 4/4 is the only signature.
-   */
-  function startCountIn(row: Row, bars: number) {
-    row.countIn.innerHTML = '';
-    row.pips = [];
-    for (let i = 0; i < bars * project.beatsPerBar; i++) {
-      const pip = el('i', i % project.beatsPerBar === 0 ? 'is-downbeat' : '');
-      row.countIn.appendChild(pip);
-      row.pips.push(pip);
-    }
-    row.countIn.style.display = bars > 0 ? '' : 'none';
-  }
-
-  /** Light the pips up to the beat the transport has reached. Called from the render loop. */
-  function paintCountIn(row: Row, frame: number) {
-    if (!row.pips.length) return;
-    const beats = countInUntil - countInFrom;
-    const per = beats / row.pips.length;
-    // `floor(elapsed / per) + 1` — a pip lights as its beat *begins*, unlike the live waveform
-    // below, which draws a line only once its span has been heard. A count-in is a cue, so it has
-    // to be ahead of the sound rather than behind it.
-    const lit = Math.floor((frame - countInFrom) / per) + 1;
-    for (let i = 0; i < row.pips.length; i++) {
-      row.pips[i]!.classList.toggle('is-lit', i < lit);
-    }
-  }
-
-  function endCountIn(row: Row) {
-    if (row.countIn.style.display === 'none' && !row.pips.length) return;
-    row.countIn.style.display = 'none';
-    row.pips = [];
-  }
-
   function pushLive(row: Row, upto: number) {
     const [from, to] = ramp.slice(row.layer.index, LAYER_COUNT);
     livePeak = Math.max(livePeak, opts.engine.inputPeak());
@@ -970,15 +865,7 @@ export function playbackScreen(opts: {
     for (const row of rows) {
       row.resetA = row.resetA > 0.001 ? motion.approach(row.resetA, 0, motion.TAU.reset!, dt) : 0;
 
-      if (row.rec === 'recording' && frame < countInUntil) {
-        // Counting in. Nothing is drawn of the input yet — the microphone is open and its audio
-        // is about to be trimmed off (§5.1 #3), so a waveform here would show material that never
-        // reaches the take. The progress rule stays at zero for the same reason: no pass has
-        // started, and sweeping it through the count-in would say one had.
-        paintCountIn(row, frame);
-        paintBadge(row);
-      } else if (row.rec === 'recording') {
-        endCountIn(row);
+      if (row.rec === 'recording') {
         // `floor(head)`, not `floor(head) + 1`: a line is drawn once its span has been *heard*,
         // not when it is entered. Drawing on entry appended line 0 before a single sample had
         // arrived, so every take opened with a line of silence the committed waveform did not
@@ -1017,117 +904,12 @@ export function playbackScreen(opts: {
   };
   document.addEventListener('keydown', onKey);
 
-  /**
-   * The Playback sheet (§4.7), from the approved copy in the "Playback Help Sheet" study: three
-   * tabbed pages, each sized to be read without scrolling on the smallest current phone.
-   *
-   * **The illustrations are built from the app's own renderers**, not redrawn. `eqIconSvg` and
-   * `panIconSvg` take the real presets out of `src/domain`, and the swipe arrow and gear are the
-   * icons the screen itself uses — so a preset added or an icon changed cannot leave the help
-   * showing something the app no longer does.
-   */
-  const swipeArrow = (size = 11) =>
-    `<svg class="hs-ax" viewBox="0 0 24 24" width="${size}" height="${size}">${SWIPE_Y_ICON}</svg>`;
-
-  const helpPages = [
-    {
-      label: 'Backing Tracks',
-      content: () => [
-        helpLede(
-          'You don’t have to start completely from scratch — backing tracks can help you lock ' +
-            'into a groove.',
-        ),
-        helpSection('Drum Loops', ['Tap the drum track, then swipe to choose a pattern and kit.']),
-        helpFigure(
-          `<span class="hs-lbl">Pattern</span><span class="hs-name">${
-            drumPattern(project.backing.drums.patternId).name
-          }</span>${swipeArrow()}`,
-        ),
-        helpSection('Chord Progressions', [
-          'Select a chord by tapping it, then change it by swiping the selection wheels.',
-        ]),
-        helpFigure(
-          '<span class="hs-chips"><b class="on">C</b><b>C</b><b>C</b><b>C</b></span>' +
-            '<span class="hs-div"></span>' +
-            `<span class="hs-wheels"><i>C${swipeArrow(7)}</i><i>♮${swipeArrow(7)}</i>` +
-            `<i>Maj${swipeArrow(7)}</i></span>`,
-        ),
-        helpSection('', [
-          'Tap the chord track, then swipe to choose a pattern and instrument tone — experiment ' +
-            'by shifting the pitch up or down an octave.',
-        ]),
-        helpFigure(
-          '<span class="hs-lbl">Octave</span>' +
-            '<span class="hs-chips"><b>Low</b><b class="on">Default</b><b>High</b></span>',
-        ),
-      ],
-    },
-    {
-      label: 'Recording',
-      content: () => [
-        helpSection('Arming a track', [
-          'Tap a track’s record dot to arm it. It turns red and pulses. If you’re not ready to ' +
-            'record, tap anywhere else to cancel.',
-        ]),
-        helpFigure(
-          '<span class="hs-dot"><i></i>Unarmed</span><span class="hs-dot"><i class="armed"></i>Armed</span>',
-          'hs-figure--bare',
-        ),
-        helpSection('Recording a pass', [
-          'Once your track is armed, tap the dot again to start recording.',
-          'The label shows the current pass and turns solid once you’ve recorded a full bar; ' +
-            'passes that don’t reach one are discarded.',
-          'Don’t worry about recording over your old work — every time you record, it’s stored ' +
-            'as a new pass to choose from.',
-          'Tap the dot again to end the recording.',
-        ]),
-        helpFigure(
-          '<span class="hs-badge"><b class="lr-pass-badge is-provisional">Pass 6</b>recording…</span>' +
-            '<span class="hs-badge"><b class="lr-pass-badge">Pass 6</b>bar complete</span>',
-          'hs-figure--bare',
-        ),
-        helpSection('Adjusting for microphone latency', [
-          'If your recording sounds offbeat, adjust the timing with the latency slider in ' +
-            `Project settings (tap <svg class="hs-ico" viewBox="0 0 24 24">${SETTINGS_ICON}</svg>).`,
-        ]),
-        helpFigure(
-          '<span class="hs-lbl">Offset</span><span class="hs-slider" style="--v:44%"></span>' +
-            '<span class="hs-val">110ms</span>',
-        ),
-      ],
-    },
-    {
-      label: 'Mixing',
-      content: () => [
-        helpLede('Make each layer stand out with mixing presets.'),
-        helpSection('Volume', ['Adjust the volume of each layer independently.']),
-        helpFigure('<span class="hs-slider hs-slider--unity" style="--v:50%"></span>'),
-        helpSection('EQ', [
-          'Shape the sonic profile of each track to minimize frequency overlap between tracks.',
-        ]),
-        helpFigure(
-          EQ_PRESETS.map(
-            (p) =>
-              `<span class="${p.id === 'presence' ? 'on' : ''}">${eqIconSvg(p.id, 18)}</span>`,
-          ).join(''),
-          'hs-figure--icons',
-        ),
-        helpSection('Panning', [
-          'Balance your mix in the stereo field by panning different elements in different ' +
-            'directions.',
-        ]),
-        helpFigure(
-          PAN_PRESETS.map(
-            (p) =>
-              `<span class="${p.id === 'slightL' ? 'on' : ''}">${panIconSvg(p, 18)}</span>`,
-          ).join(''),
-          'hs-figure--icons',
-        ),
-      ],
-    },
-  ];
-
-  const help = helpControl({ title: 'Playback', pages: helpPages });
+  const help = helpControl({
+    title: 'Playback',
+    content: () => [
+      'tap the name to rename · row for its mixer · speaker to mute · dot to arm, again to record, hold to cancel',
+    ],
+  });
 
   // Up to the Library (§4.1). Secondary, because leaving is not what the screen is for.
   const backBtn = el(

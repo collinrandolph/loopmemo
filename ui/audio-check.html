@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Audio check</title>
+<!--
+  A standalone probe for "there is no sound on iOS", which cannot be diagnosed from a Windows
+  machine by reasoning about it. It imports nothing from the app: if the app is broken this page
+  still runs, and if this page is silent too then the cause is below the app entirely.
+
+  It asks the questions in the order that narrows fastest:
+
+    1. Does ANY Web Audio make sound on this device? (a default context, the browser's own rate)
+    2. Does a context forced to the PROJECT's rate make sound? — `audio.ts` does
+       `new AudioContext({ sampleRate })` deliberately, because `Timing` computes every frame count
+       at the project's quality and a device-rate context runs recorded layers 8.8% fast against
+       the drums. If iOS will not give a rate the hardware does not have, that constructor is where
+       every screen goes quiet at once, which is what was reported.
+    3. Does it need a fresh tap each time, or does one unlock hold?
+
+  Everything is reported on screen rather than to a console, because there is no console on the
+  device and no way to attach one from here.
+-->
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0; padding: 18px; background: #241C22; color: #F3E7DE;
+    font: 16px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    -webkit-text-size-adjust: 100%;
+  }
+  h1 { font-size: 19px; margin: 0 0 4px; }
+  p.sub { margin: 0 0 18px; color: #B9A5A8; font-size: 14px; }
+  button {
+    display: block; width: 100%; margin: 0 0 10px; padding: 16px;
+    font: inherit; font-weight: 600; text-align: left;
+    background: #3A2C34; color: #F3E7DE;
+    border: 1px solid #5A454E; border-radius: 10px;
+    -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+  }
+  button:active { background: #4A3843; }
+  button small { display: block; font-weight: 400; color: #B9A5A8; margin-top: 3px; }
+  .out {
+    background: #1B1519; border: 1px solid #3A2C34; border-radius: 10px;
+    padding: 12px; margin: 4px 0 18px; white-space: pre-wrap; word-break: break-word;
+    font: 13px/1.45 ui-monospace, Menlo, monospace; min-height: 3em;
+  }
+  .ok { color: #8FD694; } .bad { color: #FF8A8A; } .note { color: #E8C46A; }
+  h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .06em;
+       color: #B9A5A8; margin: 22px 0 8px; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<h1>Audio check</h1>
+<p class="sub">Tap each button and say what you hear. Turn the volume up, and check the side
+switch is <b>not</b> on silent — Safari's Web Audio obeys it.</p>
+
+<h2>1 · Device</h2>
+<div class="out" id="env">…</div>
+
+<h2>2 · Tones</h2>
+<button id="t1">Tone A — the browser's own sample rate
+  <small>A plain <code>new AudioContext()</code>. If this is silent, nothing in the app can sound.</small></button>
+<button id="t2">Tone B — forced to 44100
+  <small>What the app does for a 44.1 kHz project.</small></button>
+<button id="t3">Tone C — forced to 48000
+  <small>What the app does for a 48 kHz project.</small></button>
+<div class="out" id="tones">…</div>
+
+<h2>2b · One context, kept open</h2>
+<p class="sub">Tones A–C each build a context and close it, which is what the app used to do on
+every navigation. This one builds a single context the first time and <b>never closes it</b>.
+Tap it several times in a row.</p>
+<button id="t4">Tone D — reuse one context
+  <small>If D keeps sounding while A–C only sound once, closing the context is the fault.</small></button>
+<div class="out" id="reuse">…</div>
+
+<h2>3 · Which build is loaded</h2>
+<button id="build">Check the served files</button>
+<div class="out" id="buildout">…</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const line = (el, text, cls) => {
+  const d = document.createElement('div');
+  if (cls) d.className = cls;
+  d.textContent = text;
+  el.appendChild(d);
+};
+
+// --- 1. what the device says about itself ---------------------------------
+(function environment() {
+  const el = $('env');
+  el.textContent = '';
+  let probe = null, rate = 'unavailable';
+  try {
+    const C = window.AudioContext || window.webkitAudioContext;
+    probe = new C();
+    rate = probe.sampleRate + ' Hz';
+    probe.close();
+  } catch (e) {
+    rate = 'threw: ' + e.name + ' — ' + e.message;
+  }
+  line(el, 'hardware rate: ' + rate);
+  line(el, 'secure context: ' + window.isSecureContext);
+  const ctor = window.AudioContext ? 'yes'
+    : window.webkitAudioContext ? 'webkit-prefixed only' : 'MISSING';
+  line(el, 'AudioContext: ' + ctor);
+  line(el, 'AudioWorklet: ' + (window.AudioWorklet ? 'yes' : 'no'));
+  line(el, 'UA: ' + navigator.userAgent);
+})();
+
+// --- 2. tones -------------------------------------------------------------
+/**
+ * One tone, one context, torn down after. A fresh context per tap is deliberate: it is the
+ * harshest version of the test, so a pass here means the app's lazily-created context has no
+ * excuse. Reports the state at three moments, because "resumed" and "running" are not the same
+ * claim and iOS is where they come apart.
+ */
+/**
+ * **Not `async`, and nothing is awaited before the oscillator starts.** The first version of this
+ * page did `await ctx.resume()` and then built the graph, which is a bug in the instrument rather
+ * than in the device: after an `await` the handler is no longer running inside the user activation,
+ * and WebKit will not start audio outside one. It reported silence everywhere and one tone working
+ * after a video had been played in another tab — which is exactly what a lost activation looks
+ * like, since a live session needs no unlock. `audio.ts` gets this right (`void owned.resume()`,
+ * then it builds and schedules synchronously), so the probe was not testing what the app does.
+ */
+function tone(requestedRate, label) {
+  const el = $('tones');
+  el.textContent = '';
+  line(el, label + ' …');
+  let ctx;
+  try {
+    const C = window.AudioContext || window.webkitAudioContext;
+    ctx = requestedRate ? new C({ sampleRate: requestedRate }) : new C();
+  } catch (e) {
+    line(el, 'CONSTRUCTOR THREW: ' + e.name + ' — ' + e.message, 'bad');
+    line(el, 'iOS refused a context at ' + requestedRate + ' Hz, and every screen in the app', 'note');
+    line(el, 'builds one at the project’s rate.', 'note');
+    return;
+  }
+
+  // Fire and forget, exactly as the engine does. Awaiting it is what broke this test.
+  const resuming = ctx.resume();
+
+  // Built and started in the same turn as the tap, before anything can yield.
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.frequency.value = 440;
+  osc.connect(gain).connect(ctx.destination);
+  const t0 = ctx.currentTime;
+  gain.gain.setValueAtTime(0, t0);
+  gain.gain.linearRampToValueAtTime(0.25, t0 + 0.02);
+  gain.gain.setValueAtTime(0.25, t0 + 1.2);
+  gain.gain.linearRampToValueAtTime(0, t0 + 1.3);
+  osc.start(t0);
+  osc.stop(t0 + 1.35);
+
+  line(el, 'asked for: ' + (requestedRate || 'device default'));
+  line(el, 'got: ' + ctx.sampleRate + ' Hz' +
+    (requestedRate && ctx.sampleRate !== requestedRate ? '   <-- NOT what was asked for' : ''),
+    requestedRate && ctx.sampleRate !== requestedRate ? 'note' : '');
+  line(el, 'state at start: ' + ctx.state);
+
+  // Everything from here is reporting, and happens after the tone is already scheduled.
+  const before = ctx.currentTime;
+  resuming
+    .catch((e) => line(el, 'resume rejected: ' + e.message, 'bad'))
+    .then(() => new Promise((r) => setTimeout(r, 700)))
+    .then(() => {
+      line(el, 'state after resume: ' + ctx.state, ctx.state === 'running' ? 'ok' : 'bad');
+      const moved = ctx.currentTime - before;
+      line(el, 'clock advanced: ' + moved.toFixed(3) + ' s in 0.7 s of wall time',
+        moved > 0 ? 'ok' : 'bad');
+      if (moved <= 0) line(el, 'The clock is frozen — the context never really started.', 'bad');
+      // Left open for two seconds rather than closed at once: closing is its own variable, and
+      // Tone D is where that gets tested deliberately.
+      setTimeout(() => ctx.close(), 2000);
+    });
+}
+
+$('t1').addEventListener('click', () => tone(0, 'Tone A'));
+$('t2').addEventListener('click', () => tone(44100, 'Tone B'));
+$('t3').addEventListener('click', () => tone(48000, 'Tone C'));
+
+// --- 2b. the same context, over and over ----------------------------------
+/**
+ * The control for the test above. Same tone, same rate, but the context is built once and kept,
+ * which is what the app now does. Counts the taps so a run of them is visible at a glance.
+ */
+let shared = null;
+let taps = 0;
+$('t4').addEventListener('click', () => {
+  const el = $('reuse');
+  el.textContent = '';
+  taps++;
+  try {
+    if (!shared) {
+      const C = window.AudioContext || window.webkitAudioContext;
+      shared = new C({ sampleRate: 44100 });
+      line(el, 'built the context on tap ' + taps + ' at ' + shared.sampleRate + ' Hz');
+    } else {
+      line(el, 'reusing the context built on an earlier tap');
+    }
+  } catch (e) {
+    line(el, 'CONSTRUCTOR THREW: ' + e.name + ' — ' + e.message, 'bad');
+    return;
+  }
+
+  // Same rule as above: resume without waiting for it, schedule inside the tap.
+  const resuming = shared.resume();
+
+  const osc = shared.createOscillator();
+  const gain = shared.createGain();
+  osc.frequency.value = 660;
+  const t0 = shared.currentTime;
+  gain.gain.setValueAtTime(0, t0);
+  gain.gain.linearRampToValueAtTime(0.25, t0 + 0.02);
+  gain.gain.setValueAtTime(0.25, t0 + 0.7);
+  gain.gain.linearRampToValueAtTime(0, t0 + 0.8);
+  osc.connect(gain).connect(shared.destination);
+  osc.start(t0);
+  osc.stop(t0 + 0.85);
+
+  line(el, 'tap ' + taps + ' · state at start: ' + shared.state);
+  const before = shared.currentTime;
+  resuming
+    .catch((e) => line(el, 'resume rejected: ' + e.message, 'bad'))
+    .then(() => new Promise((r) => setTimeout(r, 500)))
+    .then(() => {
+      line(el, 'state after resume: ' + shared.state, shared.state === 'running' ? 'ok' : 'bad');
+      line(el, 'clock advanced: ' + (shared.currentTime - before).toFixed(3) + ' s',
+        shared.currentTime > before ? 'ok' : 'bad');
+      line(el, 'taps so far: ' + taps + ' — did every one of them sound?', 'note');
+    });
+});
+
+// --- 3. which build is on the device --------------------------------------
+$('build').addEventListener('click', async () => {
+  const el = $('buildout');
+  el.textContent = '';
+  const files = ['/ui/dist/ui/src/gesture.js', '/ui/dist/ui/src/audio.js', '/ui/app.css'];
+  for (const f of files) {
+    try {
+      const res = await fetch(f, { cache: 'no-store' });
+      const text = await res.text();
+      line(el, f);
+      line(el, '   ' + res.status + ' · ' + text.length + ' bytes · modified ' +
+        (res.headers.get('last-modified') || 'unreported'));
+      if (f.endsWith('gesture.js')) {
+        const guarded = /addEventListener\(\s*['"]touchend/.test(text);
+        line(el, '   touchend guard present: ' + guarded, guarded ? 'bad' : 'ok');
+        if (guarded) line(el, '   <-- this is the OLD build; reload with the tab closed first', 'bad');
+      }
+    } catch (e) {
+      line(el, f + '  FAILED: ' + e.message, 'bad');
+    }
+  }
+});
+</script>
+</body>
+</html>

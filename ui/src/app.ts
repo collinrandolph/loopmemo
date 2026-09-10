@@ -10,14 +10,6 @@ import { playbackScreen } from './playback.ts';
 import { projectSettingsScreen } from './settings.ts';
 import { demoLibrary } from './demo.ts';
 import { persistentStore } from './store.ts';
-import {
-  COUNT_IN_BAR_OPTIONS,
-  COUNT_IN_DEFAULT,
-  COUNT_IN_MODES,
-  type CountIn,
-  type CountInBars,
-  type CountInMode,
-} from '../../src/domain/count-in.ts';
 import { DEFAULT_THEME, type ThemeId, applyTheme } from './theme.ts';
 import { takeStore } from './takes.ts';
 
@@ -93,21 +85,6 @@ let lastLatencyOffsetSeconds = 0;
  */
 let master = { level: 1, muted: false };
 let masterWrite: number | undefined;
-
-/**
- * The count-in (§4.6). Here for the same reasons as `master`: §5.1 #3 says it never touches the
- * audio, so it needs no per-project snapshot, and it describes how a person likes to start playing
- * rather than anything about a sketch. Both screens that touch it read this one value.
- */
-let countIn: CountIn = COUNT_IN_DEFAULT;
-
-function setCountIn(next: CountIn) {
-  countIn = next;
-  // Two keys rather than one JSON blob: each is independently readable, and a stored value that
-  // fails its guard falls back on its own instead of taking the other down with it.
-  store.savePref('count-in-bars', String(next.bars));
-  store.savePref('count-in-mode', next.mode);
-}
 
 function setMaster(next: { readonly level: number; readonly muted: boolean }) {
   master = { level: next.level, muted: next.muted };
@@ -242,7 +219,6 @@ function render() {
             engine,
             takes,
             onChange: replaceLayer,
-            countIn: () => countIn,
             master: () => master,
             onMaster: setMaster,
             onBackingChange(backing) {
@@ -288,8 +264,6 @@ function render() {
                 mode: route.mode,
                 engine,
                 takes,
-                countIn: () => countIn,
-                onCountIn: setCountIn,
                 onCommit(next) {
                   lastLatencyOffsetSeconds = next.latencyOffsetSeconds;
                   if (route.screen === 'settings' && route.mode === 'new') {
@@ -401,19 +375,6 @@ async function boot() {
   // rather than clamped: it means something else wrote the key, and unity is the safe reading.
   const savedMaster = Number(await store.loadPref('master'));
   if (savedMaster >= 0 && savedMaster <= 1) master = { level: savedMaster, muted: false };
-  // Each half is validated against its own option list rather than trusted, so a hand-edited or
-  // stale key falls back to the default instead of reaching the engine as a bar count it cannot
-  // schedule. `bars` is read as a number because that is what it is; the key holds its digits.
-  const savedBars = Number(await store.loadPref('count-in-bars'));
-  const savedMode = await store.loadPref('count-in-mode');
-  countIn = {
-    bars: (COUNT_IN_BAR_OPTIONS as readonly number[]).includes(savedBars)
-      ? (savedBars as CountInBars)
-      : COUNT_IN_DEFAULT.bars,
-    mode: (COUNT_IN_MODES as readonly string[]).includes(savedMode ?? '')
-      ? (savedMode as CountInMode)
-      : COUNT_IN_DEFAULT.mode,
-  };
   const saved = await store.loadProjects();
   projects = saved ?? demoLibrary();
   if (!saved) for (const p of projects) store.saveProject(p);

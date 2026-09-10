@@ -192,15 +192,17 @@ input[type=range] { accent-color: #fff; }
   visibility: hidden; pointer-events: none; animation: none;
 }
 
-/* REMOVED: the empty-open record hint — a red, pulsing halo on the dot of an empty layer whose
-   panel was open, meant to say "record here". It said "this layer is armed" instead: same colour
-   and same kind of animation as `.is-armed`, on a row that held no intent at all. Removed on a
-   user report of exactly that confusion.
-
-   Its selector was also four classes, which outranked `.is-armed` (three) and `.is-pending`
-   (three) — so on an empty open row, which is the normal way to arm one, the *real* states could
-   not paint themselves. Roughly 25 lines of counter-CSS in `ui/app.css` existed only to win that
-   fight, and went with it. Do not reinstate without re-reading that. */
+/* hint the record control while an empty layer's panel is open */
+.lr-row.is-empty.is-open .lr-rec {
+  background: rgba(255,107,107,.55); animation: lr-rec-hint 1.8s ease-out infinite;
+}
+.lr-row.is-empty.is-open.is-armed .lr-rec,
+.lr-row.is-empty.is-open.is-recording .lr-rec { animation: none; }
+@keyframes lr-rec-hint {
+  0%   { box-shadow: 0 0 0 0   rgba(255,107,107,.55); }
+  70%  { box-shadow: 0 0 0 9px rgba(255,107,107,0); }
+  100% { box-shadow: 0 0 0 0   rgba(255,107,107,0); }
+}
 
 /* ------------------------------------------------------------- waveform -- */
 /* One line renderer, three densities: tile (edit), lane (playback), thumb
@@ -228,7 +230,11 @@ input[type=range] { accent-color: #fff; }
   background: rgba(255,107,107,.28); color: #FFD9D9;
 }
 
-/* REMOVED: `.lr-tag` and its two variants. The Library row carried HQ, Compressed and
-   Bounced chips; all three are gone. The first two were settings wearing the costume of
-   provenance and live in project settings, and a bounce now says so in its name, where the
-   user can reword it. Nothing in `ui/` referenced these. */
+/* --------------------------------------------------------------- tags ----- */
+.lr-tag {
+  font-size: 9px; letter-spacing: .05em; text-transform: uppercase;
+  padding: 2px 5px; border-radius: 3px; font-weight: 700;
+  background: rgba(255,255,255,.14); color: var(--lr-ink-dim);
+}
+.lr-tag--hq      { background: rgba(124,224,142,.18); color: #A9E8BB; }
+.lr-tag--bounced { background: rgba(122,168,255,.2);  color: #BBD1FF; }

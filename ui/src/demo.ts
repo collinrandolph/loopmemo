@@ -103,7 +103,7 @@ export function demoLibrary(): Project[] {
     { id: 'kitchen', name: 'Kitchen Take', bpm: 110, barCount: 20, quality: 'high', layers: 4, passes: 1, modified: '2026-08-29T21:05:00.000Z', compressed: true },
     { id: 'stairwell', name: 'Stairwell', bpm: 104, barCount: 24, quality: 'standard', layers: 2, passes: 1, modified: '2026-08-28T11:30:00.000Z' },
     { id: 'latenight', name: 'Late Night', bpm: 72, barCount: 28, quality: 'standard', layers: 1, passes: 1, modified: '2026-08-27T02:11:00.000Z' },
-    { id: 'sunday', name: 'Sunday Loop (Bounce)', bpm: 84, barCount: 32, quality: 'standard', layers: 7, passes: 1, modified: '2026-08-24T21:05:00.000Z', bounced: true },
+    { id: 'sunday', name: 'Sunday Loop', bpm: 84, barCount: 32, quality: 'standard', layers: 7, passes: 1, modified: '2026-08-24T21:05:00.000Z', bounced: true },
   ];
 
   const built = specs.map((s) => {

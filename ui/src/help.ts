@@ -2,44 +2,21 @@ import { HELP_ICON } from './icons.ts';
 import { el } from './kit.ts';
 
 /**
- * The help affordance §4.7 asks for: what a screen does, on request.
+ * The help affordance §4.7 asks for: the gestures a screen supports, on request.
  *
- * §4.7 describes a manual in sections, each readable in isolation and reached from the control it
- * explains. `docs/user-guide.md` is where that copy is written; a screen's sheet is the part of it
- * that belongs to that screen, condensed to what a phone-sized panel can hold. **The two are
- * separate on purpose and they move together** — the guide has room for illustrations and the
- * whole app, the sheet has room for a screenful, so this is a condensation rather than a copy.
+ * **This is a placeholder for the manual, not the manual.** §4.7 describes a real one: sections
+ * on editing, recording setup and everything else, each readable in isolation, reached by deep
+ * link from the control it explains, with "reading the gradient" named as the highest-value
+ * entry — which is why the Edit Layer screen's legend lives in here now rather than under the
+ * grid. What this holds is the text that was already on screen, moved rather than written.
+ * Building it out properly is a later job (§4.7, and build order step 8).
  *
- * What it buys is the thing §4.7 is really about: several of these interactions are "powerful but
- * undiscoverable", and a footer running the length of the screen is where instructions go to be
- * ignored. Behind a question mark they are at least somewhere a user would think to look.
+ * What it does buy now is the thing §4.7 is really about: the Edit Layer screen's interactions
+ * are "powerful but undiscoverable", and a footer running the length of the screen is where
+ * instructions go to be ignored. Behind a question mark they are at least somewhere a user
+ * would think to look.
  */
-
-/**
- * A titled group of points. Strings may carry inline `<b>` and `<em>`, which is the whole of the
- * markup the sheet needs — anything more is the guide's job, not a panel's.
- */
-export function helpSection(title: string, points: string[]): HTMLElement {
-  const section = el('section', 'lr-help-section');
-  section.appendChild(el('h4', 'lr-help-h', title));
-  const list = el('ul', 'lr-help-list');
-  for (const point of points) list.appendChild(el('li', '', point));
-  section.appendChild(list);
-  return section;
-}
-
-/** A single emphasised line — the one thing on a screen worth reading before anything else. */
-export function helpLede(text: string): HTMLElement {
-  return el('p', 'lr-help-lede', text);
-}
-/**
- * One page of a sheet. A screen with a single page shows its title; a screen with several shows
- * them as tabs, which is what lets the Playback sheet cover backing, recording and mixing without
- * any of the three needing to scroll.
- */
-export type HelpPage = { label: string; content(): (HTMLElement | string)[] };
-
-export function helpControl(opts: { title: string; pages: HelpPage[] }): {
+export function helpControl(opts: { title: string; content(): (HTMLElement | string)[] }): {
   node: HTMLElement;
   destroy(): void;
 } {
@@ -66,42 +43,17 @@ export function helpControl(opts: { title: string; pages: HelpPage[] }): {
   function open() {
     close();
     const sheet = el('div', 'lr-help-sheet');
-    const head = el('div', 'lr-help-head');
-    const body = el('div', 'lr-help-body');
-
-    /**
-     * Each page is built on demand and the body replaced, rather than all of them being built and
-     * hidden. They hold live nodes — the Edit Layer legend is one `refresh` keeps painted — and
-     * three copies of those would be two that quietly go stale.
-     */
-    function show(index: number) {
-      body.innerHTML = '';
-      for (const part of opts.pages[index]!.content()) {
-        body.append(typeof part === 'string' ? el('p', 'lr-help-text', part) : part);
-      }
-      for (const [i, tab] of tabs.entries()) tab.classList.toggle('is-active', i === index);
-      body.scrollTop = 0;
-    }
-
-    const tabs: HTMLElement[] = [];
-    if (opts.pages.length > 1) {
-      const strip = el('div', 'lr-help-tabs');
-      for (const [i, page] of opts.pages.entries()) {
-        const tab = el('button', 'lr-help-tab', page.label);
-        tab.setAttribute('type', 'button');
-        tab.addEventListener('click', () => show(i));
-        tabs.push(tab);
-        strip.appendChild(tab);
-      }
-      head.appendChild(strip);
-    } else {
-      head.appendChild(el('span', '', opts.title));
-    }
-
+    const head = el('div', 'lr-help-head', `<span>${opts.title}</span>`);
     const closeBtn = el('button', 'lr-help-close', '×');
     closeBtn.setAttribute('aria-label', 'Close');
     head.appendChild(closeBtn);
-    show(0);
+
+    const body = el('div', 'lr-help-body');
+    for (const part of opts.content()) {
+      // Callers hand over live nodes as well as strings — the Edit Layer legend is one element
+      // that `refresh` keeps painted, so it is moved in rather than copied and left to go stale.
+      body.append(typeof part === 'string' ? el('p', 'lr-help-text', part) : part);
+    }
 
     sheet.append(head, body);
     overlay = el('div', 'lr-help-overlay');
@@ -122,15 +74,4 @@ export function helpControl(opts: { title: string; pages: HelpPage[] }): {
       document.removeEventListener('keydown', onKey, true);
     },
   };
-}
-
-/**
- * A strip of real controls under a point, showing what it is talking about.
- *
- * They are built from the app's own icon renderers and class names rather than redrawn, so a
- * preset added or a badge restyled cannot leave the help illustrating something that no longer
- * exists. `hs-figure--bare` drops the card, for figures that are already shapes on their own.
- */
-export function helpFigure(html: string, variant = ''): HTMLElement {
-  return el('div', `hs-figure ${variant}`.trim(), html);
 }

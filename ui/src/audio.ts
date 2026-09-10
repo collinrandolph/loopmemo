@@ -101,20 +101,6 @@ export type BackingEngine = Engine & {
   /** Loudest input sample since the last call; resets on read. 0 when nothing is capturing. */
   inputPeak(): number;
   /**
-   * Bars starting before `untilFrame` are a **drums-only count-in**: chords and recorded layers
-   * are not scheduled for them (§4.6). 0 disables it, which is every case but one.
-   *
-   * It has to be a scheduling rule rather than a mute, and that is not a preference. Mute here
-   * means *schedules nothing* — a muted track produces no voices at all — so flipping it at the
-   * downbeat cannot work: `topUp` runs `AHEAD_SECONDS` ahead, and at 240 BPM a bar is one second,
-   * so the downbeat is often already scheduled before the count-in has even started. Deciding per
-   * bar at schedule time is the only place the answer is still open.
-   *
-   * Set before `start`. Nothing clears it — once the transport is past `untilFrame` every bar
-   * schedules in full — and a render never sets it, so an exported file has no count-in in it.
-   */
-  setCountIn(untilFrame: number): void;
-  /**
    * How loud the loop is *monitored* at (§4.2) — not part of the mix.
    *
    * The last stage before the destination, and deliberately the one thing a render never sees:
@@ -180,8 +166,6 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
   let bus: DynamicsCompressorNode | undefined;
   let drumGain: GainNode | undefined;
   let chordGain: GainNode | undefined;
-  /** Bars before this frame schedule drums only — see `setCountIn`. 0 for everything else. */
-  let countInUntilFrame = 0;
   /** Monitoring, not mix. Unity until the shell says otherwise, which it never does offline. */
   let masterGain: GainNode | undefined;
   let masterLevel = 1;
@@ -217,11 +201,6 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
   let stream: MediaStream | undefined;
   let inputError: InputFailure | undefined;
   let recorder: Recorder | undefined;
-  /**
-   * Added to a captured chunk's context frame to get an engine frame. Set at `startCapture`; see
-   * the note there for why it cannot be computed at the stop.
-   */
-  let captureFrameOffset = 0;
 
   let originFrame = 0;
   /** `ctx.currentTime` corresponding to `originFrame`. Undefined when stopped. */
@@ -773,11 +752,6 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
       else hat(c, drumGain!, at, kit.hat, onset.voice === 'hatOpen');
     }
 
-    // A drums-only count-in stops here: the beat is scheduled, the chords and the layers under it
-    // are not. Decided per bar at schedule time because that is the last moment the answer is
-    // still open — see `setCountIn`.
-    if (barStartFrame < countInUntilFrame) return;
-
     // The recorded layers, on the same anchor and bar grid as the backing (§0.4). `segments()`
     // decides what plays for the slot the transport resolved, placed at *this* bar's frame — so
     // bar preview repeats one slot's audio the same way it repeats one slot's chord.
@@ -986,10 +960,6 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
 
     inputPeak: () => (recorder?.recording() ? recorder.peak() : 0),
 
-    setCountIn(untilFrame) {
-      countInUntilFrame = Math.max(0, untilFrame);
-    },
-
     setMaster(level, muted) {
       // An engine handed a context is rendering (`render.ts`), and monitoring is not part of the
       // mix. Refusing here makes that structural rather than a convention a future caller could
@@ -1016,34 +986,13 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
     async startCapture() {
       // For a caller that never armed. A no-op once open, so the armed path has already paid.
       if (!(await engine.openInput())) return false;
-      /**
-       * **The two clocks meet here, and they are not the same clock.**
-       *
-       * The worklet stamps every chunk with `currentFrame`, which counts from when the
-       * *AudioContext* was created. Everything else in this engine counts from the transport's
-       * `originFrame`, re-anchored on every `start`. `Capture.arrivedAtFrame` is documented as an
-       * engine frame and was being handed back as a context one, so any caller comparing it
-       * against a transport frame was subtracting two different origins — see `stopCapture`.
-       *
-       * Taken now rather than at the stop, because by then the transport may already have
-       * stopped: `stop()` clears `anchorTime` and moves `originFrame`, so the mapping would be
-       * gone at exactly the moment it is needed. Nothing re-anchors during a take — seeking is
-       * refused and the tempo is locked — so one reading holds for the whole recording.
-       */
-      captureFrameOffset =
-        anchorTime === undefined || !ctx ? 0 : originFrame - anchorTime * ctx.sampleRate;
       recorder!.start();
       return true;
     },
 
     async stopCapture() {
       if (!recorder?.recording()) return undefined;
-      const capture = await recorder.stop();
-      // Into engine frames, which is what the type has always claimed to return.
-      return {
-        ...capture,
-        arrivedAtFrame: Math.round(capture.arrivedAtFrame + captureFrameOffset),
-      };
+      return recorder.stop();
     },
 
     setLayers(project, takes, recordingIntoLayerIndex) {

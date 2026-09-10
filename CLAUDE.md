@@ -193,15 +193,6 @@ correction for one font when this is whatever the platform's system font happens
 box is its art. **Measure a centring claim rather than eyeballing it**: the box being centred and
 the mark being centred are different facts, and only the second one is visible.
 
-**And there was a second reason, found on a device: `↔` came back as an emoji.** Both arrows are in
-Unicode's emoji set with default *text* presentation, which decides nothing on its own — the face
-that ends up drawing the character does. 'Hanken Grotesk' has neither glyph, so iOS fell through the
-stack to Apple Color Emoji and painted a blue tile mid-label. A `U+FE0E` text-presentation selector
-does not fix that; it only suppresses the emoji face when some other face can serve the character,
-and here none can. `SWIPE_X_ICON` and `SWIPE_Y_ICON` now cover both axes everywhere — the hint strip
-and the compact tile label included. **A font stack is not a guarantee that a character exists in
-it**, and the fallback for a missing glyph is not always a box you would notice in review.
-
 **The project actions live on `settings.ts`, not `library.ts`.** Export, bounce, compress and
 delete were a per-row panel behind a chevron; a Projects row is now a list entry you tap to open,
 with no panel and no second action. Each action operates on `commit()` rather than `opts.project`,
@@ -1003,28 +994,15 @@ projects *and* on every repeat), and `settings.ts`'s project compress (`${p.id}-
 `verify-take-ids.ts` reproduces the old collision before proving the new scheme does not, because a
 uniqueness test that never saw the bug proves nothing about it.
 
-## Zoom is suppressed five ways, and it takes all five
+## Zoom is suppressed four ways, and it takes all four
 
 Reported from an iPhone: double-tapping any section zooms, and an interface made of swipe targets
 is unnavigable zoomed.
 
-- **`touch-action: manipulation` on `html, body`** is the one iOS honours away from the tiles — it
-  has ignored `user-scalable=no` since iOS 10. Touch-action is not inherited, but the browser
-  intersects the values from the touched element up through its ancestors, so this covers every
-  descendant and the tiles' `touch-action: none` still wins, `none` being the stricter value.
-- **`preventDefault` on the second `touchend`, in `gesture.ts`** — the only thing that stops it on
-  a *tile*. **Reported a second time after the CSS shipped**: double-tapping a slot still zoomed
-  onto it, and `touch-action: none` is the stricter declaration that was supposed to make that
-  impossible. WebKit ran its double-tap recogniser through it regardless, so the CSS cannot be the
-  whole answer no matter how it is written. It lives in `trackDrag` because that is exactly the set
-  of elements that have claimed the touch — **a property, not a list to keep in sync with the
-  markup**. It fires only on the second tap of a pair landing within 40 px of the first, which is
-  what the browser's own recogniser requires: two quick taps on different controls are not a double
-  tap and keep their clicks, so `levelSlider`'s `dblclick` to unity is untouched. What it cancels is
-  the *compatibility mouse events*; every gesture here is built on pointer events, which are not a
-  default action of a touch event and do not notice. The tap state is module-level rather than per
-  node, because the browser does not care that the two taps straddled two tiles — and on a grid this
-  dense, most do.
+- **`touch-action: manipulation` on `html, body`** is the only one iOS honours — it has ignored
+  `user-scalable=no` since iOS 10. Touch-action is not inherited, but the browser intersects the
+  values from the touched element up through its ancestors, so this covers every descendant and
+  the tiles' `touch-action: none` still wins, `none` being the stricter value.
 - **The viewport meta** (`maximum-scale=1, user-scalable=no`) for every browser that is not iOS.
 - **A 16px floor on text inputs.** iOS zooms the viewport when a field smaller than that takes
   focus and does not zoom back out. `.setting-name` was 15px.
@@ -1043,76 +1021,3 @@ a fixed-height gesture layout breaks when zoomed rather than helping, but it is 
 drive the page for verification refuse a self-signed certificate, and `localhost` is a secure
 context over HTTP anyway — so the flag exists rather than deleting and re-issuing certificates
 around every check.
-
-## The count-in is time before the take, not audio at the head of it
-
-`src/domain/count-in.ts`. §5.1 #3 is the whole feature in one sentence: **"the session's first frame
-is the downbeat of Pass 1, or every boundary is offset by a bar."** `passExists`, `regionFor`, pass
-numbering and the arrangement all measure from that frame, so a count-in that reached the captured
-audio would move every bar line in the app.
-
-**It runs over the loop's own tail.** `countInStartFrame` is `loopFrames - bars × framesPerBar`, so
-the transport starts early and the take begins on the wrap — the frame recording has always started
-on. There is no click and no new sound source: §5.1 #8 rules out a metronome because every project
-has a drum track, and playing the ending you are about to join is more use to an overdub than a cue
-that stops. It can never be negative — the shortest loop is 4 bars and the longest count-in is 4 —
-and `tests/count-in.test.ts` sweeps every tempo, length and rate to prove the tightest case is
-exactly zero.
-
-**Two settings, and both are preferences**, stored beside the theme and the monitoring level rather
-than on a `Project`: length (Off · 1 · 2 · 3 · 4) and sound (Full loop · Drums only). §4.6 said Off ·
-1 · 2 with no sound choice; both were widened during the build and the spec table records it. They
-are edited on the project settings screen because that is where recording is set up — one row below
-Rec offset — and they apply immediately rather than on Save, because Cancel cannot undo a setting
-every project shares.
-
-**Drums only is a scheduling rule, not a mute, and it could not have been a mute.** Mute here means
-*schedules nothing*, so flipping it at the downbeat is impossible: `topUp` runs `AHEAD_SECONDS`
-ahead and at 240 BPM a bar is one second, so the downbeat is often already scheduled before the
-count-in starts. `setCountIn(untilFrame)` makes `scheduleBar` decide per bar, which is the last
-moment the answer is still open. A render never calls it, so no exported file has a count-in in it.
-
-**The capture is trimmed, not started late.** The microphone is open across the count-in — arming
-opens it early so the downbeat is never spent waiting on a prompt — so `trimToDownbeat` drops what
-arrived before it. Starting the recorder late instead would mean timing a call against the audio
-clock from the main thread, which is the free-running-clock mistake §2.4 rules out; the chunks are
-already stamped with the worklet's own frame, so the trim is arithmetic rather than a race. It
-returns the capture unchanged when there is nothing to drop, so the no-count-in path stays exactly
-what `verify-capture.ts` measures.
-
-**There are two clock spaces here and the trim spans both, which is how a bar of count-in reached
-the head of takes.** The worklet stamps chunks with `currentFrame` — frames since the
-*AudioContext* was created. Everything else in the engine counts from `originFrame`, re-anchored on
-every `start`. `engine.stopCapture` returned the recorder's number verbatim while
-`Capture.arrivedAtFrame` said "engine frame", so `trimToDownbeat`'s
-`downbeatFrame - arrivedAtFrame` subtracted two different origins. **The sign of the error decides
-what the user sees**: a context younger than the loop gives a huge drop and the take is discarded
-as silence; a context *older* — which is what a real user has, the page having been open a while —
-gives a negative drop, nothing is trimmed, and the count-in stays in the audio. Reported as "a
-considerable delay of more than one bar". `startCapture` now records `originFrame - anchorTime *
-sampleRate` and `stopCapture` adds it, converting once, at the boundary. It is taken at the *start*
-because `stop()` clears `anchorTime` and moves `originFrame` — the mapping is gone by the time the
-stop needs it — and nothing re-anchors mid-take, since seeking is refused and the tempo is locked.
-
-**A helper verified in isolation says nothing about the units its caller hands it.**
-`verify-count-in.ts`'s first claim passed throughout, because it chose both numbers itself and put
-them in the same space — it proved `trimToDownbeat`'s arithmetic, which was never wrong.
-`verifyCaptureFrames()` drives the real path instead (`openInput → startCapture → stopCapture`,
-with `getUserMedia` stubbed to an oscillator through a `MediaStreamAudioDestinationNode`) and
-asserts `arrivedAtFrame` against the engine's own frame at the start: error 0 frames, and 1.08 s
-dropped from a take with a 1 s count-in.
-
-**Bit-identity is the wrong bar for the drums-only window, and measuring is how that surfaced.**
-`verify-count-in.ts` first asserted the audio after the downbeat matched an ungated render exactly.
-It does not: ~16% of samples differ, at drum onsets. Not a timing error — correlation is best at
-zero shift — and the energy matches to 0.4%. It is the `DynamicsCompressor` every voice runs
-through, which is **stateful**: four quieter bars leave it with less gain reduction. Identical
-scheduling does not imply identical samples once the audio before it differs. The check is energy
-and alignment instead.
-
-**The indicator is one pip per beat, in the lane.** That space is empty for the whole count-in and
-for the first lines of the take, so the countdown costs no layout and lands where attention already
-is. Beats rather than bars because coming in on time is a beat-level question; the first pip of each
-bar is larger so four pips read as a bar. **`buildLanes` has to re-append it** — `build` replaces the
-lane's children, and forgetting it left the indicator alive only on layers that had never been
-recorded, which is the set you are least likely to be counting into.

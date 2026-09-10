@@ -38,21 +38,6 @@ export const PIANO_ICON =
 export const SWIPE_Y_ICON =
   '<path d="M12 2v20"/><path d="m8 18 4 4 4-4"/><path d="m8 6 4-4 4 4"/>';
 
-/**
- * Lucide `move-horizontal` — the bar axis, and the reason both axes are now icons.
- *
- * `↔` (U+2194) and `↕` (U+2195) are both in Unicode's emoji set with default *text* presentation,
- * which means nothing unless a font in the stack has the glyph. 'Hanken Grotesk' does not, so iOS
- * falls through to Apple Color Emoji and paints a blue-and-white arrow tile in the middle of a
- * label. **Reported from an iPhone**, and it is not fixable by asking for text presentation: a
- * `U+FE0E` selector only stops the emoji face when some other face can serve the character, and
- * here none can.
- *
- * The centring argument above applies to it just as much, so the same answer covers both.
- */
-export const SWIPE_X_ICON =
-  '<path d="M18 8l4 4-4 4"/><path d="M6 8l-4 4 4 4"/><path d="M2 12h20"/>';
-
 /** Lucide `settings` — the way into a project's settings from the Playback header. */
 export const SETTINGS_ICON =
   '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>' +

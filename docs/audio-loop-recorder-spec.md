@@ -1278,17 +1278,6 @@ expires, which puts audible latency on the most common action. **Resolved by esc
 waiting** — the first tap starts the bar immediately, and a second tap inside 300 ms simply lets
 playback continue past the bar end into the full loop. Both are "play", so nothing is undone.
 
-**Escalation only works from silence, and the double tap has to work from playback too.** On a bar
-that is already repeating, the first tap of the pair means *stop*, so there is nothing to escalate
-— the instinctive double tap on the playing bar stopped and restarted the same bar, two taps to
-arrive back where you were. Reported from use. **The stop is therefore undone rather than
-deferred**: it happens immediately, and a tap on the same slot inside the window starts the loop
-from there. Deferring is the alternative and it spends this section's own latency on the one action
-that must feel immediate, while a stop that waits 300 ms to be sure keeps sounding as the user asks
-it not to. The cost is that a stop followed inside 300 ms by a tap on the *same* slot plays the
-loop rather than re-previewing that bar; the resumed loop also starts at the slot's downbeat, since
-the phase rebase needs a transport that is still running.
-
 | Pair | Resolution |
 |------|------------|
 | tap / double tap | Escalation, as above |
@@ -1587,8 +1576,7 @@ Global, and — unless stated — they apply live.
 | Setting | Options | Applies |
 |---------|---------|---------|
 | **Recording quality** | Standard (16-bit / 44.1k) · High (24-bit / 48k) | **New projects only.** Snapshotted at creation and immutable thereafter (§2.7). |
-| **Count-in length** | Off · 1 · 2 · 3 · 4 bars | Live. Never recorded, so it needs no per-project snapshot (§5.1 #3). Widened from 2 bars during the build. |
-| **Count-in sound** | Full loop · Drums only | Live. The count-in is the loop's own tail played into the wrap, so this chooses how much of it sounds. Added during the build; there is still no click (§5.1 #8). |
+| **Count-in** | Off · 1 bar · 2 bars | Live. Never recorded, so it needs no per-project snapshot (§5.1 #3). |
 | **Export format** | WAV · MP3, with quality | Default for the export screen |
 | **EQ / pan preset defaults** | Which preset a new layer starts on | Live |
 | **Master level limiting** | On / off | Live |
