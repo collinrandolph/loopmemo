@@ -90,13 +90,21 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
 .ax { display: none; font-style: normal; color: var(--lr-hint); font-weight: 500; }
 .is-compact-tiles .swipe-hint { display: none; }
 .is-compact-tiles .tile-label { padding: 6px 6px 0; font-size: 15px; align-items: center; }
-/* `inline-flex` with `align-items: center` rather than a vertical-align nudge: an 11px glyph
+/* `inline-flex` with `align-items: center` rather than a vertical-align nudge: an 11px mark
    against 12px and 15px type, and centring the two boxes is exact where `middle` is an
    approximation off the parent's x-height. */
 .is-compact-tiles .pass,
 .is-compact-tiles .rel { display: inline-flex; align-items: center; gap: 4px; }
-.is-compact-tiles .ax { display: block; font-size: 11px; line-height: 1; }
+.is-compact-tiles .ax { display: flex; }
 .is-compact-tiles .tile.is-selected .ax { color: var(--lr-hint-sel); }
+/* Sized in px, not `em`: it is a drawing beside the type rather than a character in it, and the
+   two labels it sits in are 12px and 15px. `currentColor` keeps both arrows on whatever the label
+   or the hint strip is already painting, including the selected tile's brighter hint. */
+.ax svg, .swipe-hint svg {
+  display: block; fill: none; stroke: currentColor; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.ax svg { width: 11px; height: 11px; }
 
 /* always visible: touch has no hover, so a hover-gated hint never appears on
    the platform the gesture is designed for */
@@ -105,6 +113,10 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
   justify-content: space-between; font-size: 9px; letter-spacing: .03em;
   color: var(--lr-hint); pointer-events: none; transition: color .15s;
 }
+/* The arrow and its word are one hint, so the pair centres on the drawing rather than the word's
+   line box — the same reason the wheels' `↕` became an icon. */
+.hint-pass, .hint-bar { display: inline-flex; align-items: center; gap: 3px; }
+.hint-pass svg, .hint-bar svg { width: 9px; height: 9px; }
 .tile.is-selected .swipe-hint { color: var(--lr-hint-sel); }
 
 /* One pass for this bar means the vertical axis has nowhere to go, so it stops advertising
@@ -762,11 +774,13 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
    backwards is how a control disappears.
    ========================================================================= */
 
-/* `.ax` is named here, not only `body`, because it is the one arrow glyph that lives *inside* a
-   mono element — `.tile-label` — and so inherited the mono face while the full-height tiles'
-   `.swipe-hint` kept the body one. Same character, two different arrows depending on how tall the
-   tile happened to be. The rule below already says the hints are deliberately not mono; this is
-   what makes that true in the compact layout too. */
+/* `.ax` used to be named here because it was an arrow *glyph* living inside a mono element —
+   `.tile-label` — so it inherited the mono face while the tall tiles' `.swipe-hint` kept the body
+   one: the same character drawn two ways depending on how tall the tile happened to be. Both axis
+   arrows are SVG now, which settles that for good and settled a worse one besides — iOS resolved
+   `↔` to Apple Color Emoji, since no face in this stack carries it. **A font stack is not a
+   guarantee that a character exists in it.** `.ax` stays listed because it still holds no text but
+   inherits nothing useful from mono, and dropping it from the rule would be a silent change. */
 body, .ax { font-family: 'Hanken Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
 
 /* Data rather than prose: counts, times, sizes, pass numbers. **Mono only at 9–11px** — it is
@@ -901,11 +915,18 @@ body, .ax { font-family: 'Hanken Grotesk', -apple-system, BlinkMacSystemFont, 'S
 /* Reported from an iPhone: double-tapping any section zooms, and on a screen made almost entirely
    of swipe targets a stuck zoom makes the app unnavigable.
 
-   `touch-action: manipulation` is the part that actually works on iOS, which has ignored
-   `user-scalable=no` since iOS 10. It means "auto, minus double-tap zoom". Touch-action is not
-   inherited, but the browser intersects the values from the touched element up through its
+   `touch-action: manipulation` is the part that works on iOS *outside the tiles*, which have
+   ignored `user-scalable=no` since iOS 10. It means "auto, minus double-tap zoom". Touch-action is
+   not inherited, but the browser intersects the values from the touched element up through its
    ancestors, so setting it here covers every descendant — and the tiles' `touch-action: none`
    still wins where it is set, because none is the stricter value.
+
+   **And on the tiles that was not enough.** Reported from an iPhone a second time, after this
+   rule shipped: double-tapping a slot still zoomed the viewport onto it, `touch-action: none`
+   notwithstanding. The declaration a tile carries is the *stricter* value and WebKit ran its
+   double-tap recogniser through it anyway. `gesture.ts` prevents the second `touchend`, which is
+   what actually stops it; this rule stays because it is what covers everything that is not a
+   gesture surface, and because `none` is still what stops a swipe from panning the page.
 
    Deliberately a whole-app rule and not per-element: the report was "throughout the app", and a
    list of elements is a list to keep in sync with the markup.

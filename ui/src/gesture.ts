@@ -106,4 +106,57 @@ export function trackDrag(
 
   node.addEventListener('lostpointercapture', end);
   node.addEventListener('pointercancel', end);
+
+  // **The fifth thing that suppresses zoom, and the only one iOS actually obeys on a tile.**
+  //
+  // `touch-action` was supposed to be the whole answer: `manipulation` on `html, body` means "auto
+  // minus double-tap zoom", and a tile's stricter `none` should subsume it. It does not. WebKit
+  // still ran its double-tap-to-zoom recogniser on the tiles and zoomed the viewport onto the slot
+  // — reported from an iPhone twice, the second time *after* the CSS was in — and on a screen that
+  // is nothing but swipe targets a stuck zoom makes the app unusable.
+  //
+  // Preventing the second `touchend` is what actually stops it, and it belongs here because
+  // `trackDrag` is exactly the set of elements that have claimed the touch for themselves. That is
+  // a property, not a list to keep in sync with the markup: anything that gains a drag gains this.
+  //
+  // Three constraints keep it from eating real input:
+  //   - It fires only on the SECOND tap of a pair, so an ordinary tap is untouched.
+  //   - The taps must land within `ZOOM_TAP_PX` of each other, which is what the zoom recogniser
+  //     itself requires. Two quick taps on different controls are not a double tap and keep their
+  //     clicks — `levelSlider`'s double-tap-to-unity is a `dblclick` on a native range input, which
+  //     is not a `trackDrag` node and never reaches this.
+  //   - `preventDefault` here kills the *compatibility mouse events*, not the pointer events above.
+  //     Every gesture in this app is built on those, so they are unaffected.
+  //
+  // `passive: false` is required: touch-adjacent listeners default to passive, and a passive
+  // listener may not call `preventDefault` — it fails silently, which is how this looks fixed and
+  // is not.
+  node.addEventListener(
+    'touchend',
+    (e) => {
+      const t = e.changedTouches[0];
+      if (!t) return;
+      const now = performance.now();
+      const near =
+        Math.abs(t.clientX - lastTapX) < ZOOM_TAP_PX && Math.abs(t.clientY - lastTapY) < ZOOM_TAP_PX;
+      if (e.cancelable && near && now - lastTapEnd < ZOOM_TAP_MS) e.preventDefault();
+      lastTapEnd = now;
+      lastTapX = t.clientX;
+      lastTapY = t.clientY;
+    },
+    { passive: false },
+  );
 }
+
+/**
+ * Shared across every `trackDrag` node rather than held per node, because the zoom recogniser is
+ * the browser's and does not care that the two taps landed on different tiles. Per-node state
+ * would miss a double tap that straddles a tile boundary, which is most of them on a grid this
+ * dense.
+ */
+let lastTapEnd = 0;
+let lastTapX = 0;
+let lastTapY = 0;
+/** Wider than the app's own 300 ms double tap: this has to close over the browser's window too. */
+const ZOOM_TAP_MS = 400;
+const ZOOM_TAP_PX = 40;

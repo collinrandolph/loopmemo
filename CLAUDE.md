@@ -193,6 +193,15 @@ correction for one font when this is whatever the platform's system font happens
 box is its art. **Measure a centring claim rather than eyeballing it**: the box being centred and
 the mark being centred are different facts, and only the second one is visible.
 
+**And there was a second reason, found on a device: `↔` came back as an emoji.** Both arrows are in
+Unicode's emoji set with default *text* presentation, which decides nothing on its own — the face
+that ends up drawing the character does. 'Hanken Grotesk' has neither glyph, so iOS fell through the
+stack to Apple Color Emoji and painted a blue tile mid-label. A `U+FE0E` text-presentation selector
+does not fix that; it only suppresses the emoji face when some other face can serve the character,
+and here none can. `SWIPE_X_ICON` and `SWIPE_Y_ICON` now cover both axes everywhere — the hint strip
+and the compact tile label included. **A font stack is not a guarantee that a character exists in
+it**, and the fallback for a missing glyph is not always a box you would notice in review.
+
 **The project actions live on `settings.ts`, not `library.ts`.** Export, bounce, compress and
 delete were a per-row panel behind a chevron; a Projects row is now a list entry you tap to open,
 with no panel and no second action. Each action operates on `commit()` rather than `opts.project`,
@@ -994,15 +1003,28 @@ projects *and* on every repeat), and `settings.ts`'s project compress (`${p.id}-
 `verify-take-ids.ts` reproduces the old collision before proving the new scheme does not, because a
 uniqueness test that never saw the bug proves nothing about it.
 
-## Zoom is suppressed four ways, and it takes all four
+## Zoom is suppressed five ways, and it takes all five
 
 Reported from an iPhone: double-tapping any section zooms, and an interface made of swipe targets
 is unnavigable zoomed.
 
-- **`touch-action: manipulation` on `html, body`** is the only one iOS honours — it has ignored
-  `user-scalable=no` since iOS 10. Touch-action is not inherited, but the browser intersects the
-  values from the touched element up through its ancestors, so this covers every descendant and
-  the tiles' `touch-action: none` still wins, `none` being the stricter value.
+- **`touch-action: manipulation` on `html, body`** is the one iOS honours away from the tiles — it
+  has ignored `user-scalable=no` since iOS 10. Touch-action is not inherited, but the browser
+  intersects the values from the touched element up through its ancestors, so this covers every
+  descendant and the tiles' `touch-action: none` still wins, `none` being the stricter value.
+- **`preventDefault` on the second `touchend`, in `gesture.ts`** — the only thing that stops it on
+  a *tile*. **Reported a second time after the CSS shipped**: double-tapping a slot still zoomed
+  onto it, and `touch-action: none` is the stricter declaration that was supposed to make that
+  impossible. WebKit ran its double-tap recogniser through it regardless, so the CSS cannot be the
+  whole answer no matter how it is written. It lives in `trackDrag` because that is exactly the set
+  of elements that have claimed the touch — **a property, not a list to keep in sync with the
+  markup**. It fires only on the second tap of a pair landing within 40 px of the first, which is
+  what the browser's own recogniser requires: two quick taps on different controls are not a double
+  tap and keep their clicks, so `levelSlider`'s `dblclick` to unity is untouched. What it cancels is
+  the *compatibility mouse events*; every gesture here is built on pointer events, which are not a
+  default action of a touch event and do not notice. The tap state is module-level rather than per
+  node, because the browser does not care that the two taps straddled two tiles — and on a grid this
+  dense, most do.
 - **The viewport meta** (`maximum-scale=1, user-scalable=no`) for every browser that is not iOS.
 - **A 16px floor on text inputs.** iOS zooms the viewport when a field smaller than that takes
   focus and does not zoom back out. `.setting-name` was 15px.
