@@ -167,3 +167,110 @@ export async function verifyCountIn() {
       countInStartFrame(1, t) === loop - framesPerBar(t),
   };
 }
+
+/**
+ * Claim 3: **`Capture.arrivedAtFrame` is an engine frame, which is what its type says.**
+ *
+ * This is the check that was missing, and its absence is why a bar of count-in reached the head
+ * of a take on a real device. The trim above is exact — but it was being handed two numbers from
+ * *different clocks*. The worklet stamps chunks with `currentFrame`, counting from when the
+ * `AudioContext` was created; `countInUntil` is a transport frame, counting from the origin the
+ * last `start` set. Subtracting them is meaningless, and which way it fails depends only on how
+ * long the context has been alive:
+ *
+ * - context younger than the loop → a huge positive drop → the whole take discarded as silence
+ * - context older → a negative drop → **nothing trimmed, and the count-in stays in the take**
+ *
+ * The second is what a user hits, because by the time you have opened a project and pressed
+ * record the context has been running for a while. Reported as "a considerable delay of more
+ * than one bar" at the start of a recording.
+ *
+ * **Claim 1 passing proved nothing about this**, because it chose both numbers itself and put
+ * them in the same space. A helper verified in isolation says nothing about the units its caller
+ * hands it.
+ *
+ * Runs the real path — `openInput` → `startCapture` → `stopCapture` — with `getUserMedia` stubbed
+ * to return an oscillator instead of a microphone, so it needs no permission and no human.
+ *
+ *     const m = await import('/ui/dist/ui/src/verify-count-in.js');
+ *     await m.verifyCaptureFrames();
+ */
+export async function verifyCaptureFrames() {
+  const rate = 44100;
+  // Fast on purpose: 4 bars at 240 BPM makes a 1-second count-in, so the recording below crosses
+  // the downbeat in real time without the check taking a coffee break.
+  const project = createProject({ id: 'cf', name: 'CF', bpm: 240, barCount: 4, quality: 'standard' });
+  const t = projectTiming(project);
+  const loop = loopFrames(t);
+  const countInFrom = countInStartFrame(1, t);
+
+  // A real MediaStream carrying a real signal, from an oscillator rather than a device.
+  const source = new AudioContext({ sampleRate: rate });
+  const dest = source.createMediaStreamDestination();
+  const osc = source.createOscillator();
+  osc.frequency.value = 440;
+  osc.connect(dest);
+  osc.start();
+
+  const media = navigator.mediaDevices;
+  const realGetUserMedia = media.getUserMedia.bind(media);
+  media.getUserMedia = async () => dest.stream;
+
+  const engine = audioEngine(rate);
+  let arrivedAtFrame = 0;
+  let engineFrameAtCaptureStart = 0;
+  let capturedFrames = 0;
+  let trimmedFrames = 0;
+  try {
+    engine.setBacking(project.backing, t);
+    engine.setLayers(project, takeStore());
+    engine.start(countInFrom);
+    await engine.startCapture();
+    engineFrameAtCaptureStart = engine.frame();
+    // Past the downbeat, so there is a real take on the far side of the count-in to keep.
+    await new Promise((r) => setTimeout(r, 1600));
+    const capture = await engine.stopCapture();
+    arrivedAtFrame = capture?.arrivedAtFrame ?? 0;
+    capturedFrames = capture?.buffer.length ?? 0;
+    if (capture) trimmedFrames = trimToDownbeat(capture, loop).buffer.length;
+  } finally {
+    media.getUserMedia = realGetUserMedia;
+    engine.destroy();
+    osc.stop();
+    void source.close();
+  }
+
+  // In engine frames this lands within a fraction of a second of where the transport was when
+  // capture began — roughly 1.65 million for this project. As a context frame it would be the
+  // age of the context in samples, which has no relationship to it at all.
+  const errorFrames = Math.abs(arrivedAtFrame - engineFrameAtCaptureStart);
+
+  return {
+    countInStartsAt: countInFrom,
+    downbeatAt: loop,
+    engineFrameAtCaptureStart,
+    arrivedAtFrame,
+    errorFrames,
+    errorSeconds: +(errorFrames / rate).toFixed(3),
+    // Anything under half a second is the render-quantum and lead-time gap; a clock mismatch is
+    // out by the whole age of the context, which is orders of magnitude larger.
+    inEngineFrames: errorFrames < rate / 2,
+    // And the consequence: the trim now drops the count-in rather than sailing past it.
+    wouldTrimFrames: Math.round(loop - arrivedAtFrame),
+    trimsRatherThanSkips: loop - arrivedAtFrame > 0,
+    // And the consequence a person hears: what survives is what was played *after* the downbeat.
+    capturedFrames,
+    trimmedFrames,
+    droppedSeconds: +((capturedFrames - trimmedFrames) / rate).toFixed(2),
+    countInSeconds: +((loop - countInFrom) / rate).toFixed(2),
+    // What was dropped is the count-in, within a chunk of the recorder's own granularity.
+    dropIsTheCountIn:
+      Math.abs(capturedFrames - trimmedFrames - (loop - arrivedAtFrame)) < 4096,
+    takeSurvives: trimmedFrames > rate / 4,
+    pass:
+      errorFrames < rate / 2 &&
+      loop - arrivedAtFrame > 0 &&
+      trimmedFrames > rate / 4 &&
+      Math.abs(capturedFrames - trimmedFrames - (loop - arrivedAtFrame)) < 4096,
+  };
+}

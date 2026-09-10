@@ -217,6 +217,11 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
   let stream: MediaStream | undefined;
   let inputError: InputFailure | undefined;
   let recorder: Recorder | undefined;
+  /**
+   * Added to a captured chunk's context frame to get an engine frame. Set at `startCapture`; see
+   * the note there for why it cannot be computed at the stop.
+   */
+  let captureFrameOffset = 0;
 
   let originFrame = 0;
   /** `ctx.currentTime` corresponding to `originFrame`. Undefined when stopped. */
@@ -1011,13 +1016,34 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
     async startCapture() {
       // For a caller that never armed. A no-op once open, so the armed path has already paid.
       if (!(await engine.openInput())) return false;
+      /**
+       * **The two clocks meet here, and they are not the same clock.**
+       *
+       * The worklet stamps every chunk with `currentFrame`, which counts from when the
+       * *AudioContext* was created. Everything else in this engine counts from the transport's
+       * `originFrame`, re-anchored on every `start`. `Capture.arrivedAtFrame` is documented as an
+       * engine frame and was being handed back as a context one, so any caller comparing it
+       * against a transport frame was subtracting two different origins — see `stopCapture`.
+       *
+       * Taken now rather than at the stop, because by then the transport may already have
+       * stopped: `stop()` clears `anchorTime` and moves `originFrame`, so the mapping would be
+       * gone at exactly the moment it is needed. Nothing re-anchors during a take — seeking is
+       * refused and the tempo is locked — so one reading holds for the whole recording.
+       */
+      captureFrameOffset =
+        anchorTime === undefined || !ctx ? 0 : originFrame - anchorTime * ctx.sampleRate;
       recorder!.start();
       return true;
     },
 
     async stopCapture() {
       if (!recorder?.recording()) return undefined;
-      return recorder.stop();
+      const capture = await recorder.stop();
+      // Into engine frames, which is what the type has always claimed to return.
+      return {
+        ...capture,
+        arrivedAtFrame: Math.round(capture.arrivedAtFrame + captureFrameOffset),
+      };
     },
 
     setLayers(project, takes, recordingIntoLayerIndex) {

@@ -1058,6 +1058,28 @@ already stamped with the worklet's own frame, so the trim is arithmetic rather t
 returns the capture unchanged when there is nothing to drop, so the no-count-in path stays exactly
 what `verify-capture.ts` measures.
 
+**There are two clock spaces here and the trim spans both, which is how a bar of count-in reached
+the head of takes.** The worklet stamps chunks with `currentFrame` — frames since the
+*AudioContext* was created. Everything else in the engine counts from `originFrame`, re-anchored on
+every `start`. `engine.stopCapture` returned the recorder's number verbatim while
+`Capture.arrivedAtFrame` said "engine frame", so `trimToDownbeat`'s
+`downbeatFrame - arrivedAtFrame` subtracted two different origins. **The sign of the error decides
+what the user sees**: a context younger than the loop gives a huge drop and the take is discarded
+as silence; a context *older* — which is what a real user has, the page having been open a while —
+gives a negative drop, nothing is trimmed, and the count-in stays in the audio. Reported as "a
+considerable delay of more than one bar". `startCapture` now records `originFrame - anchorTime *
+sampleRate` and `stopCapture` adds it, converting once, at the boundary. It is taken at the *start*
+because `stop()` clears `anchorTime` and moves `originFrame` — the mapping is gone by the time the
+stop needs it — and nothing re-anchors mid-take, since seeking is refused and the tempo is locked.
+
+**A helper verified in isolation says nothing about the units its caller hands it.**
+`verify-count-in.ts`'s first claim passed throughout, because it chose both numbers itself and put
+them in the same space — it proved `trimToDownbeat`'s arithmetic, which was never wrong.
+`verifyCaptureFrames()` drives the real path instead (`openInput → startCapture → stopCapture`,
+with `getUserMedia` stubbed to an oscillator through a `MediaStreamAudioDestinationNode`) and
+asserts `arrivedAtFrame` against the engine's own frame at the start: error 0 frames, and 1.08 s
+dropped from a take with a 1 s count-in.
+
 **Bit-identity is the wrong bar for the drums-only window, and measuring is how that surfaced.**
 `verify-count-in.ts` first asserted the audio after the downbeat matched an ungated render exactly.
 It does not: ~16% of samples differ, at drum onsets. Not a timing error — correlation is best at

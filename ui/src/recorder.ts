@@ -17,7 +17,17 @@
 export type Capture = {
   readonly buffer: AudioBuffer;
   readonly frames: number;
-  /** Engine frame the first captured sample arrived on. Uncompensated: see the note above. */
+  /**
+   * Frame the first captured sample arrived on. Uncompensated: see the note above.
+   *
+   * **From a `Recorder` this is a CONTEXT frame** — the worklet stamps chunks with
+   * `currentFrame`, which counts from when the `AudioContext` was created. **From
+   * `engine.stopCapture` it is a TRANSPORT frame**, converted there.
+   *
+   * This used to say only "engine frame", and the engine returned the recorder's value verbatim.
+   * `trimToDownbeat` then subtracted a transport frame from a context one, which is how a bar of
+   * count-in reached the head of a take. Say which clock, every time.
+   */
   readonly arrivedAtFrame: number;
 };
 
@@ -181,6 +191,7 @@ export const MUSIC_CONSTRAINTS: MediaTrackConstraints & { latency?: number } = {
  * Returns the capture unchanged when nothing needs dropping, so the no-count-in path allocates
  * nothing and stays bit-identical to what `verify-capture.ts` measures.
  */
+/** Both arguments must be TRANSPORT frames — pass `engine.stopCapture`'s capture, not a raw one. */
 export function trimToDownbeat(capture: Capture, downbeatFrame: number): Capture {
   const drop = Math.round(downbeatFrame - capture.arrivedAtFrame);
   if (drop <= 0) return capture;
