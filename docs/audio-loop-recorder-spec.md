@@ -402,6 +402,98 @@ The microphone is never routed to the output, so there is no feedback path — b
 monitoring the drum track, chord bed and previous layers are all audible to the mic and will be
 captured into the new layer, compounding with every layer. Headphones matter; see §4.7.
 
+### The session category is a product decision, not a platform detail
+
+*Added 2026-09-10 from a device finding. Not in the original spec — flagged as an addition.*
+
+**The app declares itself a playback app, never an ambient one.** That is one sentence and it is
+the whole decision; everything below is what it costs and how each platform spells it.
+
+**Why it cannot be left at the default.** The ambient category is the one the iOS Ring/Silent
+switch governs, and a loop sketchpad that goes silent because a switch on the side of the phone is
+down is not behaving as a music app. Measured on an iPhone, 2026-09-10:
+
+| | silent ON | silent OFF |
+|---|---|---|
+| headphones | sounds | sounds |
+| phone speaker | **silent** | sounds |
+
+Headphones are unaffected, which is what made this expensive to find: §2.2 makes headphones the
+correct setup, so every device test used them and the app appeared to work in every category. See
+`docs/device-check.md` §0.
+
+**It is the same decision on every platform in `docs/platform-decision.md`**, which is why it is
+here in the spec and not in a browser note:
+
+| Platform | How it is spelled |
+|---|---|
+| Native / React Native | `AVAudioSession.setCategory(.playback)`, and `.playAndRecord` as §2.2 already has it |
+| Browser | `navigator.audioSession.type = 'playback'` |
+
+**The browser API needs feature detection and a device confirmation.** `navigator.audioSession`
+is WebKit's, and the exact Safari version that introduced it — and the later one that added
+`'play-and-record'` — must be checked on hardware rather than taken from this document. Where it is
+absent the app is simply blind, and falls back on the note at the end of this section.
+
+#### Two categories, not one
+
+- **`playback` whenever the app is only playing.**
+- **`play-and-record` while a take is running**, and back to `playback` at the stop.
+
+**Holding `play-and-record` permanently is the obvious simplification and it is refused**, because
+§2.3 says that category is where output routing stops being ours: output follows the input route,
+and `overrideOutputAudioPort` only chooses speaker or receiver. `docs/platform-decision.md` §6 is
+about exactly this risk — the reported iOS behaviour where beginning to record flips output to the
+built-in speaker, which would put the backing and every previous layer into the microphone and
+compound with each overdub. Sitting in that category while merely listening would extend the
+window in which that can happen from "during a take" to "always", for no gain.
+
+So the switch is tied to arming and stopping, which is where §3.5 already has a state change.
+
+#### When it is set
+
+**Inside the first gesture that starts sound, alongside the existing `resume()` — never at load.**
+Two reasons, one practical and one honest: WebKit wants a user activation for audio work, and a
+page that has made no sound yet claiming a playback session is a claim about an app that is not
+running. The engine already has exactly one such moment.
+
+#### What it costs, and why that is still right
+
+- **Other audio is interrupted.** Opening a project stops someone's podcast. For an app whose only
+  purpose is to make sound when you tap play, that is the expected behaviour and the alternative is
+  worse — but it is a real change and it is why this is a product decision.
+- **Audio continues when the app is backgrounded**, which is the same property that makes the
+  switch stop applying. Whether a *take* should survive backgrounding is a separate question and is
+  not answered here; §3.5's rule that stop and pause are the only two ways out of a take is about
+  navigation inside the app.
+- **The switch stops silencing it**, which is the point, and means a user who silenced their phone
+  deliberately can still be surprised. A music app is the category of app where that is understood.
+
+#### Detection is not possible, and should not be attempted
+
+There is no API that reports the switch, and there is no side channel: the context reports
+`running`, its clock advances, and nodes render normally. **The app cannot know it is inaudible.**
+Anything that looks like a detection heuristic is a guess, and a wrong guess here shows a warning to
+someone who can hear perfectly well.
+
+Where `navigator.audioSession` is unavailable, the fallback is therefore **a one-time note, not a
+detector**: the first time playback runs on a build that could not declare a category, a dismissible
+line near the transport saying to check the side switch. It never reappears. It may be suppressed
+when a headset is present — `enumerateDevices` can say so once microphone permission exists — but
+that is a refinement and not the feature.
+
+#### What has to be verified on a device before this is done
+
+None of it can be checked from a development machine.
+
+1. `playback` makes speaker output audible with the switch on silent.
+2. Arming still records, and **the speaker flip of §2.3 / platform-decision §6 does not become
+   worse** across all four output routes in `docs/device-check.md` §1.
+3. Returning to `playback` at the stop restores whatever route was in use before the take.
+4. The category survives backgrounding and returning, and a take is not left half-recorded by it.
+5. What actually happens on a browser or OS version without the API — that the fallback note is
+   what a user sees, rather than nothing.
+
 ## 2.3 Input, output and latency
 
 ### Input selection — well supported

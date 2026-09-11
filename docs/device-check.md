@@ -112,11 +112,11 @@ regardless, which is why every other website seems fine and this one does not �
 Audio end to end.
 
 **The app cannot detect it.** No API exposes the switch, and `AudioContext.state` reads `running`
-either way, so there is no signal to branch on. What *can* be done is remove the problem:
-`navigator.audioSession.type = 'playback'` (Safari 16.4+) moves the page out of the ambient
-category so the switch stops applying, the same way a music app behaves. That is a decision about
-how the app should behave in the background and against other apps' audio, not a bug fix, and it is
-not implemented.
+either way, so there is no signal to branch on. What *can* be done is remove the problem — declare a
+playback session rather than an ambient one, so the switch stops applying. **That is specified in
+§2.2 of the spec ("The session category is a product decision, not a platform detail") and is
+deliberately not implemented yet**; §2.2 also lists what has to be checked on a device first,
+because it interacts with the output-routing risk in §1 below.
 
 So: **check the switch first, and say which output you tested on in the result.** A report that
 does not name headphones or speaker cannot be acted on.
