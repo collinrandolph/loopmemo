@@ -898,7 +898,18 @@ different levels.
 
 **Unity is the midpoint, which is what makes it markable.** The tick sits *below* the track: drawn
 on it, the thumb hides it at exactly the value it exists to mark. Double tap returns to unity.
-`levelSlider` in `controls.ts` is the one copy — layer rows and backing rows share it.
+`levelSlider` in `controls.ts` is the one copy — layer rows, backing rows and the Edit Layer header
+share it.
+
+**Edit Layer had a hand-rolled copy, and being a copy is what made it destructive.** It kept
+`max="100"` when the range grew to `LEVEL_MAX`, so a layer set past unity on Playback loaded into an
+input that clamped it to 100 with no error, and **the first touch of the slider committed the
+clamp** — a level set on one screen, silently taken away by another. Its icon had the matching
+`level * 100` bug below. Neither was a decision: the two commits that added the range changed
+`controls.ts`, `playback.ts` and `backing-rows.ts`, and a fourth mount nobody knew was a mount went
+on doing the old thing. **A shared control is not about the tick and the double tap; it is about
+where the next change lands.** The master slider is the only remaining hand-rolled range that edits
+a level, and it is deliberate — 0..1, unity at the right-hand end (§4.2).
 
 **The volume icon spans the same range, so unity is half fill** (`levelPercent`). `VolumeControl`
 divides by 100 and clamps, so passing `level * 100` saturated it at unity and every decibel of the

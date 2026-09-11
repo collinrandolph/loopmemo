@@ -29,7 +29,7 @@ import {
   playheadAt,
   stop,
 } from '../../src/domain/transport.ts';
-import { SWIPE_THRESHOLD } from './controls.ts';
+import { SWIPE_THRESHOLD, levelPercent, levelSlider } from './controls.ts';
 import { SWIPE_X_ICON, SWIPE_Y_ICON } from './icons.ts';
 import { trackDrag } from './gesture.ts';
 import { helpControl } from './help.ts';
@@ -271,9 +271,23 @@ export function editLayerScreen(opts: {
   footer.append(help.node, opsBtn, doneBtn);
   root.append(header, grid, drawer, footer);
 
+  /**
+   * The same control as the Playback row's, because it edits the same `layer.level`.
+   *
+   * This was a hand-rolled `<input type="range">` with `max="100"`, and it was **destructive**.
+   * `LEVEL_MAX` is 2, so a layer set past unity on Playback loaded into an input that clamped it to
+   * 100 with no error, and the first touch of the slider committed that clamp — a level set on one
+   * screen, taken away by another. The icon had the matching bug: `level * 100` saturates
+   * `VolumeControl`, which divides by 100 and clamps, so it read identically at 1.0 and at 2.0.
+   *
+   * Neither was a decision. `b583528` gave the fader its +6 dB and `31ade6d` gave the icon the
+   * whole range, and both changed `controls.ts`, `playback.ts` and `backing-rows.ts` — not this
+   * file, because a hand-rolled copy is not where anyone looks. **That is the argument for the
+   * shared control, not the tick and the double tap it also brings.**
+   */
   const volume = LR.VolumeControl({
     large: true,
-    level: () => layer.level * 100,
+    level: () => levelPercent(layer.level),
     muted: () => layer.muted,
     onToggle() {
       layer = { ...layer, muted: !layer.muted };
@@ -282,18 +296,18 @@ export function editLayerScreen(opts: {
       volume.update();
     },
   });
-  const slider = el('input') as HTMLInputElement;
-  slider.type = 'range';
-  slider.min = '0';
-  slider.max = '100';
-  slider.value = String(Math.round(layer.level * 100));
-  slider.addEventListener('input', () => {
-    layer = { ...layer, level: Number(slider.value) / 100 };
-    volume.update();
-    opts.onChange(layer);
-    syncLayers();
-  });
-  controls.append(volume, slider);
+  controls.append(
+    volume,
+    levelSlider(
+      () => layer.level,
+      (next) => {
+        layer = { ...layer, level: next };
+        volume.update();
+        opts.onChange(layer);
+        syncLayers();
+      },
+    ),
+  );
 
   /**
    * Push this screen's edit at the engine, which holds a snapshot and re-reads nothing on its

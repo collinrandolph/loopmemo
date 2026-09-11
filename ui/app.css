@@ -362,7 +362,10 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
   display: flex; align-items: center; gap: 12px;
   margin-left: auto; align-self: center;
 }
-.header-controls input[type=range] { width: 120px; }
+/* `.lr-level` is `flex: 1` where it lives in a panel row and fills one. In this header it is one
+   item beside a round button, so it is given the width the bare input used to have — the control is
+   shared with Playback, the size is not. */
+.header-controls .lr-level { flex: none; width: 120px; }
 
 /* --- Project Library; lifted from docs/mockups/project-library-mockup.html --- */
 /* No colour here — it comes from the header ink rule below, with every other header label.
