@@ -24,12 +24,13 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
 .app-nav {
   display: flex; gap: 6px; padding: 10px 20px 0;
 }
+/* Shape only. Colour comes from the pair near the bottom of this file, which is the same
+   specificity and later — the white background, border and ink that used to be here, and a whole
+   `.is-active` rule, had not painted since the colourways landed. */
 .app-nav button {
   font-size: 12px; padding: 6px 12px; border-radius: 6px; cursor: pointer;
-  background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.24);
-  color: #fff; font-weight: 500; font-family: inherit;
+  font-weight: 500; font-family: inherit;
 }
-.app-nav button.is-active { background: rgba(255,255,255,.94); color: var(--lr-ink-on-light); border-color: transparent; }
 
 .grid { padding: 20px; }
 
@@ -89,13 +90,21 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
 .ax { display: none; font-style: normal; color: var(--lr-hint); font-weight: 500; }
 .is-compact-tiles .swipe-hint { display: none; }
 .is-compact-tiles .tile-label { padding: 6px 6px 0; font-size: 15px; align-items: center; }
-/* `inline-flex` with `align-items: center` rather than a vertical-align nudge: an 11px glyph
+/* `inline-flex` with `align-items: center` rather than a vertical-align nudge: an 11px mark
    against 12px and 15px type, and centring the two boxes is exact where `middle` is an
    approximation off the parent's x-height. */
 .is-compact-tiles .pass,
 .is-compact-tiles .rel { display: inline-flex; align-items: center; gap: 4px; }
-.is-compact-tiles .ax { display: block; font-size: 11px; line-height: 1; }
+.is-compact-tiles .ax { display: flex; }
 .is-compact-tiles .tile.is-selected .ax { color: var(--lr-hint-sel); }
+/* Sized in px, not `em`: it is a drawing beside the type rather than a character in it, and the
+   two labels it sits in are 12px and 15px. `currentColor` keeps both arrows on whatever the label
+   or the hint strip is already painting, including the selected tile's brighter hint. */
+.ax svg, .swipe-hint svg {
+  display: block; fill: none; stroke: currentColor; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.ax svg { width: 11px; height: 11px; }
 
 /* always visible: touch has no hover, so a hover-gated hint never appears on
    the platform the gesture is designed for */
@@ -104,13 +113,23 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
   justify-content: space-between; font-size: 9px; letter-spacing: .03em;
   color: var(--lr-hint); pointer-events: none; transition: color .15s;
 }
+/* The arrow and its word are one hint, so the pair centres on the drawing rather than the word's
+   line box — the same reason the wheels' `↕` became an icon. */
+.hint-pass, .hint-bar { display: inline-flex; align-items: center; gap: 3px; }
+.hint-pass svg, .hint-bar svg { width: 9px; height: 9px; }
 .tile.is-selected .swipe-hint { color: var(--lr-hint-sel); }
 
 /* One pass for this bar means the vertical axis has nowhere to go, so it stops advertising
-   itself. The horizontal hint stays and takes the left, which is the axis it belongs to.
-   Both forms of the hint go: the strip on a tall tile and the arrow folded into the label on a
-   short one. */
+   itself. Both forms of the hint go: the strip on a tall tile and the arrow folded into the
+   label on a short one.
+
+   **The bar hint does not move when it does.** `space-between` on two children puts the survivor
+   at the start, so hiding the pass hint slid `↔ bar` from the right edge to the left — the same
+   label in two places depending on a property of the bar under it, which reads as a different
+   control rather than as one hint with its neighbour gone. `margin-left: auto` pins it right in
+   both cases and makes `justify-content` irrelevant. */
 .tile.is-single-pass .hint-pass { display: none; }
+.hint-bar { margin-left: auto; }
 .tile.is-single-pass .pass .ax { display: none; }
 
 /* --- Playback screen; lifted from docs/mockups/playback-screen-mockup.html --- */
@@ -120,33 +139,46 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
    they are what the project *is*, lighter than the name because they are not what it is
    called. `margin-left: auto` rather than `space-between` so they stay right-aligned on the
    line of their own they take when a long name wraps them. */
+/* No colour here: `.lr-header .lr-settings` is two classes and wins, and this rule's own
+   `rgba(255,255,255,.86)` had not applied since the header ink rule was added. */
 .lr-settings {
-  font-size: 15px; font-weight: 600; color: rgba(255,255,255,.86);
+  font-size: 15px; font-weight: 600;
   margin-left: auto; white-space: nowrap;
 }
 .lr-stats { margin-top: 2px; display: flex; align-items: center; gap: 10px; }
 .stats-text { flex: 1; min-width: 0; }
+/* The gear ends the title line and takes the auto margin, so it is the right edge of the header.
+   `.lr-title-row` aligns on the baseline and an icon has none worth aligning to, so it centres
+   against the name instead.
+   The tempo sits on the stats line under it, right-aligned: `.stats-text` already takes the free
+   space with `flex: 1`, so this only has to stop growing and stay on one line. Both lines are the
+   same 9px mono, so the right column reads as one stack rather than two labels of different
+   sizes that happen to be near each other. */
+.lr-title-row .header-gear { align-self: center; margin-left: auto; }
+.lr-stats .lr-settings { flex: 0 0 auto; margin-left: 10px; white-space: nowrap; }
 /* The way into project settings. Sized and coloured like the help control rather than like a
-   button, because it is a route rather than an action — and pushed to the right of the stats it
-   sits beside, where the row was otherwise empty. */
+   button, because it is a route rather than an action. */
 .header-gear {
   flex: none; padding: 0; border: none; background: none; cursor: pointer; line-height: 0;
   -webkit-tap-highlight-color: transparent;
 }
 .header-gear svg {
   width: 19px; height: 19px; display: block;
-  fill: none; stroke: rgba(255,255,255,.62); stroke-width: 2;
+  /* The same ink as the tempo and bar count it now sits beside — the line reads as one thing
+     rather than as a label with a brighter control stuck on the end. Hardcoded white at 62%
+     before, which was the pre-theme value and did not follow the colourway. */
+  fill: none; stroke: var(--lr-ink-dim); stroke-width: 2;
   stroke-linecap: round; stroke-linejoin: round;
   transition: stroke .12s;
 }
-.header-gear:hover svg { stroke: #fff; }
+.header-gear:hover svg { stroke: var(--lr-ink); }
 /* A pass in progress owns the screen, not only the input: every route off it is disabled for
    the length of the take, because reaching one tears the screen down and takes the capture
    worklet with it. `.lr-btn:disabled` covers Projects, Export and Edit Layer; the gear and the
    shell's tab bar are not buttons of that kind, so they say it here. Matched to the kit's .35. */
 .header-gear:disabled { cursor: default; }
 .header-gear:disabled svg,
-.header-gear:disabled:hover svg { stroke: rgba(255,255,255,.22); }
+.header-gear:disabled:hover svg { stroke: var(--lr-ink-faint); opacity: .5; }
 .app-nav button:disabled { opacity: .35; cursor: default; }
 
 /* Fixed label column: the name and the pass badge swap inside one box, so a lane
@@ -255,8 +287,8 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
 /* The panel below belongs to this chord and to no other, so the slot has to say which one it
    is answering — the three fields are otherwise unlabelled as to their subject. */
 .chord.is-editing {
-  background: rgba(255,255,255,.9); border-color: transparent;
-  color: var(--lr-ink-on-light);
+  background: var(--lr-play-bg); border-color: transparent;
+  color: var(--lr-play-ink);
 }
 
 /* The chord fields are per-chord; volume and tone are the track's and stay put. The rule is
@@ -333,9 +365,10 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
 .header-controls input[type=range] { width: 120px; }
 
 /* --- Project Library; lifted from docs/mockups/project-library-mockup.html --- */
-.storage { font-size: 11px; color: rgba(255,255,255,.62); margin-left: auto;
-           font-variant-numeric: tabular-nums; }
-.sort-note { font-size: 11px; color: rgba(255,255,255,.5); margin-top: 6px; }
+/* No colour here — it comes from the header ink rule below, with every other header label.
+   It was hardcoded white at 62%, which predated the theme and so read a shade off the same
+   label on the Playback screen in all four colourways. */
+.storage { font-size: 11px; margin-left: auto; font-variant-numeric: tabular-nums; }
 .new-btn { margin-top: 14px; width: 100%; justify-content: center; display: flex;
            align-items: center; gap: 8px; padding: 12px; font-size: 13px; }
 .new-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor;
@@ -350,27 +383,37 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
 /* Six, not the kit five: see THUMB_HEIGHT in library.ts — even heights survive snapEven. */
 .library .lr-wave--thumb { height: 6px; }
 
-.p-main { flex: 1 1 auto; min-width: 0; }
-/* `min-width: 0` on both, and the tags wrap rather than push: a flex item's default
-   `min-width: auto` refuses to shrink below its content, so a long name plus two tags widened
-   the row instead of ellipsising inside it. */
+/* Three stacked lines — name, what it is, how big and how recent — per the design study's
+   `.m-pmain`. A grid with one gap rather than per-child margins, so the rhythm is one number. */
+.p-main { flex: 1 1 auto; min-width: 0; display: grid; gap: 3px; }
+/* `min-width: 0` and the tag wraps rather than pushes: a flex item's default `min-width: auto`
+   refuses to shrink below its content, so a long name plus a tag widened the row instead of
+   ellipsising inside it. */
 .p-name { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 7px;
-          min-width: 0; flex-wrap: wrap; }
-.p-meta { font-size: 11px; color: var(--lr-ink-dim); margin-top: 3px; }
-.p-right { font-size: 11px; color: var(--lr-ink-faint); text-align: right; min-width: 74px;
-           font-variant-numeric: tabular-nums; }
-/* The readouts swap in one fixed box, so the row does not change width when a preview starts. */
-.lr-row.is-playing .p-size { display: none; }
-.p-time { display: none; color: var(--lr-ink); }
-.lr-row.is-playing .p-time { display: block; }
+          min-width: 0; flex-wrap: wrap; line-height: 1.25; }
+.p-meta { color: var(--lr-ink-faint); font-variant-numeric: tabular-nums; }
+/* The second line carries the two facts you scan for, so it steps up one level of ink. */
+.p-meta--b { color: var(--lr-ink-dim); }
+/* The readouts swap in place, so the line does not reflow when a preview starts. Size and
+   elapsed time are both tabular, so the text after them does not shift either. */
+/* The position readout, in its own column at the end of the row and centred against the card.
+   **`visibility`, not `display`** — the space is reserved whether or not anything is playing, so
+   starting a preview cannot reflow the row under the finger that just tapped play, and the meta
+   above can never run under it. Tabular, so the row does not twitch as the seconds tick. */
+.p-time {
+  visibility: hidden; align-self: center; flex: 0 0 auto;
+  min-width: 34px; text-align: right;
+  color: var(--lr-ink); font-variant-numeric: tabular-nums;
+}
+.lr-row.is-playing .p-time { visibility: visible; }
 
+/* Size only. The background and ink come from `.lr-play` below, which is the same specificity
+   and later in the file — the white pair that used to be here never painted. */
 .lr-play--sm { width: 34px; height: 34px; flex-basis: 34px;
-               background: rgba(255,255,255,.14); color: #fff;
-               border: 1px solid rgba(255,255,255,.28); }
-.lr-play--sm:hover { background: rgba(255,255,255,.26); }
+               border: 1px solid var(--lr-label-line); }
+.lr-play--sm:hover { filter: brightness(1.04); }
 .lr-play--sm svg { width: 13px; height: 13px; }
-.lr-row.is-playing .lr-play--sm { background: rgba(255,255,255,.92);
-                                  color: var(--lr-ink-on-light); border-color: transparent; }
+.lr-row.is-playing .lr-play--sm { border-color: transparent; }
 
 .chev { width: 14px; height: 14px; flex: 0 0 14px; fill: none; stroke: var(--lr-ink-faint);
         stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
@@ -390,7 +433,7 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
 .lr-row.is-confirming .acts { display: none; }
 .lr-row.is-confirming .confirm { display: flex; }
 .confirm-text { font-size: 12px; color: var(--lr-ink); flex: 1; min-width: 220px; line-height: 1.5; }
-.confirm-text b { color: #fff; }
+.confirm-text b { color: var(--lr-ink); }
 .hint { font-size: 11px; color: var(--lr-ink-faint); flex-basis: 100%; margin-top: 2px; }
 
 /* --- Export screen (§4.5) --------------------------------------------------- */
@@ -417,7 +460,7 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
 .export-item.is-on .export-check { background: var(--lr-accent); border-color: transparent; }
 .export-item.is-on .export-check::after {
   content: ''; position: absolute; left: 5px; top: 1px; width: 5px; height: 10px;
-  border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg);
+  border: solid var(--lr-play-ink); border-width: 0 2px 2px 0; transform: rotate(45deg);
 }
 
 .export-text { flex: 1; min-width: 0; }
@@ -434,8 +477,8 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
    note — the record colour, because both are "the thing you asked for did not happen". */
 .export-error {
   margin-top: 10px; padding: 8px 10px; border-radius: 8px;
-  color: #fff; background: rgba(255,107,107,.16);
-  box-shadow: inset 0 0 0 1px rgba(255,107,107,.45);
+  color: var(--lr-ink); background: rgba(var(--lr-rec-rgb), .16);
+  box-shadow: inset 0 0 0 1px rgba(var(--lr-rec-rgb), .45);
 }
 /* Format is inert when only the raw copy is selected — nothing is being rendered to choose a
    format for. Dimmed rather than removed, so the row does not jump in and out of the layout. */
@@ -481,44 +524,65 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
   -webkit-tap-highlight-color: transparent;
 }
 .lr-help svg { transition: stroke .12s; }
-.lr-help:hover svg { stroke: #fff; }
 
 /* Fixed to the viewport, not to `.lr-screen`, which clips its own overflow. Bottom-anchored:
    the control that opens it is in the footer, and a thumb is already down there. */
+/* The sheet is a card, so it takes the card's surface and ink — the hardcoded violet backdrop and
+   the four `#fff`/`rgba(255,255,255,…)` values here all predated the colourways and stayed put
+   while everything around them moved. The backdrop darkens the header's own hue instead. */
 .lr-help-overlay {
   position: fixed; inset: 0; z-index: 50; padding: 16px;
-  background: rgba(18,10,38,.6);
+  background: rgba(0,0,0,.55);
   display: flex; align-items: flex-end; justify-content: center;
   animation: lr-help-fade .16s ease-out;
 }
 .lr-help-sheet {
   width: 100%; max-width: 520px; max-height: 76vh; overflow-y: auto;
   background: var(--lr-tile); color: var(--lr-ink);
-  border: 1px solid rgba(255,255,255,.18); border-radius: 12px;
-  padding: 12px 16px 16px; box-shadow: 0 12px 44px rgba(0,0,0,.45);
+  border: 1px solid var(--lr-label-line); border-radius: 12px;
+  padding: 14px 16px 18px; box-shadow: 0 12px 44px rgba(0,0,0,.45);
   animation: lr-help-rise .2s cubic-bezier(.22,.9,.3,1);
 }
+/* The title reads as a section label, like `Backing tracks` and `Layers` — same 9px mono, same
+   letter-spacing — because that is what it is: the name of the thing under it. */
 .lr-help-head {
   display: flex; align-items: center; justify-content: space-between;
-  font-size: 13px; font-weight: 600; color: #fff; margin-bottom: 10px;
+  font-size: 9px; font-weight: 400; letter-spacing: .2em; text-transform: uppercase;
+  color: var(--lr-ink-dim);
+  padding-bottom: 10px; margin-bottom: 12px; border-bottom: 1px solid var(--lr-label-line);
 }
 .lr-help-close {
   background: none; border: none; color: var(--lr-ink-dim); cursor: pointer;
   font-size: 22px; line-height: 1; padding: 0 4px; font-family: inherit;
+  letter-spacing: 0;
 }
-.lr-help-close:hover { color: #fff; }
-.lr-help-body { display: grid; gap: 12px; }
-.lr-help-text { font-size: 12px; line-height: 1.7; color: rgba(255,255,255,.82); }
+.lr-help-close:hover { color: var(--lr-ink); }
+.lr-help-body { display: grid; gap: 16px; }
+.lr-help-text { font-size: 12px; line-height: 1.7; color: var(--lr-ink-dim); }
+
+/* The one line worth reading first. Full ink is enough to carry that — it had a record-coloured
+   rule down its left as well, which read as a warning on a sentence that is not one. */
+.lr-help-lede { font-size: 12.5px; line-height: 1.6; color: var(--lr-ink); }
+/* Section headings match the panel labels on the screen behind, so the sheet reads as part of the
+   app rather than as a document that opened on top of it. */
+.lr-help-h {
+  font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--lr-ink); margin: 0 0 6px;
+}
+.lr-help-list { margin: 0; padding-left: 15px; display: grid; gap: 5px; }
+.lr-help-list li { font-size: 12px; line-height: 1.55; color: var(--lr-ink-dim); }
+.lr-help-list li::marker { color: var(--lr-ink-faint); }
+.lr-help-body b { color: var(--lr-ink); font-weight: 600; }
 .lr-help-body .legend { margin-top: 0; }
 
 @keyframes lr-help-fade { from { opacity: 0 } to { opacity: 1 } }
 @keyframes lr-help-rise { from { transform: translateY(14px) } to { transform: none } }
 
 .legend {
-  font-size: 12px; color: rgba(255,255,255,.8); margin-top: 14px; padding: 12px;
+  font-size: 12px; color: var(--lr-ink-dim); margin-top: 14px; padding: 12px;
   background: rgba(255,255,255,.1); border-radius: 6px; line-height: 1.6;
 }
-.legend strong { color: #fff; }
+.legend strong { color: var(--lr-ink); }
 .swatch { display: flex; height: 10px; border-radius: 999px; overflow: hidden; margin: 8px 0; }
 .swatch i { flex: 1; }
 
@@ -527,58 +591,31 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
    take is wasted, quiet enough not to look like a permanent part of the header. */
 .input-note {
   margin: 8px 0 0; padding: 7px 10px; border-radius: 6px;
-  background: rgba(255, 138, 128, .16); border: 1px solid rgba(255, 138, 128, .34);
-  color: #ffd9d4; font-size: 12px; line-height: 1.45;
+  background: rgba(var(--lr-rec-rgb), .16); border: 1px solid rgba(var(--lr-rec-rgb), .34);
+  color: var(--lr-ink); font-size: 12px; line-height: 1.45;
 }
 
 /* Waiting on the microphone prompt. The dot pulses in the record colour without going solid:
    the intent is real, the permission is not granted yet, and the row has not armed. */
 .lr-row.is-pending .lr-rec {
-  background: rgba(255,107,107,.45);
+  background: rgba(var(--lr-rec-rgb), .45);
   animation: lr-pulse 1s ease-in-out infinite;
   cursor: progress;
 }
 
 /* ------------------------------------------------ one layer claims the input -- */
-/* The kit hints an empty layer whose panel is open by tinting its record dot the *record*
-   colour and pulsing a halo out of it. That is a good prompt while nothing is armed and a bad
-   one the moment something is: the hint and the armed state are the same colour and both
-   animate, so opening three empty layers and arming one produced three dots that all looked
-   live, with nothing to say which take was about to happen.
+/* Nothing is needed here any more, and the deletion is the point.
 
-   While anything is armed, every other record control drops back to neutral. It stays visible
-   and tappable — arming a different layer is still one tap, and that tap disarms the first (see
-   `onPointerDownAnywhere`) — it just stops claiming to be the one.
+   All of it — a neutral override for non-armed dots, its hover, a restatement of the armed
+   dot, a restatement of the recording dot — existed to out-specify one kit rule: the red
+   pulsing hint on an empty layer whose panel was open. Four classes beat `.is-armed`'s three,
+   so the row about to be recorded was the palest, stillest thing on screen, and every open
+   empty layer looked as live as it did.
 
-   The kit already does the stronger version during recording, hiding the other dots outright
-   while keeping their space so nothing shifts. That is deliberately left alone: a pass in
-   progress owns the input, and there is nothing useful to tap. */
-.lr-rows.is-arming .lr-row:not(.is-armed) .lr-rec {
-  background: rgba(255, 255, 255, .22);
-  animation: none;
-  box-shadow: none;
-}
-/* The hint outranks the kit's own hover rule, so the neutral state needs its hover back. */
-.lr-rows.is-arming .lr-row:not(.is-armed) .lr-rec:hover {
-  background: rgba(255, 255, 255, .34);
-}
-
-/* And the armed row has to look armed, which it did not.
-   `.lr-row.is-empty.is-open .lr-rec` is four classes and `.lr-row.is-armed .lr-rec` is three,
-   so on an empty layer with its panel open — which is the *normal* way to arm one — the hint
-   won the background and the dot stayed at the hint's 55% red instead of the full record
-   colour. The kit then switches the animation off for that combination, so the armed dot did
-   not pulse either. The row about to be recorded was the palest, stillest thing on screen.
-   Recording had the same problem: it kept its square shape and lost its colour. */
-.lr-rows.is-arming .lr-row.is-armed .lr-rec {
-  background: var(--lr-rec);
-  animation: lr-pulse 1.4s ease-in-out infinite;
-  box-shadow: none;
-}
-.lr-rows.is-capturing .lr-row.is-recording .lr-rec {
-  background: var(--lr-rec);
-  box-shadow: none;
-}
+   The hint is gone from the kit (a user reported it reading as armed on a row that was not),
+   so the kit's own two- and three-class state rules win unopposed and say the right things.
+   The kit's `is-capturing` rule, which hides other dots outright during a take, is untouched:
+   a pass in progress owns the input and there is nothing useful to tap. */
 
 /* A choice this build cannot honour. Visibly present and visibly not selectable — removing it
    would say "never", and the format is fine on a native platform. */
@@ -607,9 +644,8 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
   .lr-screen { border-radius: 0; box-shadow: none; }
 
   .lr-header { padding: 14px 12px 10px; }
-  .lr-section-label { padding: 0 12px; }
-  .lr-rows { padding: 4px 12px 14px; }
-  .backing { padding: 0 12px 6px; }
+  /* The row and heading rhythm is NOT here — see the media block beside the base rules further
+     down. Putting it here loses to them on source order, which is the hazard described above. */
   .lr-footer { padding: 10px 12px; }
   .grid { padding: 12px; }
   .lr-panel-inner { padding: 10px; }
@@ -639,14 +675,12 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
      variable and put the dead column back. */
   .layer-name { max-width: 64px; }
 
-  /* The library row is five columns wide and the mockup sizes them for a 760px card. On a
-     phone the metadata was down to ~65px and wrapping to five lines, so the two fixed columns
-     either side of it give ground: the thumbnail is still a colour signature at 56, and the
-     size readout only ever holds "24.7 MB". */
-  .library .lr-rows { padding: 6px 12px 14px; }
+  /* The library row was five columns and the mockup sized them for a 760px card, so on a phone
+     the metadata was down to ~65px and wrapping to five lines. It is three columns now — the
+     size moved into the meta itself — and the thumbnail still gives ground, being a colour
+     signature at 56 as much as at 84. (`.library .lr-rows` is set once, above.) */
   .library .lr-row-head { gap: 10px; padding: 10px; }
   .thumb { width: 56px; flex-basis: 56px; }
-  .p-right { min-width: 52px; }
   .library .lr-panel-inner { padding: 0 10px 10px; }
   .layer-ops { padding: 0 12px; }
   .is-ops-open .layer-ops { padding: 10px 12px; }
@@ -740,14 +774,22 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
    backwards is how a control disappears.
    ========================================================================= */
 
-body { font-family: 'Hanken Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+/* `.ax` used to be named here because it was an arrow *glyph* living inside a mono element —
+   `.tile-label` — so it inherited the mono face while the tall tiles' `.swipe-hint` kept the body
+   one: the same character drawn two ways depending on how tall the tile happened to be. Both axis
+   arrows are SVG now, which settles that for good and settled a worse one besides — iOS resolved
+   `↔` to Apple Color Emoji, since no face in this stack carries it. **A font stack is not a
+   guarantee that a character exists in it.** `.ax` stays listed because it still holds no text but
+   inherits nothing useful from mono, and dropping it from the rule would be a silent change. */
+body, .ax { font-family: 'Hanken Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
 
 /* Data rather than prose: counts, times, sizes, pass numbers. **Mono only at 9–11px** — it is
    a wider face, and at body size the meta lines wrap where the sans did not. The swipe hints are
    deliberately NOT mono: they are arrow glyphs, and the body stack has the symbol fallback. */
 .lr-meta, .lr-position, .lr-settings, .stats-text, .p-meta, .p-size, .p-time, .storage,
 .lr-pass-badge, .tile-label, .export-bytes, .export-files, .export-size,
-.setting-figure, .setting-figures, .lr-btn, .lr-chip, .app-nav button, .lr-section-label {
+.setting-figure, .setting-figures, .lr-btn, .lr-chip, .app-nav button, .lr-section-label,
+.lr-help-head {
   font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
   font-variant-numeric: tabular-nums;
 }
@@ -775,12 +817,36 @@ body { font-family: 'Hanken Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe 
 
 /* Rows and tiles are cards ON the light body, so they keep the cream ink. */
 .lr-row, .tile { color: var(--lr-ink); }
-.lr-rows, .backing { padding: 10px 14px 14px; display: flex; flex-direction: column; gap: 8px; }
+/* Spacing from the design study (`.m-rows`, `.m-plist`, `.m-sec`). The cards are the content, so
+   the gap between them is a seam and not a margin — 8px read as a list of separate things, where
+   2px reads as one stack. The breathing room moves to the section headings, which is what makes
+   Backing tracks and Layers legible as groups rather than as more rows. */
+.lr-rows, .backing { padding: 0 14px; display: flex; flex-direction: column; gap: 2px; }
+/* The library is one ungrouped list with no heading above it, so it takes the space back at the
+   top and opens its gap by a hair — cards there are three lines tall and need the separation. */
+.library .lr-rows { padding: 12px 14px 4px; gap: 3px; }
 .lr-row { border-radius: 10px; }
 .lr-row-head { padding: 9px 12px; }
 
 /* --- ink on the light body ------------------------------------------------ */
-.lr-section-label { color: var(--lr-label-ink); opacity: .75; padding-top: 4px; }
+/* Space above, close below: the heading belongs to the rows under it, so the gap that separates
+   one group from the previous one has to be clearly larger than the gap it leaves before its own
+   content. `padding-top` alone could not express that, and the kit's `padding: 0 20px` had to be
+   overridden anyway now that the body owns the horizontal rhythm. */
+.lr-section-label { color: var(--lr-label-ink); opacity: .75; padding: 0 14px; margin: 15px 0 7px; }
+
+/* The same rhythm at 12px, and it has to live HERE rather than in the phone block near the top
+   of this file. A media query carries no extra specificity, so an equal-specificity base rule
+   further down simply wins — which is what happened: the phone was computing 14px padding and a
+   15px heading margin from the rules above, and the block up there was inert. That file-wide
+   trap is documented at the block itself; this is the second time it has bitten.
+   It restates the gaps as well as the padding for the same reason: overriding only padding would
+   leave the phone on whichever gap the base rule happened to carry. */
+@media (max-width: 640px) {
+  .lr-section-label { padding: 0 12px; margin: 14px 0 6px; }
+  .lr-rows, .backing { padding: 0 12px; gap: 2px; }
+  .library .lr-rows { padding: 10px 12px 4px; gap: 3px; }
+}
 .lr-footer { border-top: 1px solid var(--lr-label-line); color: var(--lr-label-ink); }
 /* The Export screen straddles both surfaces, so it is split by where a thing is painted rather
    than by its name. `.export-title` / `.export-detail` / `.export-files` / `.export-size` are
@@ -792,7 +858,7 @@ body { font-family: 'Hanken Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe 
 /* Inside the header everything is on the dark surface and inherits the cream, so nothing here
    may take a body colour — that is how a title turns dark-on-dark and disappears. */
 .lr-header .lr-title { color: var(--lr-ink); }
-.lr-header .sort-note, .lr-header .lr-meta, .lr-header .lr-settings { color: var(--lr-ink-dim); }
+.lr-header .lr-meta, .lr-header .lr-settings, .lr-header .storage { color: var(--lr-ink-dim); }
 
 /* The other direction of the same mistake, and the more common one: a token named for its role
    rather than its surface gets reused on the opposite surface and disappears. `.setting-figure`
@@ -817,7 +883,7 @@ body { font-family: 'Hanken Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe 
 .lr-chip.is-active { background: var(--lr-label-strong); color: var(--lr-ink); }
 /* Chips inside a card are on the dark side and keep the card's vocabulary. */
 .lr-row .lr-chip { background: rgba(255,255,255,.10); color: var(--lr-ink-dim); }
-.lr-row .lr-chip.is-active { background: rgba(255,255,255,.92); color: var(--lr-ink-on-light); }
+.lr-row .lr-chip.is-active { background: var(--lr-play-bg); color: var(--lr-play-ink); }
 
 /* The tile's pass number is where the accent lives on the Edit Layer grid. */
 .tile-label .pass { color: var(--lr-ink-pass); }
@@ -831,7 +897,9 @@ body { font-family: 'Hanken Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe 
    the real accent is nearly grey and four near-greys would be indistinguishable as a control.
    The selected ring is drawn in two shadows so it reads on any of the four body colours: a
    gap in the body colour, then the line. */
-.theme-pick { display: flex; gap: 9px; align-items: center; }
+/* `margin-left: auto` because it is now the footer's only child — the help control used to hold
+   the left end and `space-between` did the rest, so removing it would have slid the dots left. */
+.theme-pick { display: flex; gap: 9px; align-items: center; margin-left: auto; }
 .theme-dot {
   width: 17px; height: 17px; padding: 0; border: none; border-radius: 50%;
   cursor: pointer; appearance: none;
@@ -847,11 +915,18 @@ body { font-family: 'Hanken Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe 
 /* Reported from an iPhone: double-tapping any section zooms, and on a screen made almost entirely
    of swipe targets a stuck zoom makes the app unnavigable.
 
-   `touch-action: manipulation` is the part that actually works on iOS, which has ignored
-   `user-scalable=no` since iOS 10. It means "auto, minus double-tap zoom". Touch-action is not
-   inherited, but the browser intersects the values from the touched element up through its
+   `touch-action: manipulation` is the part that works on iOS *outside the tiles*, which have
+   ignored `user-scalable=no` since iOS 10. It means "auto, minus double-tap zoom". Touch-action is
+   not inherited, but the browser intersects the values from the touched element up through its
    ancestors, so setting it here covers every descendant — and the tiles' `touch-action: none`
    still wins where it is set, because none is the stricter value.
+
+   **And on the tiles that was not enough.** Reported from an iPhone a second time, after this
+   rule shipped: double-tapping a slot still zoomed the viewport onto it, `touch-action: none`
+   notwithstanding. The declaration a tile carries is the *stricter* value and WebKit ran its
+   double-tap recogniser through it anyway. `gesture.ts` prevents the second `touchend`, which is
+   what actually stops it; this rule stays because it is what covers everything that is not a
+   gesture surface, and because `none` is still what stops a swipe from panning the page.
 
    Deliberately a whole-app rule and not per-element: the report was "throughout the app", and a
    list of elements is a list to keep in sync with the markup.
@@ -865,3 +940,169 @@ html, body { touch-action: manipulation; }
    out. This is the project name field, and it was 15px. The size is not a design choice worth a
    permanent zoom. */
 .setting-name { font-size: 16px; }
+
+/* --- three colour corrections -------------------------------------------- */
+/* New project takes the play button's colour rather than the accent. It is the primary action on
+   the Library and it sits on the dark header, where the near-grey accent was the quietest thing
+   in the room; the light neutral is rung 1 of the study's prominence ladder, and the play buttons
+   below it already use exactly that pair. Scoped to `.new-btn` — Export, Done and Save are rung 4
+   and stay on the accent. */
+.new-btn { background: var(--lr-play-bg); color: var(--lr-play-ink); border-color: transparent; }
+.new-btn:hover { background: var(--lr-play-bg); filter: brightness(1.04); }
+
+/* The help control lives in the footer, which is on the LIGHT body, and it was taking
+   `--lr-ink` — the cream meant for dark surfaces — from the rule it shares with the backing-track
+   icons, which are on cards and correctly keep it. Cream on putty, so the question mark was
+   nearly invisible. The contrast audit in restyling.md §8 could not see this: it compares `color`
+   against the painted background and an icon's ink is `stroke`. */
+.lr-footer .lr-help svg { stroke: var(--lr-label-ink); }
+.lr-footer .lr-help:hover svg { stroke: var(--lr-label-strong); }
+
+/* Every slider's lane is the progress bar's lane. The kit leaves ranges native with
+   `accent-color: #fff`, so the groove was whatever grey the platform chose and the fill was pure
+   white — neither following the colourway, and the master volume sat beside the progress bar
+   looking like a different control. `appearance: none` is what makes the groove paintable at all.
+   The thumb stays the light ink so it reads on the lane at every position. */
+input[type=range] {
+  appearance: none; -webkit-appearance: none;
+  background: var(--lr-track); height: 4px; border-radius: 99px;
+  outline: none; cursor: pointer;
+}
+input[type=range]::-webkit-slider-thumb {
+  appearance: none; -webkit-appearance: none;
+  width: 13px; height: 13px; border-radius: 50%; border: none;
+  background: var(--lr-ink); cursor: pointer;
+}
+input[type=range]::-moz-range-thumb {
+  width: 13px; height: 13px; border-radius: 50%; border: none;
+  background: var(--lr-ink); cursor: pointer;
+}
+/* Firefox paints its own groove inside the element rather than using the background. */
+input[type=range]::-moz-range-track { background: var(--lr-track); height: 4px; border-radius: 99px; }
+
+/* --- the count-in indicator ----------------------------------------------- */
+/* One pip per beat, in the lane the waveform is about to fill. That space is empty for the whole
+   count-in — and for the first lines of the take, since a line is only drawn once its span has
+   been heard — so the countdown costs no layout and appears where attention already is.
+   Absolutely positioned like `.lr-note`, which shares the lane for the same reason. */
+.count-in {
+  position: absolute; inset: 0; display: flex;
+  align-items: center; justify-content: center; gap: 5px;
+  pointer-events: none;
+}
+.count-in i {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--lr-hint);
+  transition: background .09s linear, transform .09s ease-out;
+}
+/* The first beat of each bar is larger, so four pips read as a bar rather than as four of eight. */
+.count-in i.is-downbeat { width: 10px; height: 10px; }
+/* Lit in the record colour: this is the record path, and nothing else on the row is using it
+   while the dot is a solid square. */
+.count-in i.is-lit { background: var(--lr-rec); transform: scale(1.15); }
+
+/* --- the help sheet's tabs and figures ------------------------------------ */
+/* Three pages, each sized to be read without scrolling — so the tabs replace the title rather
+   than sitting under it. They are the app's chips at a smaller size, not a new control. */
+.lr-help-tabs { display: flex; gap: 4px; flex: 1; min-width: 0; }
+.lr-help-tab {
+  flex: 1; min-width: 0; white-space: nowrap; overflow: hidden;
+  font-size: 8.5px; font-weight: 500; letter-spacing: .02em; text-transform: none;
+  padding: 5px 3px; border-radius: 6px; border: none; cursor: pointer;
+  background: rgba(255,255,255,.08); color: var(--lr-ink-dim);
+  font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.lr-help-tab.is-active { background: var(--lr-play-bg); color: var(--lr-play-ink); font-weight: 600; }
+
+/* A figure is the real control, shown small. `--bare` is for shapes that already read as
+   objects — the record dots, the pass badges — where a card around them would say "row". */
+.hs-figure {
+  display: flex; align-items: center; gap: 7px;
+  background: rgba(255,255,255,.06); border: 1px solid var(--lr-label-line);
+  border-radius: 7px; padding: 7px 9px;
+}
+.hs-figure--bare { background: none; border: none; padding: 2px 0; gap: 18px; }
+.hs-figure--icons { gap: 4px; padding: 5px 6px; }
+.hs-figure--icons > span {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  padding: 4px 0; border-radius: 5px; background: rgba(255,255,255,.08); color: var(--lr-ink-dim);
+}
+.hs-figure--icons > span.on { background: var(--lr-play-bg); color: var(--lr-play-ink); }
+.hs-figure--icons svg { display: block; }
+
+.hs-lbl {
+  font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: var(--lr-ink-faint);
+  flex: 0 0 auto;
+  font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.hs-name { font-size: 11px; font-weight: 500; flex: 1; min-width: 0; color: var(--lr-ink); }
+.hs-ax { color: var(--lr-hint); fill: none; stroke: currentColor; stroke-width: 2;
+         stroke-linecap: round; stroke-linejoin: round; flex: 0 0 auto; }
+.hs-ico { width: 12px; height: 12px; vertical-align: -2px; color: var(--lr-ink);
+          fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+
+.hs-chips { display: flex; gap: 4px; flex: 0 0 auto; }
+.hs-chips b {
+  font-size: 10.5px; font-weight: 600; padding: 3px 8px; border-radius: 4px;
+  background: rgba(255,255,255,.1); color: var(--lr-ink);
+}
+.hs-chips b.on { background: var(--lr-play-bg); color: var(--lr-play-ink); }
+.hs-div { width: 1px; align-self: stretch; background: var(--lr-label-line); flex: 0 0 auto; }
+.hs-wheels { display: flex; gap: 4px; flex: 1; min-width: 0; }
+.hs-wheels i {
+  flex: 1; min-width: 0; font-style: normal;
+  background: rgba(255,255,255,.08); border-radius: 5px; padding: 4px 3px;
+  display: flex; align-items: center; justify-content: center; gap: 3px;
+  font-size: 10.5px; font-weight: 600; color: var(--lr-ink);
+}
+
+.hs-dot { display: flex; flex-direction: column; align-items: center; gap: 4px;
+          font-size: 9px; color: var(--lr-ink-faint);
+          font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace; }
+.hs-dot i { width: 17px; height: 17px; border-radius: 50%; background: rgba(255,255,255,.22); }
+.hs-dot i.armed { background: var(--lr-rec); }
+
+.hs-badge { display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+            font-size: 9px; color: var(--lr-ink-faint);
+            font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+/* The transport's lane, small. `--v` is where the thumb sits; the unity tick is the level
+   fader's own mark, drawn below the track for the same reason it is there. */
+.hs-slider {
+  flex: 1; height: 4px; border-radius: 999px; position: relative; min-width: 40px;
+  background: linear-gradient(to right, var(--lr-ink) var(--v,50%), var(--lr-track) var(--v,50%));
+}
+.hs-slider::after {
+  content: ''; position: absolute; left: var(--v,50%); top: 50%; translate: -50% -50%;
+  width: 10px; height: 10px; border-radius: 50%; background: var(--lr-ink);
+}
+.hs-slider--unity::before {
+  content: ''; position: absolute; left: 50%; bottom: -6px;
+  width: 2px; height: 4px; margin-left: -1px; border-radius: 1px; background: var(--lr-hint);
+}
+.hs-figure:has(.hs-slider--unity) { padding-bottom: 12px; }
+.hs-val { font-size: 10px; font-weight: 600; color: var(--lr-ink); flex: 0 0 auto; min-width: 34px;
+          text-align: right;
+          font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+/* A section whose points continue the one above it needs no second heading. */
+.lr-help-h:empty { display: none; }
+
+/* The pass badge is the kit's, and the kit hardcodes the pre-theme red in every one of its
+   states — so it stayed one hue while the colourways moved around it. Same substitution as the
+   other four record surfaces. */
+.lr-pass-badge {
+  background: rgba(var(--lr-rec-rgb), .18); color: var(--lr-ink);
+  border-color: rgba(var(--lr-rec-rgb), .4);
+}
+.lr-row.is-armed .lr-pass-badge,
+.lr-row.is-recording .lr-pass-badge {
+  background: rgba(var(--lr-rec-rgb), .28); color: var(--lr-ink);
+}
+/* In a help figure it is an example rather than a live badge, so it is not inside a recording
+   row and the kit's `display: none` would hide it. Shown at the armed size, which is the state
+   the caption beside it is describing. */
+.hs-badge .lr-pass-badge {
+  display: block; font-size: 12px; padding: 3px 8px;
+  background: rgba(var(--lr-rec-rgb), .28);
+}

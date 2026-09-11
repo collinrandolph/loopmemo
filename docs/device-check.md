@@ -91,6 +91,38 @@ and it puts the app on the public internet for the duration. It is the fallback,
 
 ---
 
+## 0. Before anything: the Ring/Silent switch, on the speaker
+
+**With the switch on silent, Web Audio is inaudible through the phone's speaker.** Headphones are
+not affected, and that asymmetry is what makes it so expensive:
+
+| | silent ON | silent OFF |
+|---|---|---|
+| headphones | sounds | sounds |
+| phone speaker | **silent** | sounds |
+
+Every device test until 2026-09-10 used headphones, so the app appeared to work regardless. The
+first test on the speaker read as "the latest update broke audio", and **three separate code
+diagnoses were argued and shipped against a bug that was not in the code** — a `touchend` guard, a
+shared `AudioContext`, and finally a twenty-commit revert to a known-good build. All of it was
+chasing the switch.
+
+It is not a bug in the app. `<audio>` and `<video>` elements follow different rules on iOS and play
+regardless, which is why every other website seems fine and this one does not — the app is Web
+Audio end to end.
+
+**The app cannot detect it.** No API exposes the switch, and `AudioContext.state` reads `running`
+either way, so there is no signal to branch on. What *can* be done is remove the problem:
+`navigator.audioSession.type = 'playback'` (Safari 16.4+) moves the page out of the ambient
+category so the switch stops applying, the same way a music app behaves. That is a decision about
+how the app should behave in the background and against other apps' audio, not a bug fix, and it is
+not implemented.
+
+So: **check the switch first, and say which output you tested on in the result.** A report that
+does not name headphones or speaker cannot be acted on.
+
+---
+
 ## 1. The one that decides everything — output routing while recording
 
 **This is the flaw that may rule the web route out.** On iOS Safari there is a known behaviour:

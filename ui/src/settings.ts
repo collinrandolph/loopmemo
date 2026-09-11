@@ -1,5 +1,5 @@
 import { defaultBacking } from '../../src/domain/backing.ts';
-import { bouncePlan, bounceSeed } from '../../src/domain/bounce.ts';
+import { bouncePlan, bounceSeed, bouncedName } from '../../src/domain/bounce.ts';
 import {
   type AudioQuality,
   BPM_MAX,
@@ -19,6 +19,13 @@ import {
   sizeProjection,
 } from '../../src/domain/project.ts';
 import { loopSeconds, timing } from '../../src/domain/timing.ts';
+import {
+  COUNT_IN_BAR_OPTIONS,
+  COUNT_IN_MODES,
+  type CountIn,
+  type CountInBars,
+  type CountInMode,
+} from '../../src/domain/count-in.ts';
 import { bindChips, perfectLoopRow } from './controls.ts';
 import { helpControl } from './help.ts';
 import { LR, el } from './kit.ts';
@@ -59,6 +66,9 @@ export function projectSettingsScreen(opts: {
   onCompress(next: Project): void;
   onBounce(source: Project, seed: Project): void;
   onDelete(id: string): void;
+  /** The count-in (§4.6) — a preference shared by every project, owned by the shell. */
+  countIn(): CountIn;
+  onCountIn(next: CountIn): void;
 }): { node: HTMLElement; destroy(): void } {
   const creating = opts.mode === 'new';
   const locked = !creating && isConfigurationLocked(opts.project);
@@ -287,6 +297,77 @@ export function projectSettingsScreen(opts: {
   );
   const loopNote = el('div', 'setting-note', "Wraps whatever is still ringing at the end of the loop — an open hat, a Surround layer’s delay — onto the start, so a file that repeats has no seam at the join. Turn it off for a one-shot, which keeps a clean start and lets the tail be cut.");
 
+  // -------------------------------------------------------------- count-in --
+  /**
+   * Two chip rows, and **neither is project state** — the count-in applies to every project
+   * (§4.6), so unlike everything above it these apply the moment they are tapped rather than
+   * waiting for Save. Cancel does not undo them either, which is the honest consequence of one
+   * setting shared by every sketch.
+   *
+   * They live here rather than in the Library or on the shell because this is where recording is
+   * set up: the recording offset is one row above, and both are answers to "why did my take not
+   * land where I played it". The note says they are global so the screen does not imply otherwise.
+   */
+  let countIn = opts.countIn();
+  const countInBarsRow = el(
+    'div',
+    'lr-panel-row',
+    '<span class="lr-panel-label">Count-in</span>',
+  );
+  const countInBars = el('div', 'lr-chips');
+  for (const bars of COUNT_IN_BAR_OPTIONS) {
+    const chip = el('button', 'lr-chip', bars === 0 ? 'Off' : `${bars}`);
+    chip.dataset['value'] = String(bars);
+    countInBars.appendChild(chip);
+  }
+  countInBarsRow.appendChild(countInBars);
+
+  const countInModeRow = el('div', 'lr-panel-row', '<span class="lr-panel-label"></span>');
+  const countInMode = el('div', 'lr-chips');
+  for (const mode of COUNT_IN_MODES) {
+    const chip = el('button', 'lr-chip', mode === 'loop' ? 'Full loop' : 'Drums only');
+    chip.dataset['value'] = mode;
+    countInMode.appendChild(chip);
+  }
+  countInModeRow.appendChild(countInMode);
+
+  function paintCountIn() {
+    for (const chip of countInBars.children) {
+      chip.classList.toggle('is-active', chip.getAttribute('data-value') === String(countIn.bars));
+    }
+    for (const chip of countInMode.children) {
+      chip.classList.toggle('is-active', chip.getAttribute('data-value') === countIn.mode);
+    }
+    // Nothing to choose between when there is no count-in, so the mode row recedes rather than
+    // disappearing — a control that vanishes takes its own explanation with it.
+    countInModeRow.classList.toggle('is-inert', countIn.bars === 0);
+  }
+
+  countInBars.addEventListener('click', (e) => {
+    const chip = (e.target as HTMLElement).closest('[data-value]');
+    if (!chip) return;
+    countIn = { ...countIn, bars: Number(chip.getAttribute('data-value')) as CountInBars };
+    opts.onCountIn(countIn);
+    paintCountIn();
+  });
+  countInMode.addEventListener('click', (e) => {
+    const chip = (e.target as HTMLElement).closest('[data-value]');
+    if (!chip) return;
+    countIn = { ...countIn, mode: chip.getAttribute('data-value') as CountInMode };
+    opts.onCountIn(countIn);
+    paintCountIn();
+  });
+  paintCountIn();
+
+  const countInNote = el(
+    'div',
+    'setting-note',
+    'Bars of the loop that play before recording starts, so you can come in on the beat. It is ' +
+      'never recorded — the take still begins on the downbeat. <b>Full loop</b> plays the ending ' +
+      'you are joining; <b>Drums only</b> keeps the beat clear of a busy arrangement. Applies to ' +
+      'every project, and saves as soon as you tap.',
+  );
+
   // ---------------------------------------------------------------- actions --
   /**
    * Export, bounce, compress and delete. **They belong to a project, so they live on the
@@ -396,7 +477,7 @@ export function projectSettingsScreen(opts: {
       p,
       bounceSeed(p, session, {
         id,
-        name: `${p.name} mix`,
+        name: bouncedName(p.name),
         now: new Date().toISOString(),
       }),
     );
@@ -501,6 +582,10 @@ export function projectSettingsScreen(opts: {
     loopRow.node,
     annotationRow(loopNote),
     el('div', 'setting-gap'),
+    countInBarsRow,
+    countInModeRow,
+    annotationRow(countInNote),
+    el('div', 'setting-gap'),
     annotationRow(lockNote),
     ...(creating ? [] : [el('div', 'setting-gap'), actionsBlock]),
   );
@@ -521,15 +606,20 @@ export function projectSettingsScreen(opts: {
 
   const help = helpControl({
     title: creating ? 'New project' : 'Project settings',
-    content: () => [
-      'Tempo and bar count lock after the first recording. Everything the app derives — bar ' +
-        'boundaries, pass numbers, where each slot reads from — is computed from them, so they ' +
-        'cannot move once there is audio measured against them.',
-      'Recording quality is chosen once. A project’s layers have to share a sample rate, or every ' +
-        'splice between them would need a resample.',
-      'The backing tracks are never locked, and they are not on this screen. Change the drum ' +
-        'pattern, kit, chords, tone or octave from their rows on the Playback screen, whenever ' +
-        'you like.',
+    pages: [
+      {
+        label: creating ? 'New project' : 'Project settings',
+        content: () => [
+          'Tempo and bar count lock after the first recording. Everything the app derives — bar ' +
+            'boundaries, pass numbers, where each slot reads from — is computed from them, so they ' +
+            'cannot move once there is audio measured against them.',
+          'Recording quality is chosen once. A project’s layers have to share a sample rate, or every ' +
+            'splice between them would need a resample.',
+          'The backing tracks are never locked, and they are not on this screen. Change the drum ' +
+            'pattern, kit, chords, tone or octave from their rows on the Playback screen, whenever ' +
+            'you like.',
+        ],
+      },
     ],
   });
 

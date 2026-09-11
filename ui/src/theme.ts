@@ -166,6 +166,11 @@ function tokens(v: Variation): Record<string, string> {
     // ~2.2:1, so the light side gets a darkened version rather than borrowing it.
     '--lr-rec': v.rec,
     '--lr-rec-ink': mix(v.rec, '#000000', 0.42),
+    // A bare triple so CSS can pick its own alpha — `rgba(var(--lr-rec-rgb), .45)`. Four surfaces
+    // wanted a translucent record colour and each had hardcoded the pre-theme violet-era red, so
+    // the pending dot and the two failure notes stayed the same hue in all four colourways.
+    // Not parsed by JavaScript, unlike `--lr-spent`; it just has to be a valid `rgba()` argument.
+    '--lr-rec-rgb': rgb(v.rec).join(', '),
     '--lr-rec-glow': `rgba(${rgb(v.rec).join(',')}, 0.30)`,
 
     // Parsed as numbers by JS. Bare triples only.

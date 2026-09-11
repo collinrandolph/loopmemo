@@ -4,12 +4,10 @@ import {
   layerHasRecording,
   projectTiming,
   projectTotalPasses,
-  recordedLayerCount,
   sizeProjection,
 } from '../../src/domain/project.ts';
 import { loopSeconds } from '../../src/domain/timing.ts';
 import type { BackingEngine } from './audio.ts';
-import { helpControl } from './help.ts';
 import { type WaveNode, LR, el, motion, ramp } from './kit.ts';
 import { amp } from './demo.ts';
 import { formatBytes, renderLoop } from './screen.ts';
@@ -29,8 +27,8 @@ const THUMB_HEIGHT = 6;
  *
  * **The thumbnail is the progress display.** One `thumb` lane per recorded layer in that layer's
  * `ramp.slice`, so a project is recognisable by its colour signature and stripe count before the
- * name is read, and playing a row recedes its lines rather than covering the artwork. The size
- * readout swaps to a position readout while playing, so the row does not change width.
+ * name is read, and playing a row recedes its lines rather than covering the artwork. The
+ * position readout has its own column and reserves it always, so nothing moves when it appears.
  *
  * **One preview at a time**, on one engine — §4.1 rules out standing up players per row.
  */
@@ -77,7 +75,10 @@ export function libraryScreen(opts: {
     '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg> New project',
   );
   newBtn.addEventListener('click', () => opts.onNew());
-  header.append(titleRow, el('div', 'sort-note', 'Most recently modified first'), newBtn);
+  // No sort note. §4.1 fixes the order at most-recently-modified and offers no other, so the line
+  // announced a rule that cannot change rather than telling anyone something they could act on —
+  // and the dates down the right of every card already say it. The sort itself is unchanged.
+  header.append(titleRow, newBtn);
 
   const listEl = el('div', 'lr-rows');
 
@@ -113,16 +114,32 @@ export function libraryScreen(opts: {
 
     const thumb = el('div', 'thumb');
     const main = el('div', 'p-main');
-    const right = el('div', 'p-right', '<span class="p-size"></span><span class="p-time">0:00</span>');
-    head.append(play, thumb, main, right);
+    /**
+     * The position readout: its own column at the end of the row, vertically centred, shown only
+     * while this row is previewing.
+     *
+     * **It used to replace the size**, which was a habit from the layout where both shared one
+     * right-hand box. They are different facts — how big it is, and where the preview has got to
+     * — and hiding one to show the other meant the size vanished from the row you were listening
+     * to. Outside `main` so `rebuild` cannot throw it away, which also means the render loop's
+     * handle is set once here rather than re-found on every repaint.
+     */
+    const time = el('div', 'p-time', '0:00');
+    head.append(play, thumb, main, time);
     rowEl.appendChild(head);
 
-    const row: Row = { project: initial, el: rowEl, lanes: [] as WaveNode[], play, time: right.querySelector('.p-time')!, rebuild };
+    const row: Row = {
+      project: initial,
+      el: rowEl,
+      lanes: [] as WaveNode[],
+      play,
+      time,
+      rebuild,
+    };
 
     function rebuild() {
       const p = row.project;
       const passes = projectTotalPasses(p);
-      const layers = recordedLayerCount(p);
 
       // One lane per recorded layer, in that layer's slice of the ramp.
       thumb.innerHTML = '';
@@ -141,18 +158,33 @@ export function libraryScreen(opts: {
         row.lanes.push(lane);
       }
 
-      const tags =
-        (p.audioQuality === 'high' ? '<span class="lr-tag lr-tag--hq">HQ</span>' : '') +
-        (p.isCompressed ? '<span class="lr-tag">Compressed</span>' : '') +
-        (p.bouncedFromProjectId ? '<span class="lr-tag lr-tag--bounced">Bounced</span>' : '');
+      /**
+       * **No tags on a row.** HQ and Compressed were settings wearing the costume of provenance —
+       * every project has a quality, and compression is a state a project moves in and out of —
+       * and both are in project settings where they can be acted on. Bounced outlived them and is
+       * gone too: it is now `BOUNCE_SUFFIX` on the name, which says the same thing somewhere the
+       * user can reword or delete it. A badge could only be read.
+       */
 
+      /**
+       * Two lines. How recent and how big leads, directly under the name and in the brighter ink,
+       * because that is what you scan a list of sketches for; what the project is follows.
+       *
+       * **The layer count is not here — the thumbnail already is it.** One lane per recorded
+       * layer, so the stripe count says three layers before the sentence beneath could be read,
+       * and printing the number again spent a line restating a picture.
+       *
+       * §2.7: pass count drives size, not layer count, which is why the row keeps that one.
+       */
       main.innerHTML =
-        `<div class="p-name">${p.name} ${tags}</div>` +
-        `<div class="p-meta">${p.bpm} BPM · ${p.barCount} bars · ${layers} layer${layers === 1 ? '' : 's'}` +
-        // §2.7: pass count drives size, not layer count, which is why the row shows it.
-        ` · ${passes} pass${passes === 1 ? '' : 'es'} · ${modified(p.lastModified)}</div>`;
-      right.querySelector('.p-size')!.textContent = formatBytes(sizeProjection(p).uncompressedBytes);
-
+        `<div class="p-name">${p.name}</div>` +
+        `<div class="p-meta p-meta--b">${modified(p.lastModified)} · ` +
+        `<span class="p-size"></span></div>` +
+        `<div class="p-meta">${p.bpm} BPM · ${p.barCount} bars · ` +
+        `${passes} pass${passes === 1 ? '' : 'es'}</div>`;
+      main.querySelector('.p-size')!.textContent = formatBytes(
+        sizeProjection(p).uncompressedBytes,
+      );
     }
 
     // The whole row opens the project; there is no second action on it.
@@ -207,12 +239,9 @@ export function libraryScreen(opts: {
     row.time.textContent = LR.fmtTime(position);
   });
 
-  const help = helpControl({
-    title: 'Projects',
-    content: () => [
-      'play a project without opening it · tap a row to open it · export, bounce, compress and delete live in that project’s settings',
-    ],
-  });
+  // No help control here. §4.7 exists for interactions that are "powerful but undiscoverable",
+  // and this screen has none: a list you tap to open, with a play button on each row. Its sheet
+  // said so in one line, which is a question mark that costs a tap to learn nothing.
 
   /**
    * The colourway picker (§ not in the spec — flagged as an addition).
@@ -246,14 +275,13 @@ export function libraryScreen(opts: {
   paintThemes(document.documentElement.dataset['theme'] ?? '');
 
   const footer = el('div', 'lr-footer');
-  footer.append(help.node, themes);
+  footer.append(themes);
   root.append(header, listEl, footer);
 
   return {
     node: root,
     destroy() {
       loop.stop();
-      help.destroy();
       // Stop, not destroy: the shell owns the engine's lifetime and closes it on the way out.
       engine?.stop();
     },

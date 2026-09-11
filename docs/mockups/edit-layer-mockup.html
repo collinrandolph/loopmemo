@@ -202,17 +202,8 @@ input[type=range] { accent-color: #fff; }
   visibility: hidden; pointer-events: none; animation: none;
 }
 
-/* hint the record control while an empty layer's panel is open */
-.lr-row.is-empty.is-open .lr-rec {
-  background: rgba(255,107,107,.55); animation: lr-rec-hint 1.8s ease-out infinite;
-}
-.lr-row.is-empty.is-open.is-armed .lr-rec,
-.lr-row.is-empty.is-open.is-recording .lr-rec { animation: none; }
-@keyframes lr-rec-hint {
-  0%   { box-shadow: 0 0 0 0   rgba(255,107,107,.55); }
-  70%  { box-shadow: 0 0 0 9px rgba(255,107,107,0); }
-  100% { box-shadow: 0 0 0 0   rgba(255,107,107,0); }
-}
+/* REMOVED: the empty-open record hint. It read as "armed" on a row holding no intent, and its
+   four-class selector outranked the real .is-armed and .is-pending states. See lr-kit.css. */
 
 /* ------------------------------------------------------------- waveform -- */
 /* One line renderer, three densities: tile (edit), lane (playback), thumb

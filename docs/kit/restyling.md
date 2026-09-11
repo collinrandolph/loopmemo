@@ -64,6 +64,13 @@ colours, these two have to move with them.
 A spent line must stay *visible against its tile* while being clearly less prominent than an
 unplayed one. It is not "faded to background" — it is a second, quieter colour.
 
+**`--lr-rec-rgb` is a third bare triple and is *not* one of these.** Nothing in JavaScript reads
+it; it exists so CSS can choose its own alpha — `rgba(var(--lr-rec-rgb), .45)` — for the four
+surfaces that want a translucent record colour: the pending dot, the input note, the export error
+and the armed row's inset rule. Those had each hardcoded the pre-theme red, so they stayed one hue
+across all four colourways while everything around them changed. Breaking this one is visible
+rather than silent: an invalid `rgba()` simply does not paint.
+
 ---
 
 ## 3. Styles JavaScript overwrites every frame
@@ -143,8 +150,21 @@ this, and `.tile.is-selected .tile-label` brightens to `--lr-ink`.
 circle → square (`border-radius: 4px`, `transform: scale(.78)`) and the pulse stops. Keep both
 signals; colour alone is not enough for the one control that must never be misread.
 
-**Record dot has a fourth state**: empty + open gets a pulsing expanding ring
-(`lr-rec-hint`) to say "record here", explicitly suppressed once armed or recording.
+**The record dot has three states, not four.** There was a fourth — empty + open got a pulsing
+expanding ring (`lr-rec-hint`) meaning "record here" — and it is **removed**, from the kit and from
+all three mockups. Two reasons, and the second is the one to remember:
+
+- It was the record colour and it pulsed, which is exactly how `.is-armed` reads. A user reported
+  an open empty layer looking armed or already recording when it was neither.
+- Its selector was four classes, so it outranked `.is-armed` and `.is-pending` at three. On an
+  empty open row — *the normal way to arm a layer* — the real states could not paint themselves:
+  the armed dot stayed at the hint's paler red and did not pulse, and the pending dot never showed
+  its own animation at all. About 25 lines in `ui/app.css` and an `is-arming` class existed purely
+  to win that specificity fight, and were deleted with it.
+
+The lesson generalises: **a hint keyed to a container state will outrank the element states it
+sits on top of.** If you add one, give it a selector no more specific than the states it must
+yield to, or it will quietly win.
 
 **`.lr-pass-badge.is-provisional`** — opacity .45, meaning "this pass has not been earned yet"
 (§1.4). Not decoration; it is a preview of whether the take will survive the stop.
@@ -231,12 +251,19 @@ for (const e of document.querySelectorAll('.lr-screen *')) {
   const cs = getComputedStyle(e);
   if (cs.display === 'none' || cs.visibility === 'hidden' || +cs.opacity < .05) continue;
   const b = bg(e); if (b === 'GRADIENT') continue;
-  const fg = cs.color.match(/[\d.]+/g).slice(0, 3).map(Number);
+  const ink = e.tagName === 'svg' && cs.stroke !== 'none' ? cs.stroke : cs.color;
+  const fg = ink.match(/[\d.]+/g).slice(0, 3).map(Number);
   const [a, z] = [lum(fg), lum(b)].sort((x, y) => y - x);
   const r = (a + .05) / (z + .05);
-  if (r < 3) console.warn(e.className, JSON.stringify(e.textContent.trim().slice(0, 20)), r.toFixed(2));
+  if (r < 3) console.warn(e.className || e.tagName, JSON.stringify(e.textContent.trim().slice(0, 20)), r.toFixed(2));
 }
 ```
+
+**An icon's ink is `stroke`, not `color`** — the line above exists because the first version of
+this checked only `color` and reported every screen clean while the footer's question mark was
+cream on the light body, invisible. It shares a rule with the backing-track icons, which are on
+dark cards and correctly keep the cream. Same two-surface trap as §8's table, in a property the
+audit was not looking at.
 
 Run it on all seven screens **in every colourway** — the four bodies differ in lightness, so a
 token can clear the bar in Wine and fail in Moss. That is how `--lr-ink-faint` was set: L55 measured
@@ -254,3 +281,29 @@ A fifth is four numbers, not a palette.
 - **A token defined anywhere below `:root` outranks the theme** for everything inside it.
   `--lr-accent` was hardcoded on `.lr-screen`, so the New Project button stayed violet in all four
   colourways and no theme could reach it. One definition per token.
+
+## 10. Translucent white is fine; opaque white is not
+
+`rgba(255,255,255,.1)` over a card is a **veil** — it lightens the card's own hue, so it moves with
+the colourway for free. Most of the whites in `app.css` are that, and they are correct.
+
+**Opaque and near-opaque white is a colour**, and it does not move. `rgba(255,255,255,.92)` on a
+selected chip stayed pure white in Moss and Cobalt while the New Project button an inch away took
+the theme's warm cream. The rule: **above about .5 alpha, use a token.** `--lr-play-bg` /
+`--lr-play-ink` is the pair for anything that reads as "the light neutral", which is rung 1 of the
+prominence ladder and what the selected state borrows.
+
+**Measure a colour claim against a token, not against your eye.** A chip at 92% white and one at
+`--lr-play-bg` look near-identical in Wine, which is where this residue survived four rounds of
+restyling — it only separates in the other three colourways.
+
+### And check for dead declarations while you are there
+
+Three rules were still carrying pre-theme whites that had not painted since the colourways landed,
+because a later rule of equal specificity replaced them: `.lr-settings`'s colour, `.lr-play--sm`'s
+background and ink, and the whole of `.app-nav button.is-active`. **Confirm with a computed style
+before deleting** — specificity reasoning is easy to get backwards, and the measurement is one line.
+
+**A transition will lie to a measurement.** Several of these carry `transition: stroke .12s` or
+`background .15s`, so a sweep that reads computed styles 250 ms after a click catches intermediate
+values and reports failures that settle on their own. Wait it out, or the audit invents work.

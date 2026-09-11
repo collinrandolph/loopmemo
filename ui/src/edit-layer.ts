@@ -25,10 +25,12 @@ import {
   isPlayed,
   passedAt,
   playBar,
+  playLoopFrom,
   playheadAt,
   stop,
 } from '../../src/domain/transport.ts';
 import { SWIPE_THRESHOLD } from './controls.ts';
+import { SWIPE_X_ICON, SWIPE_Y_ICON } from './icons.ts';
 import { trackDrag } from './gesture.ts';
 import { helpControl } from './help.ts';
 import type { BackingEngine } from './audio.ts';
@@ -77,6 +79,14 @@ const SEAM = 2;
 const HOLD_MS = 500;
 const HOLD_SLOP = 8;
 const DOUBLE_TAP_MS = 300;
+
+/**
+ * The two axis arrows, drawn rather than typed. `↔` and `↕` fell through 'Hanken Grotesk' to Apple
+ * Color Emoji on iOS and painted as emoji tiles — see `SWIPE_X_ICON`. One wrapper for both, since
+ * the hint strip and the compact label want the same mark at two sizes and CSS supplies those.
+ */
+const AX_Y = `<svg viewBox="0 0 24 24">${SWIPE_Y_ICON}</svg>`;
+const AX_X = `<svg viewBox="0 0 24 24">${SWIPE_X_ICON}</svg>`;
 
 type Tile = {
   node: HTMLElement;
@@ -148,11 +158,16 @@ export function editLayerScreen(opts: {
   const legend = el('div', 'legend');
   const help = helpControl({
     title: 'Edit Layer',
-    content: () => [
-      'tap · repeat bar (tap again to stop) &nbsp; double tap · play loop from here' +
-        ' &nbsp; hold · mute / unmute &nbsp; swipe · change pass / bar' +
-        ' <span style="color:rgba(255,255,255,.4)">(locked while muted)</span>',
-      legend,
+    pages: [
+      {
+        label: 'Edit Layer',
+        content: () => [
+          'tap · repeat bar (tap again to stop) &nbsp; double tap · play loop from here' +
+            ' &nbsp; hold · mute / unmute &nbsp; swipe · change pass / bar' +
+            ' <span style="color:rgba(255,255,255,.4)">(locked while muted)</span>',
+          legend,
+        ],
+      },
     ],
   });
 
@@ -311,7 +326,11 @@ export function editLayerScreen(opts: {
       node.append(
         label,
         wave,
-        el('div', 'swipe-hint', '<span class="hint-pass">↕ pass</span><span>↔ bar</span>'),
+        el(
+          'div',
+          'swipe-hint',
+          `<span class="hint-pass">${AX_Y} pass</span><span class="hint-bar">${AX_X} bar</span>`,
+        ),
       );
       rowEl.appendChild(node);
       attachGestures(node, slot);
@@ -334,11 +353,11 @@ export function editLayerScreen(opts: {
     }
 
     const passes = availablePasses(index(), ref.relativeBar);
-    // Each axis arrow to the left of the label it steps: `↕` ahead of the pass, `↔` ahead of the
-    // bar. CSS shows them only on a tile too short to carry the separate hint strip.
+    // Each axis arrow to the left of the label it steps: the pass axis ahead of the pass, the bar
+    // axis ahead of the bar. CSS shows them only on a tile too short to carry the hint strip.
     tile.label.innerHTML =
-      `<span class="pass"><i class="ax">↕</i>P${ref.pass}</span>` +
-      `<span class="rel"><i class="ax">↔</i>${ref.relativeBar}</span>`;
+      `<span class="pass"><i class="ax">${AX_Y}</i>P${ref.pass}</span>` +
+      `<span class="rel"><i class="ax">${AX_X}</i>${ref.relativeBar}</span>`;
     // **A tile with one available pass hides its vertical hint** — the axis works, it simply has
     // nowhere to go, and an affordance for a gesture that cannot change anything is a promise the
     // user has no way to cash. Per *bar*, not per layer: a partial pass leaves early bars with two
@@ -469,15 +488,37 @@ export function editLayerScreen(opts: {
   let lastTapSlot = -1;
   let lastTapTime = 0;
 
+  /**
+   * **A double tap means "play the loop from here" even when the first of the two taps stopped
+   * something.** §3.7 resolves tap against double tap by escalation, which works because both
+   * taps are "play" and nothing is undone — but that only holds from silence. On a bar that is
+   * already repeating, the first tap of the pair means *stop*, so the instinctive double tap on
+   * the playing bar used to stop and then start the same bar over: two taps to arrive back where
+   * you were. Reported as exactly that.
+   *
+   * So the stop is undone rather than deferred. Deferring is the alternative and it is worse: it
+   * is the latency §3.7's conflict-resolution section exists to avoid, spent on the one action
+   * that should feel immediate, and a stop that waits 300 ms to be sure keeps sounding while the
+   * user is asking it not to.
+   *
+   * What it costs is that stopping no longer clears the tap memory, so a stop followed inside
+   * 300 ms by a tap on the *same* slot starts the loop instead of re-previewing that bar. Wanting
+   * to hear one bar again that fast is rare, and it is one wait or one tap elsewhere away.
+   *
+   * The resumed loop starts at the slot's own downbeat rather than where the stop landed —
+   * `escalate`'s phase rebase needs a running transport and there is none. Re-anchoring to frame
+   * 0 is what keeps the sweep and the backing on one grid; see the comment below.
+   */
   function tap(slot: number) {
     const now = performance.now();
     const isDouble = slot === lastTapSlot && now - lastTapTime < DOUBLE_TAP_MS;
     const head = playheadAt(transport, frameNow(), t);
 
-    if (isDouble) {
+    if (isDouble && transport.mode !== 'idle') {
       // Escalate rather than restart: `escalate` rebases the anchor by the cycles already
       // completed, so bar mode becomes loop mode without playback pausing (§3.7). The rebase
       // lands on a bar boundary, so the engine's grid still holds and it only needs telling.
+      // A no-op once already in loop mode, which is what makes a third tap harmless.
       transport = escalate(transport, frameNow(), t);
       opts.engine.setTransport(transport);
     } else if (transport.mode !== 'idle' && transport.origin === slot) {
@@ -485,9 +526,8 @@ export function editLayerScreen(opts: {
       transport = stop();
       opts.engine.stop();
       select(-1); // §3.6: selection is UI state and clears on stop
-      lastTapSlot = -1;
-      lastTapTime = 0;
-      return;
+      // **The tap is remembered, not forgotten.** Clearing it here is what made the pair above
+      // impossible; falling through to record it is the whole fix.
     } else {
       releasePlayed(head);
       // **Re-anchored, even when already running.** The backing is generated on the engine's bar
@@ -498,7 +538,9 @@ export function editLayerScreen(opts: {
       //
       // Transport first, then start: the engine schedules its first bars inside `start`, and
       // handing it the new traversal afterwards would only throw them away again.
-      transport = playBar(slot, 0);
+      // `isDouble` reaches here only when the first tap of the pair stopped playback, so the
+      // transport it would have escalated no longer exists — start the loop outright instead.
+      transport = isDouble ? playLoopFrom(slot, 0) : playBar(slot, 0);
       opts.engine.setTransport(transport);
       opts.engine.start(0);
       lastPhase = 0;
