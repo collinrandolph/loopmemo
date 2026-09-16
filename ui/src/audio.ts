@@ -415,6 +415,23 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
     voices.push({ nodes, startsAt: startTime, endsAt: startTime + seconds + 0.2 });
   }
 
+  /**
+   * Drop what has finished sounding — **from both lists**.
+   *
+   * This walked `voices` only, and layer segments are not in `voices`: they are held per layer in
+   * `LayerVoice.scheduled`, because a splice has to be able to find and retire them. So nothing
+   * ever released a layer segment that had simply played out. `rescheduleFuture` keeps everything
+   * already started, by design, and `killAll` only runs on a stop — which means during ordinary
+   * playback the list grew by one entry per bar per layer, each holding an
+   * `AudioBufferSourceNode` and a `GainNode` that stay referenced and connected long after they
+   * are silent. Seven layers at 120 BPM is around 210 retained pairs a minute.
+   *
+   * **This is the third time that split has cost something.** `rescheduleFuture` and `killAll`
+   * both pruned one list and left the other; CLAUDE.md records both. The lists stay separate for
+   * a real reason, so the rule is that every path which touches one walks both.
+   *
+   * `endsAt` already carries the tail, so nothing new had to be tracked to know when it is safe.
+   */
   function sweep() {
     if (!ctx) return;
     const now = ctx.currentTime;
@@ -429,6 +446,16 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
       }
       return false;
     });
+
+    for (const voice of layerVoices) {
+      voice.scheduled = voice.scheduled.filter((v) => {
+        if (v.endsAt > now) return true;
+        // `cancel` rather than a bare disconnect: it stops the source first, and a source that
+        // has already ended tolerates that. Nothing is fading here — this is past `endsAt`.
+        cancel(v);
+        return false;
+      });
+    }
   }
 
   function silence(nodes: AudioNode[]) {
