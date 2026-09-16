@@ -951,9 +951,18 @@ body, .ax { font-family: 'Hanken Grotesk', -apple-system, BlinkMacSystemFont, 'S
 html, body { touch-action: manipulation; }
 
 /* iOS zooms the viewport when a text field smaller than 16px takes focus, and does not zoom back
-   out. This is the project name field, and it was 15px. The size is not a design choice worth a
-   permanent zoom. */
-.setting-name { font-size: 16px; }
+   out. **One rule for every field that takes text, not a list of the ones found so far**: it was
+   `.setting-name` alone (15px), and `.layer-name` went on zooming at 12px because it is a
+   `contenteditable` span rather than an input, which a per-class fix never sees (G2).
+
+   The cost was decided rather than discovered (2026-09-16): the layer name keeps its 80px box, so
+   at 16px it shows about 7 characters where 12px showed 13, and a longer name ellipsises at rest and
+   scrolls while being edited. The full name is kept. Widening the label column was rejected because
+   every lane pays for it; a rename sheet is interface design, which is the mockups' to decide. */
+input:not([type='range']):not([type='checkbox']):not([type='radio']),
+textarea,
+select,
+[contenteditable='true'] { font-size: 16px; }
 
 /* --- three colour corrections -------------------------------------------- */
 /* New project takes the play button's colour rather than the accent. It is the primary action on
