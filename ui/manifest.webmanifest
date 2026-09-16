@@ -1,0 +1,15 @@
+{
+  "name": "Loop Recorder",
+  "short_name": "Loops",
+  "description": "Multi-layer loop sketches: record over a groove, then choose bar by bar which pass fills each slot.",
+  "start_url": "./index.html",
+  "scope": "../",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#34232B",
+  "theme_color": "#34232B",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

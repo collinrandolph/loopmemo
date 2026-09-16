@@ -950,6 +950,27 @@ body, .ax { font-family: 'Hanken Grotesk', -apple-system, BlinkMacSystemFont, 'S
    trade, not a free win, and worth revisiting if anyone needs magnification. */
 html, body { touch-action: manipulation; }
 
+/* --- the rest of the gesture lockdown ------------------------------------- */
+/* **No rubber-band.** Dragging past the end of a screen pulls the whole page after the finger and
+   springs back — on a surface of swipe targets that reads as the app sliding away from the gesture,
+   and in a Safari tab the same overscroll at the top is pull-to-reload. `none` on both elements,
+   because iOS applies overscroll on whichever one is the scroller. Content still scrolls. */
+html, body { overscroll-behavior: none; }
+
+/* **No long-press callout or selection loupe.** Tap and hold is per-bar mute (§3.7) — on a tile
+   `touch-action: none` and `user-select: none` already cover it, but everywhere else a held finger
+   raised iOS's copy/look-up menu or started selecting a label. Text entry is exempted below, or the
+   name fields could not place a caret. */
+body { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+input, textarea, [contenteditable='true'] {
+  -webkit-touch-callout: default; -webkit-user-select: text; user-select: text;
+}
+
+/* **Clear of the home indicator.** `viewport-fit=cover` lets a Home Screen app run to the bottom
+   edge, where the footer's buttons would sit under the swipe-up bar — a tap there can start the
+   system gesture instead. The inset is 0 in a browser tab and on a phone without the bar. */
+body { padding-bottom: env(safe-area-inset-bottom); }
+
 /* iOS zooms the viewport when a text field smaller than 16px takes focus, and does not zoom back
    out. **One rule for every field that takes text, not a list of the ones found so far**: it was
    `.setting-name` alone (15px), and `.layer-name` went on zooming at 12px because it is a

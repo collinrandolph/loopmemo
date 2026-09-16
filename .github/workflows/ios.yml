@@ -1,5 +1,9 @@
 # Builds an UNSIGNED iPhone app (.ipa) on a GitHub-hosted Mac, for sideloading from Windows.
 #
+# PARKED (2026-09-16): v1 ships as a Home Screen web app (pages.yml, docs/hosting.md). This runs only
+# when started by hand — Actions → "iOS unsigned build" → Run workflow — so it never reports failures
+# on pushes nobody is waiting on. See docs/platform-decision.md §9.
+#
 # There is no Mac in this project (docs/platform-decision.md §1), so this runner is the only place
 # Xcode runs. The .ipa is deliberately unsigned: signing happens on the PC with Sideloadly (or
 # SideStore/AltStore), using whichever Apple ID is available — a free one (7-day expiry) or a paid
@@ -10,8 +14,6 @@
 name: iOS unsigned build
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 jobs:

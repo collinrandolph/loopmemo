@@ -4,8 +4,8 @@ A mobile app for building multi-layer loop sketches. Set a tempo and bar count, 
 pattern, record up to seven layers while the loop runs, then choose bar by bar which pass of the
 recording fills each slot of the arrangement.
 
-The spec is written for iOS. **The first iPhone build is the browser app in a Capacitor shell**,
-sideloaded — see `docs/platform-decision.md` §9 and the section below.
+The spec is written for iOS. **v1 ships as a Home Screen web app on GitHub Pages** — see
+`docs/platform-decision.md` §9 and the section below.
 
 **It is a sketchpad for improvising, not a DAW.** Almost every design decision follows from that.
 
@@ -27,21 +27,29 @@ way to check a timing change**, with no Swift toolchain involved:
 node Tools/verify-timing.js && node Tools/verify-region.js
 ```
 
-## The iPhone build: `ui/` in a Capacitor shell (decided 2026-09-16)
+## v1 ships as a Home Screen web app on GitHub Pages (decided 2026-09-16)
 
-**`ios/` wraps the browser build unchanged.** `npm run build:app` assembles `app/www/` — the same
-files at the same absolute paths `Tools/serve.js` serves — and a GitHub-hosted Mac builds an
-**unsigned** `.ipa` (`.github/workflows/ios.yml`), signed on Windows with Sideloadly. Install steps
-and the free Apple ID's 7-day limit: `docs/sideload.md`.
+**Every push to `main` that passes `npm run check` is published** (`.github/workflows/pages.yml`).
+`npm run build:app` assembles `app/www/` from the same files the dev server serves, and the phone
+runs it from the Home Screen icon, full screen. Install, storage and what is locked down:
+`docs/hosting.md`. Why this and not a native app: `docs/platform-decision.md` §9.
 
-- **`ui/` must keep running in a plain browser.** That is where it is driven, measured and checked;
-  the shell adds nothing it depends on.
-- **Native code in `ios/` stays a shell.** Something only iOS can do (the audio session is the likely
-  first) is a small Capacitor plugin, not a reason to grow Swift.
-- **`@capacitor/*` are the shell's dependencies**, and nothing in `ui/src` or `src/` imports them —
-  the no-runtime-dependency rule below is about the app's own code.
-- **Nothing on this PC can build or run `ios/`.** A change there is verified by a CI build and then
-  the phone, and never reported as working from the diff.
+- **Every URL the app loads is relative.** Pages serves it from `/<repo>/`, so an absolute `/ui/…`
+  points outside the site — it worked on the dev server, which is exactly why it would not be
+  noticed. `ui/index.html` uses `../docs/kit/…`; the worklet and the service worker resolve against
+  `import.meta.url`. The `verify-*.ts` instruments still import absolute paths, which is fine: they
+  are dev-server-only and `build-app.js` leaves them out.
+- **`ui/sw.js` is network-first, never cache-first.** A cache-first worker would keep serving an old
+  build to a phone while its owner reports bugs against the new one. The cache is only for offline.
+- **A change to `ui/` is live on the phone after a push.** There is no staging; `npm run check` is the
+  gate, so a check that does not cover something is not protecting it.
+- **The gesture lockdown is CSS in `app.css`**, beside the zoom rules: `overscroll-behavior`,
+  `-webkit-touch-callout`, the home-indicator inset. The embedded browser here cannot show any of it;
+  the phone is the only verification.
+
+**`ios/` is a Capacitor shell, built and parked** — `docs/sideload.md`, workflow manual-only, never
+run. `@capacitor/*` belong to it and nothing in `ui/src` or `src/` imports them. Nothing on this PC can
+build `ios/`; a change there is verified by a CI build and the phone, never from the diff.
 
 The section below is how the platform was held open until then. Its rule — keep the platform-bound
 surface small — still applies.

@@ -47,7 +47,12 @@ export type Recorder = {
 
 type Chunk = { frame: number; samples: Float32Array };
 
-const WORKLET_URL = '/ui/worklets/capture.js';
+/**
+ * Resolved against this module, not the site root. This compiles to `ui/dist/ui/src/recorder.js`, so
+ * three levels up is `ui/`. An absolute `/ui/worklets/…` worked on the dev server and broke under
+ * GitHub Pages, which serves the app from a subfolder.
+ */
+const WORKLET_URL = new URL('../../../worklets/capture.js', import.meta.url).href;
 
 /**
  * `addModule` is per-context and idempotent in effect but not free, so contexts that have

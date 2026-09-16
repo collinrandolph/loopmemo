@@ -342,13 +342,33 @@ In rough priority order. The first two decide whether the architecture holds at 
 The `pitchCorrection` check that used to sit at #3 is gone. Synthesis removed the requirement,
 so there is nothing left to confirm by ear.
 
-## 9. Decided 2026-09-16: the browser build, in a native shell, sideloaded
+## 9. Decided 2026-09-16: v1 is a Home Screen web app; a native shell is built and parked
 
-**Not React Native, and not the PWA** — a route §7 did not list: **Capacitor wrapping `ui/`
-unchanged**, built unsigned on a GitHub-hosted Mac (`.github/workflows/ios.yml`) and signed on
-Windows with Sideloadly. Install steps: `docs/sideload.md`.
+**v1 ships as the browser build on GitHub Pages, added to the Home Screen** — §7's route 4, the PWA
+(`docs/hosting.md`). The same day, a native shell was built first and then parked; both halves of
+that are recorded below, because the shell is the path v2 takes if the web app runs out.
 
-**Why this route, when §7 ranked React Native first.** §4a already said the browser build had
+**Why the web app won for v1.** Sideloading with a personal Apple ID means a free provisioning
+profile, which expires every 7 days, and avoiding that costs the $99 program. The concern that
+motivated a native app was locking down gestures, and **a Home Screen web app removes nearly all of
+the ones that come from Safari** — the address bar and its tab swipe, pull-to-reload, the page
+resizing as the bar collapses — leaving only the system's bottom-edge swipe, which a native app can
+merely defer. The remaining page-level gestures (the long-press callout, overscroll bounce) are CSS
+and apply in every mode. §6's routing flaw, the reason route 4 was ranked last, was tested on this
+iPhone on 2026-09-04 and did not occur. And it is the exact build that has been tested, with no
+signing, no expiry and no install step per update.
+
+**What it gives up**, each recorded in `docs/hosting.md`: background audio, a system-level audio
+session (the Session setting depends on `navigator.audioSession`), deferring the bottom-edge
+gesture, and an app whose storage cannot be confused with a Safari tab's.
+
+### The native shell, parked
+
+**Capacitor wrapping `ui/` unchanged**, built unsigned on a GitHub-hosted Mac
+(`.github/workflows/ios.yml`, now manual-only) and signed on Windows with Sideloadly. Install steps:
+`docs/sideload.md`. **Never built** — the workflow has not run.
+
+**Why this was the native route, when §7 ranked React Native first.** §4a already said the browser build had
 stopped being disposable. By now it is the whole product — every screen, recording, editing,
 persistence, export — and it is the build that has been tested on this iPhone. React Native would
 keep the domain and rewrite every screen, and still leave §4's two library gaps. A shell ships what

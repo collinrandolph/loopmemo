@@ -529,4 +529,18 @@ for (const name of ['gesturestart', 'gesturechange', 'gestureend']) {
   document.addEventListener(name, (e) => e.preventDefault(), { passive: false });
 }
 
+/**
+ * Offline support (`ui/sw.js`). Network-first, so it never serves a stale build while online — see
+ * the note there. Resolved against this module (`ui/dist/ui/src/app.js`), which puts it in `ui/`,
+ * beside the page, so its scope covers it on the dev server and under GitHub Pages' subfolder alike.
+ *
+ * **Failure is silent and harmless**: an insecure origin, a self-signed certificate on the LAN dev
+ * server, or a browser without service workers all just mean the app needs a connection to open.
+ */
+if ('serviceWorker' in navigator && window.isSecureContext) {
+  navigator.serviceWorker
+    .register(new URL('../../../sw.js', import.meta.url))
+    .catch(() => undefined);
+}
+
 void boot();

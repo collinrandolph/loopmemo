@@ -1,4 +1,8 @@
-# Getting Loop Recorder onto an iPhone
+# Sideloading the native shell — PARKED
+
+> **Not how v1 ships.** v1 is a Home Screen web app — `docs/hosting.md`. This shell was built the same
+> day and parked (`docs/platform-decision.md` §9); its workflow is manual-only and has never run. What
+> follows is how to use it if a native app is ever needed.
 
 The app is the browser build in `ui/`, wrapped in a Capacitor iOS shell (`ios/`). There is no Mac, so
 a GitHub-hosted Mac builds it and **produces an unsigned `.ipa`**; signing and installing happen on
