@@ -116,12 +116,6 @@ export function playbackScreen(opts: {
   storage?(): { readonly kind: 'ok' | 'full' | 'unavailable'; readonly unsaved: number };
   /** Subscribe to storage changes. Returns an unsubscribe, called on teardown. */
   onStorageChange?(listener: () => void): () => void;
-  /**
-   * A take started or ended, so the shell can dim the controls it owns. **Paint only** — what
-   * refuses a navigation is `takeInProgress`, asked at the moment of teardown, so enforcement
-   * never depends on this notification having arrived.
-   */
-  onBusyChange?(busy: boolean): void;
 }): { node: HTMLElement; destroy(): void; takeInProgress(): boolean } {
   const project = opts.project;
   const t = projectTiming(project);
@@ -459,7 +453,6 @@ export function playbackScreen(opts: {
     const busy = capturingIndex() >= 0;
     root.classList.toggle('is-capturing', busy);
     for (const button of exits) button.disabled = busy;
-    opts.onBusyChange?.(busy);
   }
 
   /**

@@ -271,9 +271,12 @@ mode bit remains, recording quality, because "does this project exist yet" is no
 `Project` can report about itself. **It deliberately has no backing pickers**: the Playback rows
 own those, and a second editor for one piece of state is the drift this codebase keeps undoing.
 
-**`ui/src/demo.ts` is the only invented data left**, and that is the test. It is the fixture
-shelf plus `amp`, the synthetic peaks that stand in for the demo projects' missing audio; a real
-take draws its own through `peaks.ts`. `engine.ts` holds the seam itself — if a screen ever needs
+**`ui/src/demo.ts` is the only invented data left**, and it is now only `amp`, the synthetic
+peaks that stand in for audio a demo project never had. **A first launch starts with an empty
+Library** (2026-09-16): the seeded fixture shelf is gone, and `amp` stays only because installs that
+saved those projects still draw them. A real take draws its own peaks through `peaks.ts`. **An empty
+library is a real state** — `open()` falls back to a blank project to take New-project defaults from,
+and `render()` sends any screen that needs a project back to the Library. `engine.ts` holds the seam itself — if a screen ever needs
 something from an engine that a real one could not give, the platform-bound surface has grown
 past what the deferral assumed, and that is worth stopping for.
 
@@ -430,14 +433,15 @@ claims none and the domain declines the whole thing.
 Three things about the shape, each of which the obvious version gets wrong:
 
 - **One enforcement point.** `app.ts`'s `navigate` is the only way the route changes and the only
-  place a change is refused; the tab bar used to set `route` and call `render()` itself, which is
-  exactly how the next route added would skip the guard.
+  place a change is refused. A shell tab bar once set `route` and called `render()` itself, which is
+  exactly how the next route added would skip the guard; the tab bar is gone (2026-09-16), and every
+  way between screens is now a control on a screen.
 - **`disabled`, not `pointer-events: none`.** A focused button still fires on Enter, and a rule
   that only holds for the mouse is not a rule. `playback.ts` keeps an `exits` list every such
   control pushes into, so a new way off the screen is one line from being covered.
-- **The predicate is asked, never cached.** `takeInProgress()` is what refuses; `onBusyChange`
-  only dims the shell's tab bar, which the screen cannot reach. Deriving enforcement from the
-  notification instead would make it depend on the notification having arrived.
+- **The predicate is asked, never cached.** `takeInProgress()` is what refuses, at the moment of
+  teardown. Deriving enforcement from a notification would make it depend on the notification having
+  arrived.
 
 **A row refuses to arm without an input, and that is the only place the failure is preventable**
 (§3.5). Everything downstream is correct *given a take*, so a denied microphone that still armed
@@ -699,8 +703,8 @@ wrong number rather than a subtle difference: 617,400 frames, worst error 0.
 question stood — whether the backing is in a mixdown, and whether its settings carry — and that is
 now settled (layers only, settings carry regardless of mute). `runBounce` renders through
 `renderOffline`, wraps the tail, files the buffer with `takes.put`, and hands `bounceSeed` a
-`RecordingSession` describing audio that exists. **`simSession` is now only `demo.ts`'s**, which is
-the one place invented data belongs.
+`RecordingSession` describing audio that exists. `simSession` then lived only in `demo.ts`, and went
+with the fixture shelf.
 
 ## Perfect loop, and the tail it wraps
 

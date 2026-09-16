@@ -121,9 +121,9 @@ Deleting or restyling these changes what the app *does*.
 - **`.is-measuring` and `.is-measuring-badge`** — applied for one synchronous measurement in
   `syncLabelWidth`, then removed in the same frame. They must make the label auto-width and swap
   the name for the badge. Restyle them and the label column is sized from the wrong box.
-- **`disabled` states on `.lr-btn`, `.header-gear` and `.app-nav button`** — the recording lock
-  (§3.5). Three separate selectors, all at .35 opacity. A new sheet that styles only `.lr-btn`
-  leaves the gear and the tab bar looking available while they are not.
+- **`disabled` states on `.lr-btn` and `.header-gear`** — the recording lock (§3.5). Two separate
+  selectors, both at .35 opacity. A new sheet that styles only `.lr-btn` leaves the gear looking
+  available while it is not.
 
 ---
 
@@ -301,7 +301,7 @@ restyling — it only separates in the other three colourways.
 
 Three rules were still carrying pre-theme whites that had not painted since the colourways landed,
 because a later rule of equal specificity replaced them: `.lr-settings`'s colour, `.lr-play--sm`'s
-background and ink, and the whole of `.app-nav button.is-active`. **Confirm with a computed style
+background and ink, and the whole of the since-removed tab bar's `.is-active`. **Confirm with a computed style
 before deleting** — specificity reasoning is easy to get backwards, and the measurement is one line.
 
 **A transition will lie to a measurement.** Several of these carry `transition: stroke .12s` or

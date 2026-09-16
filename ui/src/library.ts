@@ -299,7 +299,7 @@ export function libraryScreen(opts: {
  */
 function modified(iso: string): string {
   const midnight = (ms: number) => Math.floor(ms / 86_400_000);
-  const days = midnight(NOW) - midnight(Date.parse(iso));
+  const days = midnight(Date.now()) - midnight(Date.parse(iso));
   if (days <= 0) return 'Today';
   if (days === 1) return 'Yesterday';
   if (days < 7) return `${days} days ago`;
@@ -307,5 +307,3 @@ function modified(iso: string): string {
   return `${Math.floor(days / 7)} weeks ago`;
 }
 
-/** The demo shelf is dated, so "today" has to be its today rather than the reader's. */
-const NOW = Date.parse('2026-08-30T12:00:00.000Z');

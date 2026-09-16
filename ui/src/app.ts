@@ -1,7 +1,7 @@
 import { backingMixSources } from '../../src/domain/backing.ts';
 import { audioSessionEnabled, setAudioSessionEnabled } from './audio-session.ts';
 import type { Layer, Project } from '../../src/domain/project.ts';
-import { QUALITY_SPEC, projectTiming } from '../../src/domain/project.ts';
+import { QUALITY_SPEC, createProject, projectTiming } from '../../src/domain/project.ts';
 import { type BackingEngine, audioEngine } from './audio.ts';
 import { editLayerScreen } from './edit-layer.ts';
 import { exportScreen } from './export.ts';
@@ -9,7 +9,6 @@ import { el } from './kit.ts';
 import { libraryScreen } from './library.ts';
 import { playbackScreen } from './playback.ts';
 import { projectSettingsScreen } from './settings.ts';
-import { demoLibrary } from './demo.ts';
 import { persistentStore } from './store.ts';
 import {
   COUNT_IN_BAR_OPTIONS,
@@ -47,7 +46,6 @@ type Route =
   | { screen: 'settings'; mode: 'new' | 'edit' };
 let route: Route = { screen: 'library' };
 
-const nav = el('div', 'app-nav');
 const host = el('div', 'app-host');
 /**
  * Whether anything is reaching storage — **on the shell, so every screen carries it**.
@@ -61,7 +59,7 @@ const host = el('div', 'app-host');
  * loop, and polling for something that announces itself is work for an answer already offered.
  */
 const banner = el('div', 'app-banner');
-document.body.append(nav, banner, host);
+document.body.append(banner, host);
 
 function paintStorage() {
   const message = storageMessage({ kind: store.status(), unsaved: store.unsaved().length });
@@ -147,8 +145,24 @@ function setMaster(next: { readonly level: number; readonly muted: boolean }) {
   masterWrite = window.setTimeout(() => store.savePref('master', String(master.level)), 300);
 }
 
+/**
+ * What a new project starts on when there is no project to take defaults from.
+ *
+ * Setup normally inherits tempo, length and beats per bar from the open project — the sketch you
+ * were just in is the best guess at the next one. **A first launch has no open project**, since the
+ * demo shelf stopped being seeded (2026-09-16), and neither does a library whose every project was
+ * deleted. Both used to reach `projects[0]!` and crash the shell on an empty list. The numbers are a
+ * choice, not the spec's — §4.5 names no default — and every one of them is editable before Create.
+ */
+const FIRST_PROJECT = { bpm: 120, barCount: 8, quality: 'standard' } as const;
+
+function blankProject(): Project {
+  return createProject({ id: 'none', name: '', ...FIRST_PROJECT });
+}
+
+/** The open project, or a blank to take defaults from when the library is empty. */
 function open(): Project {
-  return projects.find((p) => p.id === openId) ?? projects[0]!;
+  return projects.find((p) => p.id === openId) ?? projects[0] ?? blankProject();
 }
 
 /**
@@ -192,7 +206,7 @@ function replaceLayer(layer: Layer) {
  *
  * Navigating destroys the screen and closes the `AudioContext`, which takes the capture worklet
  * with it, so leaving Playback mid-take deletes the performance rather than pausing it. Every
- * route out funnels through here, the tab bar included, so the rule is stated once.
+ * route out funnels through here, so the rule is stated once.
  *
  * A refusal is not an error to report: the controls that reach here are already disabled, so this
  * is a keyboard or a race, and nothing happening is the right answer.
@@ -230,28 +244,10 @@ window.addEventListener('beforeunload', (e) => {
 function render() {
   const project = open();
 
-  nav.innerHTML = '';
-  const tabs: { label: string; route: Route }[] = [
-    { label: 'Projects', route: { screen: 'library' } },
-    { label: project.name, route: { screen: 'playback' } },
-    ...project.layers
-      .filter((l) => l.sessions.length > 0)
-      .map((l) => ({
-        label: `Edit · ${l.name || `Layer ${l.index + 1}`}`,
-        route: { screen: 'edit' as const, layerIndex: l.index },
-      })),
-  ];
-
-  for (const tab of tabs) {
-    const active =
-      tab.route.screen === route.screen &&
-      (tab.route.screen !== 'edit' ||
-        tab.route.layerIndex === (route as { layerIndex: number }).layerIndex);
-    const button = el('button', active ? 'is-active' : '', tab.label);
-    // Through `navigate`, not straight to `render` — the tab bar is a way off Playback like any
-    // other, and it was the one that skipped the guard by setting the route itself.
-    button.addEventListener('click', () => navigate(tab.route));
-    nav.appendChild(button);
+  // A screen that needs a project cannot be shown without one — an empty library has nowhere to go
+  // but the Library, which is also where the way to make one is.
+  if (projects.length === 0 && route.screen !== 'library' && !(route.screen === 'settings' && route.mode === 'new')) {
+    route = { screen: 'library' };
   }
 
   // Screens own a render loop and document listeners, so the outgoing one is torn down first, or
@@ -334,12 +330,6 @@ function render() {
             storage: () => ({ kind: store.status(), unsaved: store.unsaved().length }),
             onStorageChange: (listener) => store.onStatusChange(listener),
             onExport: () => navigate({ screen: 'export', from: 'playback' }),
-            // The tab bar belongs to the shell, so the screen cannot dim it itself. Enforcement
-            // is still `navigate`; this only stops the bar from advertising a way out that a
-            // take in progress will refuse.
-            onBusyChange(busy) {
-              for (const button of nav.querySelectorAll('button')) button.disabled = busy;
-            },
           })
         : route.screen === 'edit'
           ? editLayerScreen({
@@ -444,8 +434,8 @@ function render() {
 async function hydrate(sweep: boolean) {
   const live = new Set<string>();
   for (const p of projects) for (const l of p.layers) for (const s of l.sessions) live.add(s.id);
-  // Only when the saved list is what we are holding. Sweeping against a freshly seeded demo shelf
-  // would delete every real take on disk.
+  // Only when the saved list is what we are holding. Sweeping against an unsaved list — the empty
+  // one a first launch starts with — would treat every take on disk as an orphan.
   if (sweep) store.sweep(live);
 
   const openFirst = [...live].sort((a, b) => Number(b.startsWith(openId)) - Number(a.startsWith(openId)));
@@ -477,9 +467,10 @@ async function hydrate(sweep: boolean) {
 /**
  * Projects first, audio behind them.
  *
- * **The saved list is authoritative once it exists, including when it is empty** — a user who
- * deleted every project meant it, and re-seeding the demo shelf over that would be the app
- * arguing with them. The shelf is a first-run convenience, and every row of it is deletable.
+ * **A first launch starts empty** (2026-09-16). It used to seed `demoLibrary()` — seven sample
+ * projects with synthetic waveforms and no audio — which was a fixture for building the Library,
+ * not something a person installing the app wants to delete seven of. Installs that already hold
+ * those projects keep them: they are ordinary saved projects now, and still deletable.
  */
 async function boot() {
   // Before anything renders, so no frame is painted in the wrong colourway.
@@ -504,8 +495,7 @@ async function boot() {
   // Anything but the one value that means on reads as off — the safe reading for a comparison switch.
   setAudioSessionEnabled((await store.loadPref('audio-session')) === 'playback');
   const saved = await store.loadProjects();
-  projects = saved ?? demoLibrary();
-  if (!saved) for (const p of projects) store.saveProject(p);
+  projects = saved ?? [];
   openId = [...projects].sort((a, b) => b.lastModified.localeCompare(a.lastModified))[0]?.id ?? '';
   render();
   void hydrate(saved !== undefined);
