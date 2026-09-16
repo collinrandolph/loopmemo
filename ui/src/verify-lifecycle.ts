@@ -1,7 +1,7 @@
 import { createProject, recordSession } from '../../src/domain/project.ts';
 import type { Project } from '../../src/domain/project.ts';
 import { projectTiming } from '../../src/domain/project.ts';
-import { loopFrames } from '../../src/domain/timing.ts';
+import { framesPerBar, loopFrames } from '../../src/domain/timing.ts';
 import type { BackingTracks } from '../../src/domain/backing.ts';
 import type { Timing } from '../../src/domain/timing.ts';
 import type { Transport } from '../../src/domain/transport.ts';
@@ -169,7 +169,10 @@ export async function verifyLifecycle() {
   const editHoldsOwn = donorSessions.every((id) => edited.loaded().includes(id));
   edited.screen.destroy();
 
-  // -- claim 3: destroy() is terminal --
+  // -- claim 3: a count-in window does not outlive its take --
+  const countIn = await countInWindowEnds();
+
+  // -- claim 4: destroy() is terminal --
   const terminal = destroyIsTerminal();
 
   // -- claim 3: the engine reports what it schedules, and stops when detached --
@@ -181,6 +184,7 @@ export async function verifyLifecycle() {
     newModePushedLayers: created.calls.some((c) => c.call === 'setLayers'),
     editModeHoldsOwnAudio: editHoldsOwn,
     donorSessions,
+    ...countIn,
     ...terminal,
     ...terminal,
     ...probe,
@@ -190,6 +194,9 @@ export async function verifyLifecycle() {
     claims.newModeStillHoldsDonorAudio.length === 0 &&
     claims.newModePushedLayers &&
     claims.editModeHoldsOwnAudio &&
+    claims.countInGoneAfterStop &&
+    claims.muteChangeReschedules &&
+    claims.countInAppliedDuringTake &&
     claims.destroyBuildsNoSecondContext &&
     claims.destroyIsIdempotent &&
     claims.scheduleHookReports &&
@@ -285,4 +292,74 @@ function destroyIsTerminal(): {
   } finally {
     globalThis.AudioContext = Real;
   }
+}
+
+/**
+ * Does a drums-only count-in stay behind after the take it belonged to?
+ *
+ * It did. `setCountIn` is a frame threshold compared against `barStartFrame`, which counts from
+ * `originFrame` — and `start` re-anchors that — so once set, *every later playback from the top*
+ * on the same engine replayed the count-in: first bars without chords or layers, for no reason
+ * the screen showed. It cleared when the engine was rebuilt, which happens on navigation, so it
+ * looked intermittent: press play again on Playback and it came back, leave the screen and it
+ * did not.
+ *
+ * Asked through `onSchedule`, which reports the kind of every onset — so "were chords scheduled
+ * in bar 1" is a fact the engine states rather than something inferred from the graph.
+ */
+async function countInWindowEnds(): Promise<{
+  countInGoneAfterStop: boolean;
+  countInAppliedDuringTake: boolean;
+  muteChangeReschedules: boolean;
+}> {
+  const base = createProject({ id: 'ci', name: 'CI', bpm: 120, barCount: 4, quality: 'standard' });
+  // **Chords are muted in a new project**, which is what a first draft of this probe missed: with
+  // the default backing there are no chord onsets to look for, so the window looked cleared when
+  // nothing was being scheduled either way. Unmuted here, deliberately.
+  const project = {
+    ...base,
+    backing: { ...base.backing, chords: { ...base.backing.chords, muted: false } },
+  };
+  const t = projectTiming(project);
+  const ctx = new OfflineAudioContext(2, Math.ceil(t.sampleRate * 4), t.sampleRate);
+  const engine = audioEngine(t.sampleRate, ctx);
+  engine.setBacking(project.backing, t);
+  engine.setLayers(project, takeStore(() => {}));
+
+  const kinds = () => {
+    const seen: ScheduledEvent[] = [];
+    engine.onSchedule((e) => seen.push(e));
+    engine.prerender(2);
+    engine.onSchedule(undefined);
+    return seen;
+  };
+
+  // With a window over the first two bars, those bars are drums and nothing else.
+  engine.setCountIn(framesPerBar(t) * 2);
+  const during = kinds();
+  const countInAppliedDuringTake =
+    during.some((e) => e.kind === 'drum') && !during.some((e) => e.kind === 'chord');
+
+  // The take ends. Playing from the top again must be an ordinary loop.
+  engine.stop();
+  const after = kinds();
+  const countInGoneAfterStop = after.some((e) => e.kind === 'chord');
+
+  // -- F4: muting a track has to invalidate the committed horizon, not wait it out --
+  //
+  // A muted track schedules nothing, so muting only affects bars not yet committed — and the
+  // horizon runs `AHEAD_SECONDS` in front. Without a reschedule the drums kept playing for up to
+  // 1.2 s after the tap, which at 240 BPM is more than a bar, and the control read as broken.
+  const rescheduled: ScheduledEvent[] = [];
+  engine.start(0);
+  engine.onSchedule((e) => rescheduled.push(e));
+  engine.setBacking({ ...project.backing, drums: { ...project.backing.drums, muted: true } }, t);
+  engine.onSchedule(undefined);
+  // A reschedule re-commits the horizon; the point is that it happened at all, and that what it
+  // re-committed has no drums in it.
+  const muteChangeReschedules =
+    rescheduled.length > 0 && !rescheduled.some((e) => e.kind === 'drum');
+
+  engine.destroy();
+  return { countInGoneAfterStop, countInAppliedDuringTake, muteChangeReschedules };
 }

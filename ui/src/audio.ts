@@ -1024,6 +1024,20 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
 
     stop() {
       if (destroyed) return;
+      // **The count-in window dies with the transport that carried it.**
+      //
+      // `setCountIn` is set before a take and was never cleared. It is a comparison against
+      // `barStartFrame`, which counts from `originFrame` — and `start` re-anchors that — so after
+      // one Drums-only take, *every later playback from the top* of that engine replayed the
+      // count-in: the first bars came back without chords or layers, for no reason the screen
+      // showed. It survived until the engine was rebuilt, which happens on navigation, so it
+      // looked intermittent — pressing play again on Playback reproduced it, leaving the screen
+      // did not.
+      //
+      // Cleared here rather than asked of the caller: the engine knows when the take the window
+      // belonged to has ended, and every caller remembering is what this file keeps getting
+      // wrong.
+      countInUntilFrame = 0;
       originFrame = engine.frame();
       anchorTime = undefined;
       if (timer !== undefined) {
@@ -1038,6 +1052,15 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
       const tempoChanged =
         timing !== undefined &&
         (timing.bpm !== t.bpm || timing.barCount !== t.barCount || timing.beatsPerBar !== t.beatsPerBar);
+      // **Mute is not like a kit change, and the difference is which bars are already decided.**
+      // A muted track schedules *nothing* — `backingSchedule` omits its onsets — so muting only
+      // affects bars not yet committed. The horizon runs `AHEAD_SECONDS` in front, which at
+      // 240 BPM is more than a bar, so the drums kept playing for up to 1.2 s after the tap and
+      // the control read as broken. A kit or chord change needs no reschedule for the opposite
+      // reason: the onsets are the same, only the voice built from them differs.
+      const muteChanged =
+        backing !== undefined &&
+        (backing.drums.muted !== next.drums.muted || backing.chords.muted !== next.chords.muted);
       backing = next;
       timing = t;
       rebuild();
@@ -1048,6 +1071,12 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
         const at = engine.frame();
         engine.stop();
         engine.start(at);
+      }
+      if (muteChanged) {
+        // Only the future: a voice already sounding is left alone, because cutting a chord
+        // mid-decay is the click this engine spends everywhere else avoiding.
+        rescheduleFuture();
+        return;
       }
       // Otherwise nothing to do: the next top-up reads the new tracks, so a kit or chord change
       // lands within a bar and no running voice is rebuilt underneath itself.
