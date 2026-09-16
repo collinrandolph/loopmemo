@@ -82,6 +82,14 @@ export function bindChips(scope: HTMLElement): void {
     group.addEventListener('click', (e) => {
       const chip = (e.target as HTMLElement).closest('.lr-chip');
       if (!chip || !group.contains(chip)) return;
+      // **A disabled chip moves nothing, including the highlight.** This moves the active class
+      // independently of whatever the chip's own handler does, which is the whole point — one
+      // mechanism, so the highlight cannot drift from the value. But it made the settings lock
+      // lie in the other direction: the per-chip handler returned early on `locked` while this
+      // still repainted, so a locked project showed 4 bars and held 16, and Standard quality
+      // looked like High. Same failure as the EQ picker's, seen from the other side — there the
+      // value moved and the highlight did not.
+      if (chip.getAttribute('aria-disabled') === 'true') return;
       for (const c of group.querySelectorAll('.lr-chip')) c.classList.remove('is-active');
       chip.classList.add('is-active');
     });

@@ -73,6 +73,33 @@ export function projectSettingsScreen(opts: {
   const creating = opts.mode === 'new';
   const locked = !creating && isConfigurationLocked(opts.project);
 
+  /**
+   * Lock a settings row for real: the class for the look, the `disabled` **property** for the rule.
+   *
+   * `.is-inert` only ever did the look. `pointer-events: none` stops the mouse and nothing else —
+   * a control reached by Tab still takes arrow keys and Enter, and a range input is the worst case
+   * because arrow keys are its normal way of being used. So the tempo lock that §1.2 and §5.1 #4
+   * call absolute was a hover effect.
+   *
+   * Every control inside the row, rather than a list of the ones we remember: a row gains a chip
+   * or a slider later and the lock covers it without anyone thinking about it. The handlers still
+   * carry their own `if (locked) return` — CLAUDE.md's point about the record-take exits is that
+   * enforcement has to be asked rather than styled, and a disabled attribute is still markup.
+   */
+  function setRowLocked(row: HTMLElement, isLocked: boolean) {
+    row.classList.toggle('is-inert', isLocked);
+    for (const control of row.querySelectorAll('input, button, select, textarea')) {
+      (control as HTMLInputElement).disabled = isLocked;
+    }
+    // Chips are spans, so `disabled` means nothing to them; they are taken out of the tab order
+    // and marked for assistive technology instead, and their handlers refuse on `locked`.
+    for (const chip of row.querySelectorAll('.lr-chip')) {
+      chip.setAttribute('aria-disabled', String(isLocked));
+      if (isLocked) chip.setAttribute('tabindex', '-1');
+      else chip.removeAttribute('tabindex');
+    }
+  }
+
   let name = creating ? '' : opts.project.name;
   let bpm = opts.project.bpm;
   let barCount = opts.project.barCount;
@@ -133,11 +160,24 @@ export function projectSettingsScreen(opts: {
   bpmSlider.value = String(bpm);
   // The number follows the drag, the audio the release: re-anchoring is a stop and a restart, and
   // doing that on every `input` would never let a whole bar of the chosen tempo through.
+  // Both handlers refuse, not just the first. `change` fires from a keyboard commit as well as a
+  // drag release, so guarding only `input` would still let a locked tempo reach `retempo()` — and
+  // `retempo` re-anchors the engine, which is the audible half of the change.
   bpmSlider.addEventListener('input', () => {
+    if (locked) {
+      bpmSlider.value = String(bpm);
+      return;
+    }
     bpm = Number(bpmSlider.value);
     paint();
   });
-  bpmSlider.addEventListener('change', () => retempo());
+  bpmSlider.addEventListener('change', () => {
+    if (locked) {
+      bpmSlider.value = String(bpm);
+      return;
+    }
+    retempo();
+  });
 
   const bpmRow = el('div', 'lr-panel-row', '<span class="lr-panel-label">Tempo</span>');
   bpmRow.append(bpmSlider, bpmValue, playBtn);
@@ -690,9 +730,15 @@ export function projectSettingsScreen(opts: {
     qualityFigure.textContent =
       `${spec.bitDepth}-bit / ${spec.sampleRate / 1000} kHz · ${(perPass / 1e6).toFixed(1)} MB per pass, per layer`;
 
-    bpmRow.classList.toggle('is-inert', locked);
-    barsRow.classList.toggle('is-inert', locked);
-    qualityRow.classList.toggle('is-inert', !creating);
+    // **`disabled`, not only the class.** `.is-inert` is `pointer-events: none` plus an opacity,
+    // and CLAUDE.md already states the rule this broke, about the exits from a running take: a
+    // focused control still fires on Enter, and a rule that only holds for the mouse is not a rule.
+    // A range input reached by Tab and driven with the arrow keys walked straight through the
+    // tempo lock — §1.2 and §5.1 #4 say every derived value depends on BPM and bar count, and
+    // `framesPerBar` changing under recorded audio moves every bar line in the project.
+    setRowLocked(bpmRow, locked);
+    setRowLocked(barsRow, locked);
+    setRowLocked(qualityRow, !creating);
     commitBtn.disabled = false;
   }
 
