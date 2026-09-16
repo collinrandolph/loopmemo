@@ -1896,8 +1896,9 @@ touch-action: none;                         /* on gesture surfaces */
 - Export sharing details beyond format and destination
 - **The manual's remaining copy.** Narrowed 2026-09-16; this said "§4.7 is structure only", which
   stopped being true. Playback, Edit Layer and project settings all ship approved sheets through
-  `ui/src/help.ts`. **Export has no help control at all** — an oversight rather than a decision,
-  unlike the Library, which has none deliberately.
+  `ui/src/help.ts`. **Export and the Library have no help control, both deliberately** — Export's
+  options are each explained beside the control that sets them, so a sheet would repeat them
+  (settled 2026-09-16).
 - Onboarding
 
 ## 6.3 Later
