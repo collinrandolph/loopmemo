@@ -49,3 +49,42 @@ Things to settle before building it, none of them obvious:
 
 **Nothing is decided.** The most conservative version worth considering is Playback lanes only,
 peaks scaled by `level` and not by mute, leaving the Edit Layer grid alone.
+
+---
+
+## 2 · A horizontal step can strand a slot on a pass that bar does not have
+
+**Found 2026-09-16 by `tests/invariants.test.ts`**, which walks random sequences of the real edit
+operations. It is recorded there as a `todo` test holding the exact reproduction, so it is
+executable rather than prose.
+
+```
+bar 8 offers passes [1, 2, 3, 4, 5]     <- pass 3 is partial: it covers bars 1-8
+bar 9 offers passes [1, 2, 4, 5]
+
+slot holds P3 / bar 8                   legal, resolves
+  one horizontal step forward ->
+slot holds P3 / bar 9                   resolves to NOTHING
+```
+
+`stepBarAt` wraps `relativeBar` within the current pass — correct per §1.3, where neither axis may
+step the other — and the available set is **per bar**. So the horizontal axis can walk off the end
+of a partial pass.
+
+**What it costs.** The tile draws blank and plays nothing. Worse, `compressionPlan` refuses the
+whole project while any audible slot is unresolved, so Compress reports "a bar pointing at audio
+that is no longer there" — a message about damage, for a state the user reached by swiping.
+
+**It is recoverable**, which is why it is logged rather than treated as a stop: a vertical swipe
+lands on P4, and stepping the bar back lands on P3 / bar 8. A blank tile, not a trap.
+
+**The fix is a product decision, which is why it is here.** The obvious answer is for the
+horizontal axis to skip bars the current pass does not have, the way the vertical axis already
+skips gaps in the available set. That stays inside the pass, so §1.3 holds. But it makes one
+horizontal swipe move more than one bar, and whether that reads as helpful or as the axis lying
+about its own step is a question for someone who has used the screen. The alternatives are to clamp
+at the end of the pass instead of wrapping, or to leave it and have the tile say something rather
+than going blank.
+
+**Check §5.2 before building any of them** — the arrangement axes have had alternatives rejected
+for reasons this note does not restate.
