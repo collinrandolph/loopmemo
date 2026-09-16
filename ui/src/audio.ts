@@ -141,8 +141,42 @@ export type BackingEngine = Engine & {
   stopCapture(): Promise<Capture | undefined>;
   /** Whether the browser has actually let us make sound yet (autoplay policy). */
   ready(): boolean;
+  /**
+   * **Watch what this engine schedules.** Pass a listener to observe, `undefined` to stop.
+   *
+   * For instruments, and it exists because the alternative is worse: the audit harness observed
+   * scheduling by monkeypatching `OscillatorNode.prototype.start` from outside, which sees voices
+   * it did not cause, cannot tell a layer segment from a drum, and produced two measurements that
+   * had to be retracted. Reporting from inside the one function that schedules removes the whole
+   * class — an instrument asks the engine what it did rather than inferring it from the graph.
+   *
+   * It costs one `undefined` check per onset when nothing is listening, which is why it is not
+   * behind a build flag: a flagged hook is a hook that is not there when someone needs it.
+   */
+  onSchedule(listen: ((event: ScheduledEvent) => void) | undefined): void;
   destroy(): void;
 };
+
+/**
+ * One thing the engine put on the graph, as the engine understands it.
+ *
+ * `frame` is a transport frame, which is what every assertion wants — `time` is its context time,
+ * kept because a test that suspects the frame-to-time conversion needs both to say so.
+ */
+export type ScheduledEvent =
+  | { kind: 'drum'; voice: 'kick' | 'snare' | 'hat' | 'hatOpen'; frame: number; time: number }
+  | { kind: 'chord'; frame: number; time: number; frequency: number }
+  | {
+      kind: 'layer';
+      /** Which layer, by its index in the project — not its position in `layerVoices`. */
+      layer: number;
+      /** The session the audio is read from, which is what says *whose* recording this is. */
+      sessionId: string | undefined;
+      /** Arrangement slot this bar is playing. */
+      slot: number;
+      frame: number;
+      time: number;
+    };
 
 /**
  * Why the input could not be opened, classified rather than described.
@@ -213,6 +247,9 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
    * backing, which is already on time and is the reference being corrected against.
    */
   let latencyFrames = 0;
+
+  /** Set by `onSchedule`. Undefined whenever nothing is watching, which is always in production. */
+  let watching: ((event: ScheduledEvent) => void) | undefined;
 
   let stream: MediaStream | undefined;
   let inputError: InputFailure | undefined;
@@ -797,6 +834,7 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
       if (onset.voice === 'kick') kick(c, drumGain!, at, kit.kick);
       else if (onset.voice === 'snare') snare(c, drumGain!, at, kit.snare);
       else hat(c, drumGain!, at, kit.hat, onset.voice === 'hatOpen');
+      watching?.({ kind: 'drum', voice: onset.voice, frame, time: at });
     }
 
     // A drums-only count-in stops here: the beat is scheduled, the chords and the layers under it
@@ -827,6 +865,18 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
       voice.scheduled.push(
         ...scheduleSegments(c, voice.chain.input, segs, voice.buffers, frameToTime(0), crossfade),
       );
+      // Reported per segment rather than per bar, and carrying the session id: *whose* recording
+      // this is, which is the question a preview playing the wrong project's audio turns on.
+      for (const s of segs) {
+        watching?.({
+          kind: 'layer',
+          layer: voice.layer.index,
+          sessionId: voice.layer.sessions[s.region.sessionIndex]?.id,
+          slot: slotIndex,
+          frame: s.startFrame,
+          time: frameToTime(s.startFrame),
+        });
+      }
     }
 
     if (!build) return;
@@ -839,6 +889,7 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
       const seconds = Math.min(nominal, chordCaps[i] ?? nominal);
       for (const freq of bar.frequencies) {
         build(c, chordGain!, freq, at, onset.articulation === 'chunk', seconds);
+        watching?.({ kind: 'chord', frame, time: at, frequency: freq });
       }
     });
   }
@@ -1026,6 +1077,10 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
     hasInput: () => !!recorder && inputIsLive(),
 
     inputPeak: () => (recorder?.recording() ? recorder.peak() : 0),
+
+    onSchedule(listen) {
+      watching = listen;
+    },
 
     setCountIn(untilFrame) {
       countInUntilFrame = Math.max(0, untilFrame);

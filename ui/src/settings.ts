@@ -223,12 +223,46 @@ export function projectSettingsScreen(opts: {
    * round; bar count is therefore not part of the preview and cannot disturb it. Chords are muted
    * for the same reason: the question here is "how fast is that".
    */
+  /**
+   * The project this screen is **about**, which is not always the project it was handed.
+   *
+   * In `edit` mode they are the same. In `new` mode `opts.project` is the *open* project, passed
+   * only as a source of defaults — the tempo, length and beats per bar a fresh project starts on —
+   * and the prop's own comment says nothing about it is written to. True, and beside the point:
+   * nothing was written, and it was **played**. It still carries the open project's `layers`, with
+   * their recorded sessions, so every preview on the New Project screen was another project's
+   * audio. Seven sketches auditioning as one, which is the Library's own bug by a different route.
+   *
+   * A fresh project rather than a stripped copy, because "the project you are about to create" is
+   * what the previews are supposed to be: the chosen tempo and length, the default groove, and
+   * seven empty layers. The id is fixed rather than minted, since this is asked on every repaint
+   * and a preview is not a project.
+   */
+  function subject(): Project {
+    if (!creating) return opts.project;
+    return {
+      ...createProject({
+        id: 'preview',
+        name: 'preview',
+        bpm,
+        barCount,
+        quality,
+        beatsPerBar: opts.project.beatsPerBar,
+      }),
+      backing: defaultBacking(),
+    };
+  }
+
   function retempo() {
-    const backing = creating ? defaultBacking() : opts.project.backing;
+    const project = subject();
     opts.engine.setBacking(
-      { drums: backing.drums, chords: { ...backing.chords, muted: true } },
+      { drums: project.backing.drums, chords: { ...project.backing.chords, muted: true } },
       timing(bpm, 1, QUALITY_SPEC[quality].sampleRate, opts.project.beatsPerBar),
     );
+    // **And the layers, every time.** Setting only the backing leaves whatever the engine was last
+    // loaded with — which, arriving here from a project, is that project's recordings. `retempo`
+    // runs on mount, so this is also what clears the donor before the first preview can play it.
+    opts.engine.setLayers(project, opts.takes);
   }
 
   // ------------------------------------------------------------------- notes --
@@ -265,8 +299,9 @@ export function projectSettingsScreen(opts: {
    */
   let latencyMs = Math.round(opts.project.latencyOffsetSeconds * 1000);
 
+  /** The offset preview, over `subject()` — never over whichever project happened to be open. */
   function previewProject(): Project {
-    return { ...opts.project, latencyOffsetSeconds: latencyMs / 1000 };
+    return { ...subject(), latencyOffsetSeconds: latencyMs / 1000 };
   }
 
   let latencyPlaying = false;
@@ -276,8 +311,9 @@ export function projectSettingsScreen(opts: {
     if (latencyPlaying) {
       playing = false;
       playBtn.setPlaying(false);
-      opts.engine.setBacking(opts.project.backing, projectTiming(opts.project));
-      opts.engine.setLayers(previewProject(), opts.takes);
+      const preview = previewProject();
+      opts.engine.setBacking(preview.backing, projectTiming(preview));
+      opts.engine.setLayers(preview, opts.takes);
       opts.engine.start(0);
     } else {
       opts.engine.stop();

@@ -407,7 +407,15 @@ async function hydrate(sweep: boolean) {
     takes.restore(id, buffer);
     // Per take rather than at the end: the horizon already scheduled stays silent either way, but
     // everything after it picks the buffer up, so a long project starts sounding as it loads.
-    if (!current?.takeInProgress?.()) currentEngine?.setLayers(open(), takes);
+    //
+    // **Only where the open project is what is playing.** Two screens preview something else —
+    // the Library plays the row you tapped, project settings previews the project you are about
+    // to create — and both load the engine themselves. Pushing `open()` here regardless meant a
+    // take finishing its load mid-preview swapped the audio underneath, so a Library row started
+    // as the row and finished as the open project. The route already says which screens play the
+    // open project; asking it needs no new contract with the screens.
+    const playsOpenProject = route.screen === 'playback' || route.screen === 'edit';
+    if (playsOpenProject && !current?.takeInProgress?.()) currentEngine?.setLayers(open(), takes);
   }
 }
 
