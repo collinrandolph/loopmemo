@@ -637,7 +637,7 @@ take effect on playing audio without interrupting it (§2.5).
 **Per layer**
 - Two `AVAudioPlayerNode` instances, alternating, so segment N+1 can overlap the tail of N. Fourteen nodes across seven layers is negligible.
 - Segments queued with `scheduleSegment(_:startingFrame:frameCount:at:)` against the memory-mapped session file.
-- Schedule in **beat-sized** segments rather than whole bars, keeping the committed horizon short so a splice is never far behind the gesture.
+- Schedule in **beat-sized** segments rather than whole bars, keeping the committed horizon short so a splice is never far behind the gesture. **This is a property of `AVAudioPlayerNode`, not of the app**: queued segments cannot be withdrawn individually, so only a short queue keeps an edit close. Where every scheduled segment can be cancelled on its own — Web Audio's one-shot `AudioBufferSourceNode` — the browser build cancels the unstarted horizon and rebuilds it on every edit, which already lands a swipe immediately, and schedules a bar at a time; beat-sized segments there would only add joins (settled 2026-09-16).
 
 **Splicing**
 - 5–10 ms equal-power crossfade on every join, **unconditionally** — including splices into the same source. Bar boundaries in a live recording almost never land on silence, so butt-joining clicks. A no-op fade costs nothing; branching costs a special case.

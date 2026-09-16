@@ -543,10 +543,18 @@ gets its own and overlap is free. It returns on a platform without that property
 - **Mid-bar splice**, through `spliceCurrentBar`, so a swipe is heard on the bar it was made on.
 - **The recording offset**, applied at scheduling — see below.
 
+**Beat-sized segments are not owed here, and were deliberately not built** (2026-09-16). §2.4 asks
+for them so a splice is never far behind the gesture — but that is the same AVFoundation constraint
+as the alternating players: queued `scheduleSegment` calls cannot be withdrawn one at a time, so a
+short queue is the only way to keep an edit close. Every `AudioBufferSourceNode` can be, and an
+edit already lands immediately without them: `setLayers` cancels every unstarted segment and
+rebuilds the horizon (`rescheduleFuture`), and `spliceCurrentBar` switches the bar under the
+playhead one crossfade later. Bar-sized scheduling therefore costs no latency, and beat-sized would
+add three joins per bar — three more crossfades over material that was continuous — for nothing. It
+returns with a platform whose queue cannot be cancelled piece by piece.
+
 Still owed:
 
-- **Beat-sized segments**, so the committed horizon stays short and a splice is never far
-  behind the gesture. Currently one bar at a time.
 - **Nothing on the render thread** — no allocation, no locks, no file I/O. The worklet holds
   to this; the scheduler runs on the main thread and allocates per bar, which a browser
   tolerates and a phone may not.
