@@ -1733,7 +1733,7 @@ future session would otherwise "clean them up" and quietly undo the iteration.
 | 4 | **BPM and bar count lock after the first recording** | Every derived value depends on them. |
 | 5 | **A partial bar at the end of a session is kept AND exposed** — reversed; see §1.4 | Still **don't pad**: the rule's real point was that padding creates silent bars that look selectable. `regionFor` clamps to the file, so the bar plays short instead. A bar the recording never reached is still excluded, and a slot with nothing behind it starts muted (§1.6) rather than blank. |
 | 6 | **Exactly 7 layers** | Not "7+". The row stack has no defined behaviour otherwise. |
-| 7 | **Sessions are written to disk continuously**, not at stop | The raw performance is the only asset that can't be recreated. Recovery needs no special handling: under §1.4 a partial session is already a valid one. |
+| 7 | **A session is written to disk at the stop** — amended 2026-09-16; see below | Originally "written continuously, not at stop". The app has never done it, so the spec was asserting a safety property the code does not have. |
 | 8 | **No metronome — the drum track replaces it** | Every project has a drum track for timing reference. A separate click would need its own row, level and export rule for nothing. |
 | 9 | **No solo** | It earns its place in a DAW with dozens of tracks; with seven layers muting suffices. It also collided with the export rule — if solo mutes everything else, soloing silently changes what exports. |
 | 10 | **No undo stack** | Every reversible action reverts through its own control (below). An undo stack would be a large amount of state for actions that already carry their own inverse. |
@@ -1747,6 +1747,39 @@ future session would otherwise "clean them up" and quietly undo the iteration.
 | Mute | Unmuting |
 | Rename | Renaming again |
 | Delete, Compress, Clear layer | A confirmation before the fact |
+
+### On #7, and why it was amended rather than built
+
+*Amended 2026-09-16.* The original read: **"Sessions are written to disk continuously, not at
+stop. The raw performance is the only asset that can't be recreated. Recovery needs no special
+handling: under §1.4 a partial session is already a valid one."*
+
+**The reasoning was good and the code never did it.** PCM chunks arrive from the worklet into a
+JavaScript array and stay in memory; the only `takes.put` on the recording path is inside
+`commitCapture`, after `stopCapture()` resolves. So a take exists nowhere but RAM for its whole
+duration, and anything that ends the page — reload, tab close, an iOS swipe-back or
+pull-to-refresh — takes it. There is a second cost: memory grows at roughly 10.6 MB/min at
+44.1 kHz, and at the stop it briefly holds about twice that while the buffer is assembled. A
+five-minute take peaks near 106 MB, which on a phone is the allocation the OS kills a tab over —
+and killing the tab destroys the take the memory was holding. The failure is self-inflicted.
+
+**It is amended rather than implemented because the spec must not assert a safety property the
+app lacks.** A future reader believed it, which is the actual harm. Building it is a large change
+in the riskiest part of the codebase — streaming writes under a provisional id, assembly and
+`trimToDownbeat` moved to recovery-on-boot, quota failure arriving *during* a performance, and
+main-thread contention with the scheduler's per-bar allocation.
+
+**The mitigation that shipped with this amendment** is a `beforeunload` guarded by the same
+`takeInProgress()` the shell already asks before every navigation. It is a warning, not durability.
+
+**If this is revisited, the middle option is the interesting one**: flush once per completed pass
+rather than continuously. It bounds the loss to one pass, costs one write per loop instead of a
+stream, and §1.4 already makes the partial result valid. It does **not** conflict with "nothing is
+written at the loop point" — that rule is about *session identity*, one continuous recording being
+one session however many passes it spans, not about durability.
+
+**Triggers to revisit**: a device session that loses a take, or takes routinely running past a
+couple of minutes.
 
 ## 5.2 Rejected alternatives
 

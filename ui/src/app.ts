@@ -150,6 +150,30 @@ function navigate(next: Route) {
   render();
 }
 
+/**
+ * The same rule, for the way out `navigate` cannot see.
+ *
+ * Every route *inside* the app funnels through `navigate`, which refuses while a take is running.
+ * Leaving the page does not: a reload, a tab close, an iOS swipe-back or a pull-to-refresh takes
+ * the whole document, and the take goes with it — a session is held in memory and written only at
+ * the stop (`commitCapture`), so nothing on disk survives.
+ *
+ * **This is a mitigation, not the fix.** Spec §5.1 #7 settles that sessions are written
+ * continuously and gives the reason — the raw performance is the only asset that cannot be
+ * recreated — and the app has never done it. §5.1 #7 now records the divergence honestly; this
+ * warning is worth having under either answer, and it is four lines.
+ *
+ * The predicate is asked, never cached, for the same reason `navigate` asks it: deriving the
+ * answer from a notification would make it depend on the notification having arrived.
+ */
+window.addEventListener('beforeunload', (e) => {
+  if (!current?.takeInProgress?.()) return;
+  // Both halves are required and neither is enough alone — browsers disagree about which they
+  // honour, and the wording is the browser's either way.
+  e.preventDefault();
+  e.returnValue = '';
+});
+
 function render() {
   const project = open();
 
