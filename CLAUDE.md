@@ -82,7 +82,7 @@ browser, so it fits three of the four routes in `docs/platform-decision.md`; Swi
 the one that needs the Mac that does not exist. And it **runs and tests on this machine
 today**, which Swift never could.
 
-An earlier Swift version of this same layer is at commit `349d15b` if a native path ever
+An earlier Swift version of this same layer is at commit `3a5e756` if a native path ever
 opens. It was deleted rather than kept alongside: two implementations of one domain is
 precisely the drift the spec warns about (§1.5), and one of them could not be compiled or
 tested by anything.

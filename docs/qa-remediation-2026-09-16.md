@@ -1,6 +1,6 @@
 # QA remediation, 2026-09-16 — what landed overnight
 
-Branch **`qa/unblocked-remediation`**, sixteen commits off `54342b2`. Every commit is one item with
+Branch **`qa/unblocked-remediation`**, sixteen commits off `bcddc05`. Every commit is one item with
 its evidence in the message, so anything here is a single `git revert` away.
 
 `npm run check` green throughout: **379 tests, 378 passing, 0 failing, 1 todo** — the todo is a real

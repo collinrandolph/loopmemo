@@ -287,7 +287,7 @@ export function editLayerScreen(opts: {
    * screen, taken away by another. The icon had the matching bug: `level * 100` saturates
    * `VolumeControl`, which divides by 100 and clamps, so it read identically at 1.0 and at 2.0.
    *
-   * Neither was a decision. `b583528` gave the fader its +6 dB and `31ade6d` gave the icon the
+   * Neither was a decision. `5694518` gave the fader its +6 dB and `97b5bbc` gave the icon the
    * whole range, and both changed `controls.ts`, `playback.ts` and `backing-rows.ts` — not this
    * file, because a hand-rolled copy is not where anyone looks. **That is the argument for the
    * shared control, not the tick and the double tap it also brings.**

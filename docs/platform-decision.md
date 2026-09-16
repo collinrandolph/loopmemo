@@ -53,7 +53,7 @@ starts growing, the deferral is failing** — that is the signal to stop and dec
 
 This layer has now been expressed in two languages without the design changing, which is the
 evidence that it is portable. It was Swift in `Sources/LoopRecorderCore/`; it is TypeScript in
-`src/domain/`, and the Swift was deleted at `349d15b` rather than kept alongside, because two
+`src/domain/`, and the Swift was deleted at `3a5e756` rather than kept alongside, because two
 implementations of one domain is precisely the drift the spec warns about in §1.5. `Tools/*.js`
 still cross-checks the timing rules against `docs/kit/lr-kit.js`, so a third expression of the
 same arithmetic is executed on every `npm run check`.
