@@ -13,7 +13,7 @@ import {
   unresolvedSlots,
 } from '../src/domain/arrangement.ts';
 import type { Arrangement, MutedSlots } from '../src/domain/arrangement.ts';
-import { availablePasses, regionFor, totalPasses } from '../src/domain/pass-index.ts';
+import { availableBars, availablePasses, regionFor, totalPasses } from '../src/domain/pass-index.ts';
 import type { PassIndex } from '../src/domain/pass-index.ts';
 import type { BarRef } from '../src/domain/bar-ref.ts';
 import { framesPerBar } from '../src/domain/timing.ts';
@@ -62,7 +62,7 @@ function applyStep(
       return { arrangement: stepPassAt(arrangement, step.slot, step.direction!, index, muted), muted };
     case 'stepBar':
       return {
-        arrangement: stepBarAt(arrangement, step.slot, step.direction!, index.timing.barCount, muted),
+        arrangement: stepBarAt(arrangement, step.slot, step.direction!, index, muted),
         muted,
       };
     case 'toggleMute':
@@ -104,8 +104,14 @@ describe('invariants hold after any sequence of edits', () => {
         //    a short one is an out-of-range read rather than a visible error.
         assert.equal(arrangement.length, barCount, `length changed — ${where()}`);
 
-        // 2. lives in its own test below: the sequence walk found it failing, and it is a domain
-        //    decision rather than something to change here. See "a horizontal step can strand".
+        // 2. Every audible slot resolves to audio. A blank tile is a slot the user cannot hear and
+        //    Compress refuses, so no edit may produce one. This found the stranded-slot defect on
+        //    its first run (seed 1337) — see "a horizontal step stays inside a partial pass".
+        assert.deepEqual(
+          unresolvedSlots(arrangement, index).filter((slot) => !isSlotMuted(muted, slot)),
+          [],
+          `an audible slot points at nothing — ${where()}`,
+        );
 
         // 3. A muted slot never moves. §3.7 locks swiping while a bar is muted, so no gesture can
         //    carry a mute onto different audio — which is what makes "scope is the slot" and
@@ -123,9 +129,6 @@ describe('invariants hold after any sequence of edits', () => {
         //    the tile's label and its available set cannot disagree.
         arrangement.forEach((ref: BarRef | undefined, slot: number) => {
           if (!ref || isSlotMuted(muted, slot)) return;
-          // Skip a slot already stranded by the open defect below, or this reports it twice under
-          // a name that does not describe it.
-          if (!regionFor(index, ref)) return;
           const passes = availablePasses(index, ref.relativeBar);
           assert.ok(
             passes.includes(ref.pass),
@@ -210,56 +213,50 @@ describe('pass counting agrees with pass availability at every length', () => {
   });
 });
 
-describe('a horizontal step can strand a slot on a pass that bar does not have', () => {
+describe('a horizontal step stays inside a partial pass', () => {
   /**
-   * **Open defect, found by the sequence walk above and left failing on purpose.**
+   * **Was an open defect; fixed 2026-09-16.** Found by the sequence walk above on its first run.
    *
-   * `stepBarAt` wraps `relativeBar` within the current pass (§1.3 — neither axis may step the
-   * other), and the available set is **per bar**: §1.4's worked example has a partial pass 3 that
-   * covers bars 1-8 and not 9-16. So one horizontal step off bar 8 while holding P3 lands on
-   * P3 / bar 9, which does not exist. `regionFor` returns undefined, the tile draws blank, and
-   * `compressionPlan` refuses the whole project with "a bar pointing at audio that is no longer
-   * there" — a message about damage, for a state reached by swiping.
+   * §1.4's example has a partial pass 3 covering bars 1-8 only. Stepping bar by bar across the
+   * whole loop took P3 / bar 8 one step to P3 / bar 9, which has no audio: the tile drew blank and
+   * `compressionPlan` refused the project with a message about damage, for a state a swipe made.
    *
-   * It is recoverable, which is why this is `todo` rather than a stop: a vertical swipe lands on
-   * P4 and a horizontal swipe back lands on P3 / bar 8. So it is a blank tile, not a trap — and
-   * CLAUDE.md's argument for why a dangling slot is the bad state is about exactly this shape.
-   *
-   * **Fixing it is a domain decision, not a cleanup.** The obvious answer is for the horizontal
-   * axis to skip bars the current pass does not have, the way the vertical axis already skips
-   * gaps — which stays inside the pass, so §1.3 holds. But it makes a horizontal swipe jump more
-   * than one bar, and whether that reads as helpful or as the axis lying about its step is a
-   * question for someone who has used it. Logged in docs/backlog.md.
+   * The decision was that **a partial pass is as long as the recording got**: the horizontal axis
+   * wraps through the bars this pass has, the way the vertical axis wraps through the passes a bar
+   * has. The pass never changes, so §1.3 holds.
    */
-  it('P3 / bar 8 steps forward onto P3 / bar 9, which has no audio', { todo: 'open defect — see docs/backlog.md' }, () => {
+  it('P3 / bar 8 steps forward to P3 / bar 1, not onto bar 9', () => {
     const index = specIndex();
     const start = initialArrangement(index);
 
-    assert.deepEqual(availablePasses(index, 8), [1, 2, 3, 4, 5], 'bar 8 has the partial pass');
-    assert.deepEqual(availablePasses(index, 9), [1, 2, 4, 5], 'bar 9 does not');
+    assert.deepEqual(availablePasses(index, 9), [1, 2, 4, 5], 'bar 9 genuinely lacks pass 3');
+    assert.deepEqual(availableBars(index, 3), [1, 2, 3, 4, 5, 6, 7, 8], 'pass 3 is eight bars long');
 
     const placed = setSlot(start.barSources, 7, barRef(3, 8));
-    assert.ok(regionFor(index, placed[7]!), 'P3 / bar 8 is a legal position');
-
-    const stepped = stepBarAt(placed, 7, 1, T.barCount, start.mutedSlots);
-    assert.deepEqual(stepped[7], barRef(3, 9), 'the step lands where the defect says');
-
-    assert.ok(
-      regionFor(index, stepped[7]!),
-      'one horizontal step stranded the slot on a pass this bar does not have',
-    );
-    assert.deepEqual(unresolvedSlots(stepped, index), [], 'and it is not muted, so it draws blank');
+    const stepped = stepBarAt(placed, 7, 1, index, start.mutedSlots);
+    assert.deepEqual(stepped[7], barRef(3, 1), 'wrapped at the end of the pass, pass unchanged');
+    assert.deepEqual(unresolvedSlots(stepped, index), []);
   });
 
-  it('but the user can always swipe back out of it', () => {
+  it('and P3 / bar 1 steps backward to P3 / bar 8, not bar 16', () => {
     const index = specIndex();
     const start = initialArrangement(index);
-    const stranded = stepBarAt(setSlot(start.barSources, 7, barRef(3, 8)), 7, 1, T.barCount, start.mutedSlots);
+    const placed = setSlot(start.barSources, 7, barRef(3, 1));
+    assert.deepEqual(stepBarAt(placed, 7, -1, index, start.mutedSlots)[7], barRef(3, 8));
+  });
 
-    const byPass = stepPassAt(stranded, 7, 1, index, start.mutedSlots);
-    assert.ok(regionFor(index, byPass[7]!), 'a vertical swipe recovers');
+  it('a complete pass still wraps across the whole loop, so nothing familiar changed', () => {
+    const index = specIndex();
+    const start = initialArrangement(index);
+    const placed = setSlot(start.barSources, 7, barRef(4, 16));
+    assert.deepEqual(stepBarAt(placed, 7, 1, index, start.mutedSlots)[7], barRef(4, 1));
+  });
 
-    const byBar = stepBarAt(stranded, 7, -1, T.barCount, start.mutedSlots);
-    assert.ok(regionFor(index, byBar[7]!), 'stepping the bar back recovers');
+  it('a slot already stranded by an older build steps back into the pass', () => {
+    const index = specIndex();
+    const start = initialArrangement(index);
+    const stranded = setSlot(start.barSources, 7, barRef(3, 12));
+    assert.deepEqual(stepBarAt(stranded, 7, 1, index, start.mutedSlots)[7], barRef(3, 1), 'forward wraps to the start');
+    assert.deepEqual(stepBarAt(stranded, 7, -1, index, start.mutedSlots)[7], barRef(3, 8), 'back lands on the last bar it has');
   });
 });

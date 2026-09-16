@@ -32,7 +32,7 @@ describe('Arrangement', () => {
 
   it('rejects a slot outside the arrangement', () => {
     assert.throws(() => setSlot(recordedOrder(4), 4, barRef(1, 1)), RangeError);
-    assert.throws(() => stepBarAt(recordedOrder(4), -1, 1, 4, NONE_MUTED), RangeError);
+    assert.throws(() => stepBarAt(recordedOrder(4), -1, 1, specIndex(), NONE_MUTED), RangeError);
   });
 
   describe('vertical stepping', () => {
@@ -62,15 +62,15 @@ describe('Arrangement', () => {
   describe('horizontal stepping', () => {
     it('changes only the bar, wrapping inside the pass', () => {
       const arrangement = setSlot(recordedOrder(16), 0, barRef(2, 16));
-      const after = stepBarAt(arrangement, 0, 1, 16, NONE_MUTED);
+      const after = stepBarAt(arrangement, 0, 1, specIndex(), NONE_MUTED);
       assert.deepEqual(after[0], barRef(2, 1), 'wrapped without touching the pass');
     });
 
-    it('does not consult availability', () => {
-      // The horizontal axis rearranges against whatever pass is selected; it is the
-      // vertical axis that knows about gaps.
+    it('consults the bars the pass has, so it never lands on one it lacks', () => {
+      // Pass 3 is partial (bars 1-8). Eleven steps from bar 1 go round its eight bars, not
+      // across the loop to bar 12 — which has no pass 3 and used to be where it landed.
       const arrangement = setSlot(recordedOrder(16), 0, barRef(3, 1));
-      assert.deepEqual(stepBarAt(arrangement, 0, 11, 16, NONE_MUTED)[0], barRef(3, 12));
+      assert.deepEqual(stepBarAt(arrangement, 0, 11, specIndex(), NONE_MUTED)[0], barRef(3, 4));
     });
   });
 

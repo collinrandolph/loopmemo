@@ -104,12 +104,12 @@ describe('per-bar mute', () => {
     });
 
     it('refuses to step the bar', () => {
-      assert.equal(stepBarAt(arrangement, 8, 1, 16, muted), arrangement);
+      assert.equal(stepBarAt(arrangement, 8, 1, specIndex(), muted), arrangement);
     });
 
     it('still allows swiping every other slot', () => {
       assert.notEqual(stepPassAt(arrangement, 9, 1, specIndex(), muted), arrangement);
-      assert.notEqual(stepBarAt(arrangement, 9, 1, 16, muted), arrangement);
+      assert.notEqual(stepBarAt(arrangement, 9, 1, specIndex(), muted), arrangement);
     });
 
     it('allows it again once unmuted', () => {

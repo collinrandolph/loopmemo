@@ -1374,6 +1374,13 @@ Established on the Edit Layer tiles; the same idioms apply anywhere they recur.
 way a filmstrip moves under the finger. Arrow keys match (Left = forward), which reads oddly on a
 keyboard but keeps one mental model.
 
+**Each axis wraps through what exists on its own coordinate, and neither crosses into the other.**
+Vertical wraps through the passes *this bar* has (§1.4); horizontal wraps through the bars *this
+pass* has. For a complete pass that is the whole loop. **A partial pass is as long as the recording
+got**: holding P3 of a pass that reached bar 8, a forward swipe from bar 8 lands on bar 1, not on a
+bar 9 that has no audio. Stepping across the whole loop regardless left a blank, silent tile that
+Compress then refused as damage (settled 2026-09-16).
+
 **Mute scope is the bar, not the layer.** Every other gesture on a tile acts on that tile, and the
 Edit Layer screen edits a single layer — muting the layer there would silence what you're editing.
 Layer mute lives on the Playback screen.

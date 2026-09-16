@@ -1,9 +1,10 @@
-import { type BarRef, barRef, barRefEquals, steppingBar } from './bar-ref.ts';
+import { type BarRef, barRef, barRefEquals } from './bar-ref.ts';
 import {
   type PassIndex,
   type SourceRegion,
   hasAudio,
   regionFor,
+  steppingBarIn,
   steppingPass,
 } from './pass-index.ts';
 import { framesPerBar } from './timing.ts';
@@ -160,7 +161,8 @@ export function stepPassAt(
 /**
  * Horizontal swipe: step which bar of the source fills this slot.
  *
- * Wraps within the same pass — a horizontal swipe never changes the pass (§1.3).
+ * Wraps through the bars **this pass** has — a horizontal swipe never changes the pass (§1.3),
+ * and never lands on a bar a partial pass did not reach. See `steppingBarIn`.
  *
  * Note the axis is inverted relative to travel in the UI: swiping LEFT steps forward, the
  * way a filmstrip moves under the finger (§3.7). That inversion belongs at the gesture
@@ -170,13 +172,13 @@ export function stepBarAt(
   arrangement: Arrangement,
   slot: number,
   delta: number,
-  barCount: number,
+  index: PassIndex,
   muted: MutedSlots,
 ): Arrangement {
   const current = requireSlot(arrangement, slot);
   if (!canSwipeSlot(muted, slot)) return arrangement;
-  const stepped = steppingBar(current, delta, barCount);
-  if (barRefEquals(stepped, current)) return arrangement;
+  const stepped = steppingBarIn(index, current, delta);
+  if (!stepped || barRefEquals(stepped, current)) return arrangement;
   return setSlot(arrangement, slot, stepped);
 }
 

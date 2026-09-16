@@ -268,7 +268,8 @@ what lets an edit apply to *playing* audio, which is core functionality, not pol
 **3. `BarRef { pass, relativeBar }`, both 1-based (§1.3).** The two swipe axes map directly
 onto the pair — vertical steps `pass`, horizontal steps `relativeBar`. That is the whole
 reason it is a pair rather than a flat index, so **neither axis may step the other**.
-`steppingBar` wraps within its pass; `PassIndex.steppingPass` wraps through the passes that
+`steppingBarIn` wraps through the bars that exist for that pass — a partial pass is only as long
+as the recording got, so a swipe never lands on a blank tile; `PassIndex.steppingPass` wraps through the passes that
 exist for that bar.
 
 ## Traps that have already been walked into

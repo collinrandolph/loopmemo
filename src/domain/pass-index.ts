@@ -183,6 +183,55 @@ export function hasAudio(index: PassIndex, ref: BarRef): boolean {
 }
 
 /**
+ * Every bar position this pass has audio for, ascending — the horizontal axis's available set.
+ *
+ * The mirror of `availablePasses`. A whole pass has every bar; a partial one has the bars the
+ * recording reached, which are always a run from bar 1, but nothing here assumes that.
+ */
+export function availableBars(index: PassIndex, pass: number): number[] {
+  const out: number[] = [];
+  for (let bar = 1; bar <= index.timing.barCount; bar++) {
+    if (hasAudio(index, barRef(pass, bar))) out.push(bar);
+  }
+  return out;
+}
+
+/**
+ * Step the horizontal axis, wrapping through the bars **this pass** has.
+ *
+ * **A partial pass is as long as the recording got** (decided 2026-09-16). Stepping bar by bar
+ * across the whole loop walked off the end of one: from P3 / bar 8 of the §1.4 example, one step
+ * landed on P3 / bar 9, which has no audio — the tile drew blank and Compress refused the project
+ * with a message about damage, for a state a swipe produced. Found by `tests/invariants.test.ts`.
+ *
+ * Now the step wraps from the pass's last bar to its first, skipping bars it lacks — exactly what
+ * `steppingPass` does with passes a bar lacks. **It never changes the pass**, so §1.3 holds: the
+ * available set is consulted, not crossed. A complete pass has every bar, so there this is the
+ * plain `steppingBar` wrap and nothing a user already knows changes.
+ *
+ * Returns the same ref when the pass has one bar, and undefined when it has none.
+ */
+export function steppingBarIn(index: PassIndex, ref: BarRef, delta: number): BarRef | undefined {
+  const bars = availableBars(index, ref.pass);
+  if (bars.length === 0) return undefined;
+
+  const current = bars.indexOf(ref.relativeBar);
+  if (current < 0) {
+    // Already off the end — a project saved before this rule. Step into the set in the direction
+    // of travel rather than leaving the slot stranded.
+    const landed =
+      delta >= 0
+        ? (bars.find((b) => b > ref.relativeBar) ?? bars[0]!)
+        : (bars.findLast((b) => b < ref.relativeBar) ?? bars[bars.length - 1]!);
+    return barRef(ref.pass, landed);
+  }
+
+  const n = bars.length;
+  const stepped = (((current + delta) % n) + n) % n;
+  return barRef(ref.pass, bars[stepped]!);
+}
+
+/**
  * Step the vertical axis, wrapping through the passes that exist for **this bar**.
  *
  * §1.4: the swipe wraps through the available set for the bar being swiped, skipping absent

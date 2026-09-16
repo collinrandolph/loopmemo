@@ -416,7 +416,7 @@ export function editLayerScreen(opts: {
     const next =
       axis === 'pass'
         ? stepPassAt(layer.barSources, slot, dir, index(), layer.mutedSlots)
-        : stepBarAt(layer.barSources, slot, dir, barCount, layer.mutedSlots);
+        : stepBarAt(layer.barSources, slot, dir, index(), layer.mutedSlots);
     if (next === layer.barSources) return;
     layer = { ...layer, barSources: next };
     redraw(slot);
