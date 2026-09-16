@@ -1,0 +1,61 @@
+# Builds an UNSIGNED iPhone app (.ipa) on a GitHub-hosted Mac, for sideloading from Windows.
+#
+# There is no Mac in this project (docs/platform-decision.md §1), so this runner is the only place
+# Xcode runs. The .ipa is deliberately unsigned: signing happens on the PC with Sideloadly (or
+# SideStore/AltStore), using whichever Apple ID is available — a free one (7-day expiry) or a paid
+# developer account (one year). Nothing here needs, or stores, Apple credentials.
+#
+# Download: Actions → this run → Artifacts → LoopRecorder-ipa (a zip holding LoopRecorder.ipa).
+
+name: iOS unsigned build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  ipa:
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # The same gate as on the PC: an app is only built from a tree that passes.
+      - run: npm run check
+
+      # Assemble app/www and copy it, with the config, into the Xcode project.
+      - run: npm run ios:sync
+
+      - name: Build (no signing)
+        run: |
+          xcodebuild \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: Package .ipa
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/App.app Payload/
+          zip -qry LoopRecorder.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LoopRecorder-ipa
+          path: LoopRecorder.ipa
+          retention-days: 30

@@ -1,8 +1,10 @@
 # Platform decision — research and recommendations
 
-**Status: deliberately OPEN.** Researched 2026-08-29, revisited 2026-08-31. The decision is
-being deferred as far into the build as possible; this document exists so it can be made later
-on evidence rather than re-researched from scratch.
+**Status: DECIDED 2026-09-16 for the first iPhone build — see §9.** The research below is kept as
+the record of why, and §7's ranking predates the route that was chosen.
+
+Researched 2026-08-29, revisited 2026-08-31. The decision was deferred as far into the build as
+possible; this document exists so it could be made on evidence rather than re-researched.
 
 **The 08-31 pass changed three things and the reader should know which.** Drum synthesis
 replaced sampled loops, which deletes the time-stretch requirement (§4) and one of the six
@@ -339,6 +341,33 @@ In rough priority order. The first two decide whether the architecture holds at 
 
 The `pitchCorrection` check that used to sit at #3 is gone. Synthesis removed the requirement,
 so there is nothing left to confirm by ear.
+
+## 9. Decided 2026-09-16: the browser build, in a native shell, sideloaded
+
+**Not React Native, and not the PWA** — a route §7 did not list: **Capacitor wrapping `ui/`
+unchanged**, built unsigned on a GitHub-hosted Mac (`.github/workflows/ios.yml`) and signed on
+Windows with Sideloadly. Install steps: `docs/sideload.md`.
+
+**Why this route, when §7 ranked React Native first.** §4a already said the browser build had
+stopped being disposable. By now it is the whole product — every screen, recording, editing,
+persistence, export — and it is the build that has been tested on this iPhone. React Native would
+keep the domain and rewrite every screen, and still leave §4's two library gaps. A shell ships what
+exists. It can also answer the Ring/Silent switch better than Safari: a native host owns the audio
+session, so the playback category need not depend on `navigator.audioSession`.
+
+**What it does not settle.** §6's routing result was measured in Safari; WKWebView inside an app is a
+different host and needs the same test (`docs/sideload.md` §4). §8's real-time questions are
+unchanged, being the same Web Audio engine. And the React Native route is not closed: `src/domain`
+is still pure, and `ui/src/audio.ts` is still the reference a port would translate.
+
+**Signing.** Unsigned in CI, so no Apple credentials live in the repo and the same `.ipa` works with
+a free Apple ID (7-day expiry — weekly re-sign, or SideStore's on-device refresh) or a paid account
+(one year). A free Apple ID cannot sign anything that lasts longer than 7 days; that is Apple's limit.
+
+**What §2's rule becomes.** Keep the platform-bound surface small, now with a named platform: `ios/`
+stays a shell. Anything the app needs from iOS that the web layer cannot reach — the audio session
+is the likely first — is a small Capacitor plugin, and `ui/` must keep running in a plain browser,
+because that is where it is driven and measured.
 
 ## Sources
 

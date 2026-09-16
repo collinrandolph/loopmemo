@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Platform-neutral domain layer for the Audio Loop Recorder. No runtime dependencies.",
+  "description": "Audio Loop Recorder: a platform-neutral domain, a browser app over it, and a Capacitor iOS shell around that app.",
   "engines": {
     "node": ">=22.6"
   },
@@ -13,10 +13,17 @@
     "verify": "node Tools/verify-timing.js && node Tools/verify-region.js",
     "check": "npm run typecheck && npm run build:ui && npm test && npm run verify",
     "build:ui": "tsc -p tsconfig.build.json",
-    "ui": "npm run build:ui && node Tools/serve.js"
+    "ui": "npm run build:ui && node Tools/serve.js",
+    "build:app": "npm run build:ui && node Tools/build-app.js",
+    "ios:sync": "npm run build:app && npx cap sync ios"
   },
   "devDependencies": {
-    "typescript": "^5.8.0",
-    "@types/node": "^22.0.0"
+    "@capacitor/cli": "8.5.2",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.8.0"
+  },
+  "dependencies": {
+    "@capacitor/core": "8.5.2",
+    "@capacitor/ios": "8.5.2"
   }
 }

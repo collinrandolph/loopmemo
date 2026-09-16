@@ -4,8 +4,8 @@ A mobile app for building multi-layer loop sketches. Set a tempo and bar count, 
 pattern, record up to seven layers while the loop runs, then choose bar by bar which pass of the
 recording fills each slot of the arrangement.
 
-The spec is written for iOS. **The target platform is currently an open decision** — see
-`docs/platform-decision.md` and the section below.
+The spec is written for iOS. **The first iPhone build is the browser app in a Capacitor shell**,
+sideloaded — see `docs/platform-decision.md` §9 and the section below.
 
 **It is a sketchpad for improvising, not a DAW.** Almost every design decision follows from that.
 
@@ -27,7 +27,26 @@ way to check a timing change**, with no Swift toolchain involved:
 node Tools/verify-timing.js && node Tools/verify-region.js
 ```
 
-## The target platform is deliberately UNDECIDED
+## The iPhone build: `ui/` in a Capacitor shell (decided 2026-09-16)
+
+**`ios/` wraps the browser build unchanged.** `npm run build:app` assembles `app/www/` — the same
+files at the same absolute paths `Tools/serve.js` serves — and a GitHub-hosted Mac builds an
+**unsigned** `.ipa` (`.github/workflows/ios.yml`), signed on Windows with Sideloadly. Install steps
+and the free Apple ID's 7-day limit: `docs/sideload.md`.
+
+- **`ui/` must keep running in a plain browser.** That is where it is driven, measured and checked;
+  the shell adds nothing it depends on.
+- **Native code in `ios/` stays a shell.** Something only iOS can do (the audio session is the likely
+  first) is a small Capacitor plugin, not a reason to grow Swift.
+- **`@capacitor/*` are the shell's dependencies**, and nothing in `ui/src` or `src/` imports them —
+  the no-runtime-dependency rule below is about the app's own code.
+- **Nothing on this PC can build or run `ios/`.** A change there is verified by a CI build and then
+  the phone, and never reported as working from the diff.
+
+The section below is how the platform was held open until then. Its rule — keep the platform-bound
+surface small — still applies.
+
+## How the platform was held open
 
 Development is on Windows and **a Mac is not a realistic option**. That rules out Xcode, the
 iOS Simulator, and any local compilation of AVFoundation — permanently.
@@ -253,7 +272,8 @@ past what the deferral assumed, and that is worth stopping for.
 **No build step and no runtime dependencies.** Node 22.6+ runs the TypeScript directly by
 stripping types, so `tsconfig.json` sets `erasableSyntaxOnly` — enums, namespaces and
 parameter properties are rejected at typecheck rather than at runtime. `typescript` is the
-only devDependency, for `tsc --noEmit`.
+only devDependency the app's code needs, for `tsc --noEmit`; `@capacitor/*` belong to the iOS shell
+and are never imported.
 
 **Run `npm run check`, not the individual scripts.** It has already caught one regression the
 others hid: adding `"type": "module"` silently broke the CommonJS harness in `Tools/` while

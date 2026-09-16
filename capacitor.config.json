@@ -1,0 +1,9 @@
+{
+  "appId": "com.collinrandolph.looprecorder",
+  "appName": "Loop Recorder",
+  "webDir": "app/www",
+  "ios": {
+    "contentInset": "never",
+    "limitsNavigationsToAppBoundDomains": false
+  }
+}
