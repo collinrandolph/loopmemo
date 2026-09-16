@@ -183,6 +183,14 @@ colourways, generated — see `docs/kit/restyling.md` §9), `store.ts` (IndexedD
 **There are no tests over `ui/`** — only `src/domain` is covered, so a change here is verified by
 driving the browser.
 
+**The browser instruments run from one page: `/ui/verify.html`, after `npm run build:ui`.** Every
+`ui/src/verify-*.ts` is listed in `verify-all.ts` and runs in turn, 400 ms apart, because several hold
+a live `AudioContext` and contend when run back to back. A result passes when every `pass` it
+contains is true, and **reporting no verdict at all is a failure**. A page rather than Playwright was
+decided 2026-09-16, to keep TypeScript the only dependency — so it still needs opening, and it is
+not part of `npm run check`. **A new instrument is not run by anything until it is added to
+`INSTRUMENTS`.**
+
 **`bindChips` delegates on the `.lr-chips` group, so no chip may call `stopPropagation`.** The EQ
 and Pan pickers did, and the consequence was quiet: the preset changed and the highlight stayed
 put, so the panel named one preset while a different one looked selected. It was guarding nothing

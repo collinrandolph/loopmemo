@@ -25,6 +25,8 @@ import { createRecorder } from './recorder.ts';
 
 const RATE = 48000;
 const SECONDS = 1.5;
+/** How far ahead of arming the known signal starts. See the note at `source.start`. */
+const START_LEAD_SECONDS = 0.1;
 
 function noise(length: number): Float32Array<ArrayBuffer> {
   const out = new Float32Array(length);
@@ -53,9 +55,16 @@ export async function verifyCapture() {
   const recorder = await createRecorder(ctx, source);
 
   recorder.start();
-  const startedAt = ctx.currentTime;
-  source.start();
-  await new Promise((r) => setTimeout(r, SECONDS * 1000 + 250));
+  // **Scheduled ahead, not "now".** `recorder.start()` is a message to the audio thread, and
+  // capture begins only once it lands. `source.start()` with no time takes effect at the next
+  // quantum, so on a context that is already rendering the noise could begin before the worklet
+  // was armed — the capture then opened mid-signal and compared noise against different noise.
+  // Measured once as a spurious failure (worst diff 1.99, armed at frame 512) on the first run of
+  // `ui/verify.html`; it did not reproduce in isolation, which is what a race looks like. A lead
+  // far longer than a message takes removes it rather than making it rarer.
+  const startedAt = ctx.currentTime + START_LEAD_SECONDS;
+  source.start(startedAt);
+  await new Promise((r) => setTimeout(r, (START_LEAD_SECONDS + SECONDS) * 1000 + 250));
   const capture = await recorder.stop();
   const captured = capture.buffer.getChannelData(0);
 
@@ -89,10 +98,11 @@ export async function verifyCapture() {
     framesMissing: missing,
     worstAbsDiff: worst,
     arrivedAtFrame: capture.arrivedAtFrame,
-    // The worklet stamps chunks from the context's own counter, so the first captured frame
-    // should sit within a render quantum of where `currentTime` said arming happened.
-    armedAtFrameByMainThread: Math.round(startedAt * RATE),
-    anchorErrorFrames: Math.abs(capture.arrivedAtFrame - Math.round(startedAt * RATE)),
+    // The worklet stamps chunks from the context's own counter and records the silence before
+    // the signal starts, so arrival plus that silence is the frame the signal actually began on —
+    // which should be exactly the frame it was scheduled for.
+    signalScheduledAtFrame: Math.round(startedAt * RATE),
+    anchorErrorFrames: Math.abs(capture.arrivedAtFrame + offset - Math.round(startedAt * RATE)),
     pass: worst < 1e-6 && missing <= 0 && compared > length * 0.9,
   };
 }
