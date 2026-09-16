@@ -629,21 +629,25 @@ body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: col
 
 /* The kit frames the app as a card floating on a page: `body` padding 20, a rounded
    `.lr-screen` centred at max 900, and 20 either side inside every section. That is
-   right for previewing on a desktop and wrong on the device the app is for — it
-   spends 80px of a 375px screen, 21% of the width, before any content.
-   Below the breakpoint the app goes full bleed and the section padding drops to 12.
+   right for previewing a mockup and wrong for an app — on a phone it spent 80px of a
+   375px screen, 21% of the width, before any content.
 
-   These are overrides, not edits: `docs/kit/` stays the reference.
+   **Full bleed at every width** (2026-09-16). This used to apply only below 640px, which
+   left the card, its margin and its rounded corners on a desktop, a tablet, and a phone
+   in landscape. The app is a Home Screen app now, and its screen edge is the device's.
+   Below the breakpoint the section padding also drops to 12.
+
+   These are overrides, not edits: `docs/kit/` stays the reference. */
+body { padding: 0; }
+.lr-screen { border-radius: 0; box-shadow: none; max-width: none; }
+
+/* The rest below the breakpoint.
 
    **This block must stay last in the file.** It carries no more specificity than the
    rules it overrides, so ordering is the only thing making it win — sitting at the top
    it silently lost `.backing`, `.grid` and `.lr-transport` to their base rules below, and
    the backing rows sat 8px narrower than the layers for it. */
 @media (max-width: 640px) {
-  body { padding: 0; }
-
-  .lr-screen { border-radius: 0; box-shadow: none; }
-
   .lr-header { padding: 14px 12px 10px; }
   /* The row and heading rhythm is NOT here — see the media block beside the base rules further
      down. Putting it here loses to them on source order, which is the hazard described above. */
