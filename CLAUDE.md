@@ -113,10 +113,13 @@ can judge. Each is verified *in parts*; none is verified end to end.
 **When a device report contradicts the code, suspect the device before rewriting the code.** "No
 audio after the latest update" was the iOS Ring/Silent switch, which mutes Web Audio through the
 *speaker* and not through headphones — every earlier test had been on headphones, so nothing had
-changed but the output route. **The remedy is specified and deliberately unbuilt**: spec §2.2's
-"The session category is a product decision, not a platform detail" — declare a playback session so
-the switch stops applying, which interacts with the output-routing risk and so needs a device pass
-first. Three code diagnoses were argued confidently and shipped against it,
+changed but the output route. **The remedy is specified and built behind a setting, off by
+default** (2026-09-16): spec §2.2's "The session category is a product decision, not a platform
+detail" — declare a playback session so the switch stops applying. It interacts with the
+output-routing risk, so it waits on a device pass comparing both settings (`docs/device-check.md`
+§0). `ui/src/audio-session.ts` holds it; the engine claims `playback` on play only when no input is
+open, `play-and-record` on arming and capture, and `playback` again at the stop —
+`verify-audio-session.ts` checks that sequence, which is the only part a desktop can. Three code diagnoses were argued confidently and shipped against it,
 ending in a twenty-commit revert, before the device answered the question in one test. Two rules
 came out of it, both cheap:
 

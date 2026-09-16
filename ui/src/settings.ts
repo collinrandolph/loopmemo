@@ -27,6 +27,7 @@ import {
   type CountInMode,
 } from '../../src/domain/count-in.ts';
 import { bindChips, perfectLoopRow } from './controls.ts';
+import { audioSessionSupported } from './audio-session.ts';
 import { helpControl } from './help.ts';
 import { LR, el } from './kit.ts';
 import type { BackingEngine } from './audio.ts';
@@ -69,6 +70,9 @@ export function projectSettingsScreen(opts: {
   /** The count-in (§4.6) — a preference shared by every project, owned by the shell. */
   countIn(): CountIn;
   onCountIn(next: CountIn): void;
+  /** Whether a playback audio session is declared (§2.2) — a device-pass toggle, owned by the shell. */
+  audioSession(): boolean;
+  onAudioSession(on: boolean): void;
 }): { node: HTMLElement; destroy(): void } {
   const creating = opts.mode === 'new';
   const locked = !creating && isConfigurationLocked(opts.project);
@@ -444,6 +448,50 @@ export function projectSettingsScreen(opts: {
       'every project, and saves as soon as you tap.',
   );
 
+  // --------------------------------------------------------- audio session --
+  /**
+   * **A comparison switch for a device pass, not a feature** (§2.2, decided 2026-09-16). The spec's
+   * decision is that the app declares a playback session; the toggle exists so one phone session can
+   * hear both behaviours on every output route before that is made unconditional. Like the count-in
+   * it is a preference, applies on tap, and Cancel does not undo it.
+   *
+   * Inert where the browser has no `navigator.audioSession`, and says so rather than disappearing.
+   */
+  let sessionOn = opts.audioSession();
+  const sessionSupported = audioSessionSupported();
+  const sessionRow = el('div', 'lr-panel-row', '<span class="lr-panel-label">Session</span>');
+  const sessionChips = el('div', 'lr-chips');
+  for (const [value, label] of [['off', 'Default'], ['on', 'Playback']] as const) {
+    const chip = el('button', 'lr-chip', label);
+    chip.dataset['value'] = value;
+    sessionChips.appendChild(chip);
+  }
+  sessionRow.appendChild(sessionChips);
+  function paintSession() {
+    for (const chip of sessionChips.children) {
+      chip.classList.toggle('is-active', chip.getAttribute('data-value') === (sessionOn ? 'on' : 'off'));
+    }
+    setRowLocked(sessionRow, !sessionSupported);
+  }
+  sessionChips.addEventListener('click', (e) => {
+    const chip = (e.target as HTMLElement).closest('[data-value]');
+    if (!chip || !sessionSupported) return;
+    sessionOn = chip.getAttribute('data-value') === 'on';
+    opts.onAudioSession(sessionOn);
+    paintSession();
+  });
+  paintSession();
+  const sessionNote = el(
+    'div',
+    'setting-note',
+    sessionSupported
+      ? '<b>Playback</b> keeps the phone speaker playing with the side switch on silent, and ' +
+          'pauses other apps’ audio. <b>Default</b> is the browser’s behaviour. Being tested on ' +
+          'devices — applies to every project, and saves as soon as you tap.'
+      : 'This browser cannot set an audio session. On iPhone, if there is no sound through the ' +
+          'speaker, check the side switch — headphones are not affected.',
+  );
+
   // ---------------------------------------------------------------- actions --
   /**
    * Export, bounce, compress and delete. **They belong to a project, so they live on the
@@ -661,6 +709,9 @@ export function projectSettingsScreen(opts: {
     countInBarsRow,
     countInModeRow,
     annotationRow(countInNote),
+    el('div', 'setting-gap'),
+    sessionRow,
+    annotationRow(sessionNote),
     el('div', 'setting-gap'),
     annotationRow(lockNote),
     ...(creating ? [] : [el('div', 'setting-gap'), actionsBlock]),

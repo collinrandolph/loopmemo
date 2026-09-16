@@ -469,6 +469,23 @@ running. The engine already has exactly one such moment.
 - **The switch stops silencing it**, which is the point, and means a user who silenced their phone
   deliberately can still be surprised. A music app is the category of app where that is understood.
 
+#### Built behind a comparison switch (2026-09-16)
+
+The declaration is implemented in the browser build, **off by default**, behind a *Session* row on
+project settings (Default · Playback), so one device pass can compare both behaviours on every
+output route. The switch is scaffolding for that pass, not a user-facing choice: once the checks
+below come back, the decision above makes it unconditional and the row goes. Two details the prose
+left open were settled in building it:
+
+- **Play claims `playback` only when no input is open.** A take starts the transport a moment before
+  the capture; flipping to `playback` between them could end the live input for a category that
+  forbids recording. With an input open, arming or the last stop has already chosen correctly.
+- **`play-and-record` is claimed before `getUserMedia`**, not after, since a playback-only session
+  may refuse the input outright.
+
+The fallback note for browsers without the API is **not built yet**; the settings row says it
+instead, which only helps someone who opens settings.
+
 #### Detection is not possible, and should not be attempted
 
 There is no API that reports the switch, and there is no side channel: the context reports

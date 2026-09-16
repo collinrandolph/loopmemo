@@ -34,6 +34,7 @@ import { type Capture, MUSIC_CONSTRAINTS, type Recorder, createRecorder } from '
 import type { TakeStore } from './takes.ts';
 import { type Transport, playLoopFrom, playheadAt, slotAt } from '../../src/domain/transport.ts';
 import type { Engine } from './engine.ts';
+import { claimAudioSession } from './audio-session.ts';
 
 /**
  * The `Engine` seam with audio behind it: the backing tracks synthesised live, and the recorded
@@ -286,10 +287,13 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
    * recording.
    */
   function releaseInput() {
+    const had = stream !== undefined;
     recorder?.destroy();
     recorder = undefined;
     for (const t of stream?.getTracks() ?? []) t.stop();
     stream = undefined;
+    // Nothing can record any more, so nothing justifies the record category (§2.2).
+    if (had) claimAudioSession('playback');
   }
   /**
    * Added to a captured chunk's context frame to get an engine frame. Set at `startCapture`; see
@@ -1111,6 +1115,11 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
 
     start(atFrame) {
       if (destroyed) return;
+      // **Only when no input is open.** A take starts the transport and then the capture in one
+      // gesture, and flipping to `playback` between the two could end the live input track for a
+      // category that forbids recording. With an input open, arming or a finished take has
+      // already decided the category, and `stopCapture` / `releaseInput` are what bring it back.
+      if (!context && !inputIsLive()) claimAudioSession('playback');
       const c = ensure();
       killAll();
       originFrame = atFrame;
@@ -1204,6 +1213,9 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
       // asking for one would be a category error rather than a failure to report.
       const c = owned;
       if (!c) return false;
+      // Before `getUserMedia`, because a playback-only session may refuse the input outright.
+      // Arming is §2.2's edge for this; the stop is the other one.
+      claimAudioSession('play-and-record');
       try {
         // **A dead stream is discarded rather than reused.** See `inputIsLive` — the object
         // outlives the device, so `if (!stream)` reopened nothing and the take was silent.
@@ -1222,6 +1234,7 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
         // No device, no permission, or an insecure origin. Kept, not swallowed: a browser that
         // refuses the microphone otherwise records a silent take and says nothing.
         inputError = classify(e);
+        if (!stream) claimAudioSession('playback');
         return false;
       }
     },
@@ -1302,6 +1315,7 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
       // ran before that window, and the `recorder!` below asserted through it: the resolved
       // promise then called `.start()` on undefined.
       if (destroyed || !recorder) return false;
+      claimAudioSession('play-and-record');
       captureFrameOffset =
         anchorTime === undefined || !ctx ? 0 : originFrame - anchorTime * ctx.sampleRate;
       recorder.start();
@@ -1318,6 +1332,10 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
       const from = recorder;
       const offset = captureFrameOffset;
       const capture = await from.stop();
+      // The take is over, so the category goes back to playing only — even though the input stays
+      // open for the next take. §2.2: sitting in play-and-record while merely listening widens the
+      // output-routing risk for no gain.
+      if (!destroyed) claimAudioSession('playback');
       // Into engine frames, which is what the type has always claimed to return.
       return {
         ...capture,

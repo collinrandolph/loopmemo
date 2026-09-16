@@ -150,6 +150,8 @@ function mountSettings(
     onDelete() {},
     countIn: () => ({ bars: 1, mode: 'loop' }),
     onCountIn() {},
+    audioSession: () => false,
+    onAudioSession() {},
   });
   return { screen, calls: calls.slice(callsBeforeMount), engine, loaded };
 }

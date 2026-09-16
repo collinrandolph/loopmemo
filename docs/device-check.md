@@ -114,9 +114,21 @@ Audio end to end.
 **The app cannot detect it.** No API exposes the switch, and `AudioContext.state` reads `running`
 either way, so there is no signal to branch on. What *can* be done is remove the problem — declare a
 playback session rather than an ambient one, so the switch stops applying. **That is specified in
-§2.2 of the spec ("The session category is a product decision, not a platform detail") and is
-deliberately not implemented yet**; §2.2 also lists what has to be checked on a device first,
-because it interacts with the output-routing risk in §1 below.
+§2.2 of the spec ("The session category is a product decision, not a platform detail"). It is
+built behind a setting, off by default** — project settings → **Session**: *Default* or *Playback*.
+§2.2 lists what has to be checked on a device before it becomes unconditional, because it interacts
+with the output-routing risk in §1 below.
+
+**Run §1 twice, once with Session on Default and once on Playback**, and record which was which. The
+row is greyed out with a note if the browser has no `navigator.audioSession` — that is itself a
+result worth writing down, with the iOS version. On Playback, the five checks from §2.2:
+
+1. The speaker plays with the switch on silent.
+2. Arming still records, and the output route while recording is no worse than on Default.
+3. After stopping a take, output is back on the route it was on before.
+4. Backgrounding and returning leaves the session working, and a running take is not left
+   half-recorded.
+5. Other apps' audio pauses when a project starts playing (expected, and a product cost).
 
 So: **check the switch first, and say which output you tested on in the result.** A report that
 does not name headphones or speaker cannot be acted on.

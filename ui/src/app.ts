@@ -1,4 +1,5 @@
 import { backingMixSources } from '../../src/domain/backing.ts';
+import { audioSessionEnabled, setAudioSessionEnabled } from './audio-session.ts';
 import type { Layer, Project } from '../../src/domain/project.ts';
 import { QUALITY_SPEC, projectTiming } from '../../src/domain/project.ts';
 import { type BackingEngine, audioEngine } from './audio.ts';
@@ -126,6 +127,16 @@ function setCountIn(next: CountIn) {
   // fails its guard falls back on its own instead of taking the other down with it.
   store.savePref('count-in-bars', String(next.bars));
   store.savePref('count-in-mode', next.mode);
+}
+
+/**
+ * Whether the engine declares a playback audio session (§2.2). A device-pass toggle, stored beside
+ * the count-in for the same reason — it is about the phone in your hand, not about a sketch — and
+ * off unless someone turned it on, so nothing changes on a device until the comparison is made.
+ */
+function setAudioSession(on: boolean) {
+  setAudioSessionEnabled(on);
+  store.savePref('audio-session', on ? 'playback' : 'off');
 }
 
 function setMaster(next: { readonly level: number; readonly muted: boolean }) {
@@ -356,6 +367,8 @@ function render() {
                 takes,
                 countIn: () => countIn,
                 onCountIn: setCountIn,
+                audioSession: audioSessionEnabled,
+                onAudioSession: setAudioSession,
                 onCommit(next) {
                   lastLatencyOffsetSeconds = next.latencyOffsetSeconds;
                   if (route.screen === 'settings' && route.mode === 'new') {
@@ -488,6 +501,8 @@ async function boot() {
       ? (savedMode as CountInMode)
       : COUNT_IN_DEFAULT.mode,
   };
+  // Anything but the one value that means on reads as off — the safe reading for a comparison switch.
+  setAudioSessionEnabled((await store.loadPref('audio-session')) === 'playback');
   const saved = await store.loadProjects();
   projects = saved ?? demoLibrary();
   if (!saved) for (const p of projects) store.saveProject(p);

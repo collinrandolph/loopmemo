@@ -9,6 +9,7 @@ import { verifyMaster } from './verify-master.ts';
 import { verifyQuota } from './verify-quota.ts';
 import { verifyRamps } from './verify-ramps.ts';
 import { verifyStore } from './verify-store.ts';
+import { verifyAudioSession } from './verify-audio-session.ts';
 import { verifyTakeIds } from './verify-take-ids.ts';
 
 /**
@@ -52,6 +53,7 @@ export const INSTRUMENTS: readonly Instrument[] = [
   { name: 'quota', run: verifyQuota },
   { name: 'ramps', run: verifyRamps },
   { name: 'lifecycle', run: verifyLifecycle },
+  { name: 'audio session', run: verifyAudioSession },
 ];
 
 /** Measured: 400 ms was enough for every live context to be released before the next opens. */
