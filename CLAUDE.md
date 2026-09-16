@@ -678,9 +678,13 @@ own transitions, so polling was both wasteful and dependent on a loop that a hid
 which is also why it could not be tested. `onStatusChange` returns an unsubscribe, and the screen
 calls it on teardown or the listener list grows with every navigation.
 
-**`store.ts`'s `migrate` is where a new `Project` field gets its default on load.** A field added
-today reads `undefined` on every project saved before today, and for a boolean that silently means
-*off* — so a default of true inverts itself for existing work without it.
+**`src/domain/migrate.ts` is where a new field gets its default on load, and the compiler makes you
+write it.** A field added today reads `undefined` on every project saved before today — a boolean
+silently means *off*, and a missing `recordedFrames` made pass count `NaN` and silenced the layer.
+Each stored type is filled through a `Fill<T>` with one required entry per key, optional keys
+included, so adding a field to `Project`, `Layer`, `RecordingSession` or a backing track fails
+typecheck until its default is decided. **Default, never refuse** (decided 2026-09-16): refusing loses
+work over a field the user never saw. Identity fields are carried rather than invented.
 
 ## Getting files out of the browser
 
