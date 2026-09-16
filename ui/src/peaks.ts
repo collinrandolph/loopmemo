@@ -40,6 +40,24 @@ export function drawnHeight(peak: number): number {
   return Math.min(1, peak ** PEAK_DISPLAY_EXPONENT);
 }
 
+/**
+ * A drawn height with the layer's level applied — **the Playback lanes only** (decided 2026-09-16).
+ *
+ * **The level scales the amplitude, and the curve then applies as usual**, so a lane shows what the
+ * mix will do with the take: `drawnHeight(peak × level)`, which for a power curve is exactly
+ * `drawnHeight(peak) × level ** PEAK_DISPLAY_EXPONENT`. Written in the second form because the demo
+ * projects' synthetic `amp()` is already a drawn fraction with no peak behind it, and one formula
+ * has to serve both. +6 dB therefore draws √2 taller, not twice, and clips at the box.
+ *
+ * **Not mute.** A muted layer keeps its picture — flattening it would throw away the only view of
+ * what is behind the mute, and per-bar mute already has its own drawn treatment. **Not master**,
+ * which is monitoring (§4.2). **Not the Edit Layer grid**, where tiles compare passes of one layer
+ * at one level and are read for shape, which a quiet layer would lose.
+ */
+export function levelScaledHeight(drawn: number, level: number): number {
+  return Math.min(1, drawn * Math.max(0, level) ** PEAK_DISPLAY_EXPONENT);
+}
+
 export function computePeaks(buffer: AudioBuffer, framesPerPeak = PEAK_FRAMES): number[] {
   const data = buffer.getChannelData(0);
   const out: number[] = [];

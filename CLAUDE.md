@@ -927,6 +927,11 @@ on doing the old thing. **A shared control is not about the tick and the double 
 where the next change lands.** The master slider is the only remaining hand-rolled range that edits
 a level, and it is deliberate — 0..1, unity at the right-hand end (§4.2).
 
+**The Playback lane draws the level too** (`levelScaledHeight`): amplitude × level, then the display
+curve, so +6 dB draws √2 taller and clips at the box. Not mute, not master, and not the Edit Layer
+grid, which is read for shape. The fader rebuilds only its own lane, and not during a take — `build`
+replaces the lane's children, and the live lines are among them.
+
 **The volume icon spans the same range, so unity is half fill** (`levelPercent`). `VolumeControl`
 divides by 100 and clamps, so passing `level * 100` saturated it at unity and every decibel of the
 +6 dB above moved nothing — the icon read identically at 1.0 and 2.0. Dividing by `LEVEL_MAX` also

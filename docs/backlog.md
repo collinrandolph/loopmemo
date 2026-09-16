@@ -12,45 +12,8 @@ silently clamped any layer set past unity on Playback. It was a defect rather th
 fixed — see the level section in `CLAUDE.md` for why a hand-rolled copy is what made it destructive.
 And #2, a horizontal step stranding a slot on a bar its partial pass never reached: settled
 2026-09-16 as "a partial pass is as long as the recording got" — see `steppingBarIn` and §3.7.
-
----
-
-## 1 · The waveform should scale with the layer's level
-
-Today `Waveform` draws peaks from the recorded audio, and moving a level fader changes what you
-hear without changing what you see. The illustration is the app's only picture of the audio, so a
-layer pulled to 30% still looks as loud as one at unity, and the Playback lanes stop being
-comparable to each other by eye.
-
-Arguments for, which are the same argument twice:
-
-- **§1.1's whole premise is that the picture tells you about the audio.** Colour already carries
-  provenance; amplitude carrying loudness is the same contract.
-- **It makes the +6 dB range legible.** Boosting a quiet take is currently a change you can only
-  confirm by listening.
-
-Things to settle before building it, none of them obvious:
-
-- **Scale the drawn peaks, or scale the box?** Multiplying peak heights is truthful about
-  amplitude, but at low levels the waveform collapses toward the centre line and stops being
-  readable as *shape* — which is what it is mostly used for on the Edit Layer grid, where the
-  question is "which pass is this" and not "how loud is it".
-- **Where does it apply?** The Playback lane is a level meter's natural home. The Edit Layer tiles
-  are a different job — comparing passes of the same layer at the same level — so scaling there may
-  cost more than it gives. These may want different answers, which is a reason to be careful, not a
-  reason to skip it.
-- **Does it include mute?** A muted layer at level 1.0 is inaudible. Drawing it flat says something
-  true and also throws away the only view of what is behind the mute. Per-bar mute (§3.7) already
-  has a drawn treatment, and this should not contradict it.
-- **Does it include master?** Almost certainly not — master is monitoring, not mix (§4.2), and the
-  waveform is about the sketch rather than about the room.
-- **Cost.** Peaks are computed per take, not per frame, so a level change is a redraw rather than a
-  recomputation — but level changes fire on every pixel of a drag, so whatever this does has to be
-  cheap enough for that. `setLayers` already distinguishes a level change from an arrangement
-  change by identity, for exactly that reason.
-
-**Nothing is decided.** The most conservative version worth considering is Playback lanes only,
-peaks scaled by `level` and not by mute, leaving the Edit Layer grid alone.
+And #1, waveforms scaling with level: built 2026-09-16 as the conservative version — Playback lanes
+only, by level and not by mute or master. See `levelScaledHeight` and the spec's waveform section.
 
 ---
 

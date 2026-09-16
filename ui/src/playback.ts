@@ -29,7 +29,7 @@ import { eqIconSvg, panIconSvg } from './preset-icons.ts';
 import { backingRows } from './backing-rows.ts';
 import { amp } from './demo.ts';
 import { renderLoop, syncCollapse } from './screen.ts';
-import { barAmplitude, computePeaks, drawnHeight } from './peaks.ts';
+import { barAmplitude, computePeaks, drawnHeight, levelScaledHeight } from './peaks.ts';
 import type { BackingEngine } from './audio.ts';
 import { type TakeStore, newTakeId, takeUrl } from './takes.ts';
 import { trimToDownbeat } from './recorder.ts';
@@ -662,6 +662,10 @@ export function playbackScreen(opts: {
           volume.update();
           opts.onChange(row.layer);
           syncLayers();
+          // The lane draws the level, so it follows the fader. One row, not every lane — this
+          // fires per pixel of the drag, and peaks are looked up rather than recomputed. Not while
+          // armed or recording: the lane is hidden then, and `build` would delete the live lines.
+          if (row.rec === 'unarmed') buildLane(row);
         },
       ),
     );
@@ -798,39 +802,44 @@ export function playbackScreen(opts: {
    * screen colour is layer identity (§4.4), and the source ramp is the Edit Layer grid's job.
    */
   function buildLanes() {
+    for (const row of rows) buildLane(row);
+  }
+
+  function buildLane(row: Row) {
     const bars = project.barCount;
     const linesPerSlot = Math.max(1, Math.round(lineCount / bars));
-    for (const row of rows) {
-      if (!layerHasRecording(row.layer)) continue;
-      const [from, to] = ramp.slice(row.layer.index, LAYER_COUNT);
-      // Resolved once per row, not once per line: `layerPassIndex` walks every session.
-      const index = layerPassIndex(row.layer, t);
-      row.wave.build(lineCount, (i, u) => {
-        const slot = Math.min(bars - 1, Math.floor((i * bars) / lineCount));
-        const ref = row.layer.barSources[slot];
-        const silent = isSilentAt(row.layer.mutedSlots, slot, false) || !ref;
-        const src = ref ? toAbsolute(ref, bars) : 0;
-        // `ceil`, not `floor`: this has to invert the `slot` above, and the first line of slot
-        // s is the first i with `floor(i * bars / lineCount) === s`. Flooring picks a line one
-        // slot earlier whenever the division is not exact, which offsets the material.
-        const lineInSlot = i - Math.ceil((slot * lineCount) / bars);
-        // Real peaks when the take is behind this bar, and the synthetic generator only when
-        // there is no audio at all — the demo projects, whose sessions hold frame counts and
-        // nothing else. Drawing those flat would make the Library look broken rather than
-        // simulated; drawing a *recorded* bar from a generator would be a lie.
-        const level =
-          (ref && barAmplitude(row.layer, index, ref, lineInSlot, linesPerSlot)) ??
-          amp(row.layer.index, src, lineInSlot, linesPerSlot);
-        return {
-          height: silent ? 2 : motion.snapEven(level * LANE_AMPLITUDE, 2),
-          rgb: ramp.rgb(from + (to - from) * u),
-        };
-      });
-      // `build` replaces the lane's children, so everything that lives *beside* the lines has to
-      // be put back — the count-in included, or it survives only on layers that have never been
-      // recorded, which is exactly the set you are least likely to be counting into.
-      row.wave.append(row.note, row.rule, row.countIn);
-    }
+    if (!layerHasRecording(row.layer)) return;
+    const [from, to] = ramp.slice(row.layer.index, LAYER_COUNT);
+    // Resolved once per row, not once per line: `layerPassIndex` walks every session.
+    const index = layerPassIndex(row.layer, t);
+    row.wave.build(lineCount, (i, u) => {
+      const slot = Math.min(bars - 1, Math.floor((i * bars) / lineCount));
+      const ref = row.layer.barSources[slot];
+      const silent = isSilentAt(row.layer.mutedSlots, slot, false) || !ref;
+      const src = ref ? toAbsolute(ref, bars) : 0;
+      // `ceil`, not `floor`: this has to invert the `slot` above, and the first line of slot
+      // s is the first i with `floor(i * bars / lineCount) === s`. Flooring picks a line one
+      // slot earlier whenever the division is not exact, which offsets the material.
+      const lineInSlot = i - Math.ceil((slot * lineCount) / bars);
+      // Real peaks when the take is behind this bar, and the synthetic generator only when
+      // there is no audio at all — the demo projects, whose sessions hold frame counts and
+      // nothing else. Drawing those flat would make the Library look broken rather than
+      // simulated; drawing a *recorded* bar from a generator would be a lie.
+      // Scaled by the layer's level, so the lane shows what the mix does with the take.
+      const level = levelScaledHeight(
+        (ref && barAmplitude(row.layer, index, ref, lineInSlot, linesPerSlot)) ??
+          amp(row.layer.index, src, lineInSlot, linesPerSlot),
+        row.layer.level,
+      );
+      return {
+        height: silent ? 2 : motion.snapEven(level * LANE_AMPLITUDE, 2),
+        rgb: ramp.rgb(from + (to - from) * u),
+      };
+    });
+    // `build` replaces the lane's children, so everything that lives *beside* the lines has to
+    // be put back — the count-in included, or it survives only on layers that have never been
+    // recorded, which is exactly the set you are least likely to be counting into.
+    row.wave.append(row.note, row.rule, row.countIn);
   }
 
   function clearLive(row: Row) {
@@ -890,7 +899,8 @@ export function playbackScreen(opts: {
   function pushLive(row: Row, upto: number) {
     const [from, to] = ramp.slice(row.layer.index, LAYER_COUNT);
     livePeak = Math.max(livePeak, opts.engine.inputPeak());
-    const peak = drawnHeight(livePeak);
+    // At the layer's level too, or the take would change height at the stop.
+    const peak = levelScaledHeight(drawnHeight(livePeak), row.layer.level);
     if (row.live.length < upto) livePeak = 0;
     while (row.live.length < upto && row.live.length < lineCount) {
       const i = row.live.length;
