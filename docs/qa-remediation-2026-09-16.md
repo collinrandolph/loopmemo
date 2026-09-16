@@ -110,16 +110,18 @@ because a test that passes before the fix proves nothing about it. That is the r
 
 ---
 
-## Still blocked on you
+## Decisions, taken the same day
 
-| # | Decision | Blocks |
+| # | Decision | Outcome |
 |---|---|---|
-| 1 | The bounce latency model | `F15` |
-| 3 | A headless browser in `npm run check` | The phase 2 gate |
-| 4 | What the iOS 16px floor costs the layer name | `G2` |
-| 5 | Migration policy for new persisted fields | Anything adding a persisted field |
-| 6 | Sequencing §2.2's audio session category | Spec'd, unbuilt, gated on a device pass |
-| 7 | Waveform scaling and §6.1 row density | Nothing |
+| 1 | The bounce latency model (`F15`) | **Held** for backlog #4 — a bounce as a backing track, which removes the problem rather than flagging around it. Not built. |
+| 3 | A headless browser in `npm run check` | **A page instead**: `/ui/verify.html` runs every instrument. Its first run caught a race in `verify-capture` itself. |
+| 4 | The 16px floor vs the layer name (`G2`) | **Fewer characters**: one 16px rule for every text field, `contenteditable` included. |
+| 5 | Migration policy | **Default on load, compiler-enforced**: `src/domain/migrate.ts`. |
+| 6 | §2.2's audio session category | **Built behind a Session setting, off by default**, for a device pass comparing both. |
+| 7 | Waveform scaling | **Playback lanes only**, by level. §6.1 row density is still open — it needs the mockups. |
+| — | The stranded slot (backlog #2) | **A partial pass is as long as the recording got**: the horizontal axis wraps through the bars a pass has. The `todo` is now passing tests. |
+| — | Merging this branch | **Not yet** — kept on `qa/unblocked-remediation`. |
 
 **One piece of new evidence for #3.** Running all nine instruments back to back in one page gave a
 spurious failure — several hold live `AudioContext`s and they contend. Spaced 400 ms apart, all nine
