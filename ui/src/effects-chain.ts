@@ -48,6 +48,8 @@ export type LayerChain = {
   setEq(id: EqPresetId): void;
   setPan(id: PanPresetId): void;
   setLevel(level: number): void;
+  /** Ramp to silence, then unplug. For a layer that has just become inaudible. */
+  fadeOutAndDisconnect(): void;
   disconnect(): void;
 };
 
@@ -101,6 +103,22 @@ export function createLayerChain(
   const chain: LayerChain = {
     input,
 
+    /**
+     * **Assigned, not ramped — and that is deliberate, against the rule the rest of this file
+     * follows.** `setPan` and `setLevel` both ramp, and G4 of the audit asked for this to as
+     * well. It was tried and `verify-ramps.ts` measured it making the transition *worse*: the
+     * worst sample step on an EQ preset change went from 1.00x the untouched render to **1.59x**.
+     *
+     * The reason is that a biquad is not a gain. `type` cannot be interpolated — a filter kind is
+     * not a number — so it changes instantly either way, and ramping `frequency` then sweeps the
+     * corner of an already-switched filter across the signal. A 20 ms sweep from 1 kHz to 100 Hz
+     * through a sustained tone is a chirp; the discrete change it replaced was inaudible.
+     *
+     * **The general rule still holds** — no `AudioParam` assignment outside voice construction,
+     * for gains. This is the exception, and it exists because it was measured rather than
+     * reasoned about. If it is revisited, the shape worth trying is a crossfade between two
+     * chains, not a faster ramp.
+     */
     setEq(id) {
       const bands = eqPreset(id).bands;
       filters.forEach((filter, i) => {
@@ -134,6 +152,26 @@ export function createLayerChain(
       ramp(level.gain, value);
     },
 
+    /**
+     * Silence this layer **and then** unplug it.
+     *
+     * `disconnect()` alone cuts the signal between one render quantum and the next, wherever the
+     * waveform happened to be — a step from full scale to zero, which is the worst discontinuity
+     * the graph can produce. It fires on every layer mute *and* at the top of every take on a
+     * layer that already has audio, because the layer being recorded onto is derived-silent
+     * (§2.2). So the click landed exactly where someone was listening hardest.
+     *
+     * The wait is four time constants, which is where `setTargetAtTime` has settled to ~2% —
+     * the ramp has no end time by design, so there is nothing to schedule the disconnect
+     * against. Disconnecting rather than leaving it connected and silent keeps the promise that
+     * a muted layer costs nothing per bar.
+     */
+    fadeOutAndDisconnect() {
+      ramp(level.gain, 0);
+      setTimeout(() => level.disconnect(), RAMP_SECONDS * 4 * 1000);
+    },
+
+    /** Immediate, for teardown — nothing is listening by then. */
     disconnect() {
       level.disconnect();
     },

@@ -363,10 +363,19 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
     masterGain.gain.setTargetAtTime(masterMuted ? 0 : masterLevel, ctx.currentTime, 0.01);
   }
 
+  /**
+   * **Ramped, for the same reason `applyMaster` is.** These assigned `.value` directly while the
+   * function immediately above them ramps, and the two are driven by the same kind of control:
+   * a `levelSlider` emitting an event per pixel. Setting a gain outright is a step, and a drag
+   * is a few hundred of them.
+   *
+   * A muted track is not handled here — `backingSchedule` omits its onsets, so it produces no
+   * voices at all rather than voices that are then turned down.
+   */
   function applyLevels() {
-    if (!backing || !drumGain || !chordGain) return;
-    drumGain.gain.value = backing.drums.level;
-    chordGain.gain.value = backing.chords.level;
+    if (!backing || !drumGain || !chordGain || !ctx) return;
+    drumGain.gain.setTargetAtTime(backing.drums.level, ctx.currentTime, 0.01);
+    chordGain.gain.setTargetAtTime(backing.chords.level, ctx.currentTime, 0.01);
   }
 
   // ------------------------------------------------------------ bookkeeping --
@@ -1231,9 +1240,12 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
             scheduled: kept?.scheduled ?? [],
           };
         });
-      // Whatever is left was audible and is not any more. Disconnected rather than silenced, so a
-      // muted layer costs nothing per bar.
-      for (const gone of previous.values()) gone.chain.disconnect();
+      // Whatever is left was audible and is not any more. **Faded, then disconnected** — cutting
+      // it outright steps the signal from wherever the waveform was to zero between two render
+      // quanta, which fires on every layer mute and at the top of every take on a layer that
+      // already has audio, since the layer being recorded onto is derived-silent (§2.2). It still
+      // ends disconnected, so a muted layer costs nothing per bar.
+      for (const gone of previous.values()) gone.chain.fadeOutAndDisconnect();
       if (wasLayer.size > 0) replan = true; // a layer went silent; its bars must stop
       if (!replan) return;
 
