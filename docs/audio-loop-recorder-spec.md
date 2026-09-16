@@ -881,6 +881,12 @@ Discards every recorded pass, keeping each layer's final edited loop.
 
 ### Bounce
 
+> **Deferred to v2 (2026-09-16).** Built as specified below and switched off: the one control that
+> starts it — "Bounce to new project" on project settings — is hidden behind `BOUNCE_ENABLED` in
+> `ui/src/features.ts`, and all the code behind it stays. Its open questions (`F15`, and whether a
+> bounce should be a backing track instead of layer 1) are v2's. What to restore and what to decide
+> first: `docs/backlog.md`, "Deferred to v2".
+
 Creates a **new project** seeded with a combined, compressed copy of the original.
 
 - All layers are mixed into a **single audio file** with EQ, pan and level baked in. Whether unmuted backing tracks are part of that mixdown is **unresolved — see below**.

@@ -28,6 +28,7 @@ import {
 } from '../../src/domain/count-in.ts';
 import { bindChips, perfectLoopRow } from './controls.ts';
 import { audioSessionSupported } from './audio-session.ts';
+import { BOUNCE_ENABLED } from './features.ts';
 import { helpControl } from './help.ts';
 import { LR, el } from './kit.ts';
 import type { BackingEngine } from './audio.ts';
@@ -673,7 +674,8 @@ export function projectSettingsScreen(opts: {
         opts.engine.stop();
         opts.onExport(commit());
       }),
-      actionBtn('Bounce to new project', 'lr-btn', askBounce),
+      // Deferred to v2 — see `BOUNCE_ENABLED`. This is the only control that starts a bounce.
+      ...(BOUNCE_ENABLED ? [actionBtn('Bounce to new project', 'lr-btn', askBounce)] : []),
       actionBtn('Compress', 'lr-btn', askCompress, !projection.isWorthCompressing),
       actionBtn('Delete', 'lr-btn lr-btn--danger', askDelete),
     );

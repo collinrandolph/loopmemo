@@ -596,6 +596,12 @@ which one panner cannot express.
 
 ## Bounce is compress on every layer, plus a mix
 
+**Deferred to v2 and hidden, not removed** (2026-09-16). `BOUNCE_ENABLED` in `ui/src/features.ts`
+hides the only control that starts one — "Bounce to new project" on project settings — and
+everything below still builds, is tested, and is described accurately. Do not delete the code as
+dead: it is reachable the moment the flag flips. `docs/backlog.md` "Deferred to v2" says what to
+decide before it does.
+
 **`compressionPlan` does the per-layer work**, so bounce adds only the mix and the seed. The
 mixdown is exactly one loop, which makes it Pass 1 — so layer 1 is filled through
 `recordSession` and bounce needs no arrangement logic of its own.

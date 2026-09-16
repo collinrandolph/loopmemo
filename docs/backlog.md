@@ -7,6 +7,36 @@ whether it was already rejected for a reason.
 
 Ordered by how much it costs to leave alone, not by size.
 
+---
+
+## Deferred to v2
+
+### Bounce — built, switched off (2026-09-16)
+
+**Why.** Its remaining decisions change what a bounce is, and they are v2 decisions: `F15` (a bounced
+project records over its mixdown ~110 ms late) and #4 below (a bounce as a backing track instead of
+layer 1). Shipping the current shape would mean migrating every bounced project if #4 wins.
+
+**What is hidden — the one control to restore.** "Bounce to new project" in the actions row on
+**project settings**, between Export and Compress. It is behind `BOUNCE_ENABLED` in
+`ui/src/features.ts`; set it true and the button, its confirm panel and the whole path return as
+they were.
+
+**What was deliberately left in.** All of it, still compiled and checked: `askBounce` / `runBounce`
+in `ui/src/settings.ts`, `onBounce` in `ui/src/app.ts`, `src/domain/bounce.ts`,
+`tests/bounce.test.ts` and the bounce compositions in `tests/composition.test.ts`,
+`ui/src/verify-bounce.ts` in `/ui/verify.html`. Bounced projects already saved keep working, and the
+demo shelf still has one (`Sunday Loop (Bounce)`).
+
+**Before turning it back on:**
+
+1. Decide #4. If the bounce becomes a backing track, `bounceSeed` changes shape and `F15` goes away
+   by construction; if it stays on layer 1, `F15` needs the per-session rendered flag instead.
+2. Whichever shape wins, a migration for projects bounced in v1 — through `src/domain/migrate.ts`,
+   which will refuse to typecheck a new field until its default exists.
+3. Re-read spec §2.7 *Bounce* and the CLAUDE.md bounce section, both of which describe the v1 shape.
+4. Help copy: no current sheet mentions bounce, so v2 needs to add it rather than un-hide it.
+
 **Done and removed:** Edit Layer's level control, which had a hand-rolled `max="100"` slider and so
 silently clamped any layer set past unity on Playback. It was a defect rather than an idea and is
 fixed — see the level section in `CLAUDE.md` for why a hand-rolled copy is what made it destructive.
