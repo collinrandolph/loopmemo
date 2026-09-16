@@ -121,9 +121,32 @@ function open(): Project {
   return projects.find((p) => p.id === openId) ?? projects[0]!;
 }
 
+/**
+ * The only writer of project state — and therefore the only place the engine has to be told.
+ *
+ * Screens used to push to the engine themselves, and four of them forgot: a kit swap was silent,
+ * an EQ preset change did nothing, an Edit Layer swipe redrew a tile while playback scheduled the
+ * old arrangement, and per-layer compress replaced a layer's sessions while the engine went on
+ * reading the ones it had. CLAUDE.md records the first four. Pushing here makes forgetting
+ * impossible rather than unlikely: an edit reaches the audio because it reached the *state*.
+ *
+ * **Not during a take.** The layer being recorded onto is silent for the duration (§2.2), and
+ * that is derived — `setLayers` takes the index as an argument and this function does not know
+ * it. Playback owns the push while a take runs, and knows which layer to keep silent; pushing
+ * from here would make it audible again, which is a feedback path rather than a redraw.
+ *
+ * **Not while another project is being previewed**, for the same reason `hydrate` asks: the
+ * Library plays the row you tapped and project settings previews the project you are about to
+ * create, and both load the engine themselves.
+ */
 function replaceProject(next: Project) {
   projects = projects.map((p) => (p.id === next.id ? next : p));
   store.saveProject(next);
+
+  const playsOpenProject = route.screen === 'playback' || route.screen === 'edit';
+  if (next.id === openId && playsOpenProject && !current?.takeInProgress?.()) {
+    currentEngine?.setLayers(next, takes);
+  }
 }
 
 function replaceLayer(layer: Layer) {

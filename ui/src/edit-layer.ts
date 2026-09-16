@@ -230,6 +230,13 @@ export function editLayerScreen(opts: {
           }
           layer = compressedLayer(layer, session, barCount);
           opts.onChange(layer);
+          // **The fifth time this has been forgotten**, and the worst of them: compress replaces
+          // the layer's sessions wholesale and rewrites its arrangement, so without this the
+          // engine went on scheduling regions of takes that are no longer referenced. The grid
+          // redrew and the audio did not — the split §1.1 exists to prevent. The shell now
+          // pushes as well, so a screen that forgets is covered; this stays because it is the
+          // call that is *about* this edit.
+          syncLayers();
           root.classList.remove('is-ops-open');
           redrawAll();
           refresh();
