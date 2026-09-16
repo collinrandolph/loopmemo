@@ -38,7 +38,7 @@ export function panGains(angleDegrees: number): StereoGains {
   return { left: Math.cos(theta), right: Math.sin(theta) };
 }
 
-export function scaleGains(gains: StereoGains, factor: number): StereoGains {
+function scaleGains(gains: StereoGains, factor: number): StereoGains {
   return { left: gains.left * factor, right: gains.right * factor };
 }
 

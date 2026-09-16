@@ -353,7 +353,7 @@ export function isLayerAudible(layer: Layer, recordingIntoLayerIndex?: number): 
   return layer.index !== recordingIntoLayerIndex;
 }
 
-export function projectHasRecordings(project: Project): boolean {
+function projectHasRecordings(project: Project): boolean {
   return project.layers.some(layerHasRecording);
 }
 

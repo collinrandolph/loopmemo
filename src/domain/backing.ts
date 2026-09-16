@@ -481,7 +481,7 @@ export function defaultBacking(): BackingTracks {
 }
 
 /** A slot with nothing chosen yet. */
-export function defaultChord(): Chord {
+function defaultChord(): Chord {
   return { letter: 'C', accidental: 'natural', quality: 'major' };
 }
 

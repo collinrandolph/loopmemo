@@ -87,7 +87,7 @@ export function barAmplitude(
   );
 }
 
-export function peakAt(
+function peakAt(
   peaks: readonly number[],
   startFrame: number,
   frameCount: number,
