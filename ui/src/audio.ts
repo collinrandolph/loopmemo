@@ -318,6 +318,34 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
        * context's, so recorded layers run 8.8% fast against the drums.
        */
       ctx = context ?? (owned = new AudioContext({ sampleRate }));
+      /**
+       * **The request is not a guarantee, and three consumers depend on it being one.**
+       *
+       * `sampleRate` in the constructor is a preference the platform may decline. iOS ignored it
+       * for years, and a Bluetooth HFP route still forces the hardware rate even where it is
+       * honoured otherwise. When it is declined the engine holds two rates without knowing it —
+       * `frameToTime` converts with the domain's, `scheduleSegments` with the context's — and the
+       * recorded layers run fast against the drums: 8.8% at 44.1 against 48, which is a bar
+       * measuring 2.297 s instead of 2.5.
+       *
+       * **Invisible until a layer has audio to play**, which is why it is worth throwing over. A
+       * silent wrong answer here is a project that sounds broken for a reason nothing reports;
+       * a thrown one is a screen that can say the device would not give the rate this project
+       * needs. The check is one comparison and it is the only place the assumption is made.
+       */
+      if (ctx.sampleRate !== sampleRate) {
+        const got = ctx.sampleRate;
+        if (owned) {
+          void owned.close();
+          owned = undefined;
+        }
+        ctx = undefined;
+        throw new Error(
+          `audioEngine: asked for ${sampleRate} Hz and the device gave ${got} Hz. ` +
+            'Every frame count in this project is computed at the project rate, so the layers ' +
+            'would run against the backing.',
+        );
+      }
       // Every voice goes through this, never straight to `destination`. A dense pattern easily has
       // a dozen oscillators sounding at once, and summing those into the destination clips.
       const comp = ctx.createDynamicsCompressor();
