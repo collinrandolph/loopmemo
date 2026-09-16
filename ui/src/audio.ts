@@ -217,6 +217,32 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
   let stream: MediaStream | undefined;
   let inputError: InputFailure | undefined;
   let recorder: Recorder | undefined;
+
+  /**
+   * Whether the stream still has a track the device is actually feeding.
+   *
+   * `readyState` is the only thing that says so. A `MediaStream` and its `MediaStreamTrack` are
+   * ordinary objects that survive the device: `ended` is terminal and nothing about the reference
+   * changes, so every existence check keeps passing.
+   */
+  function inputIsLive() {
+    return !!stream && stream.getAudioTracks().some((t) => t.readyState === 'live');
+  }
+
+  /**
+   * Drop the input and everything built on it, so the next `openInput` re-acquires.
+   *
+   * The tracks are stopped explicitly. A track left running holds the device — on iOS it also
+   * holds the audio session in a record category, which is a routing variable the device checklist
+   * has to control for — and the browser's recording indicator stays lit over an app that is not
+   * recording.
+   */
+  function releaseInput() {
+    recorder?.destroy();
+    recorder = undefined;
+    for (const t of stream?.getTracks() ?? []) t.stop();
+    stream = undefined;
+  }
   /**
    * Added to a captured chunk's context frame to get an engine frame. Set at `startCapture`; see
    * the note there for why it cannot be computed at the stop.
@@ -962,11 +988,14 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
       const c = owned;
       if (!c) return false;
       try {
+        // **A dead stream is discarded rather than reused.** See `inputIsLive` — the object
+        // outlives the device, so `if (!stream)` reopened nothing and the take was silent.
+        if (stream && !inputIsLive()) releaseInput();
         if (!stream) {
           stream = await navigator.mediaDevices.getUserMedia({ audio: MUSIC_CONSTRAINTS });
         }
-        // Held across takes: reopening re-negotiates the input route, and that route is what the
-        // recording offset was set against (§2.3).
+        // Held across takes while it is *live*: reopening re-negotiates the input route, and that
+        // route is what the recording offset was set against (§2.3).
         if (!recorder) {
           recorder = await createRecorder(c, c.createMediaStreamSource(stream));
         }
@@ -982,7 +1011,19 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
 
     inputError: () => inputError,
 
-    hasInput: () => !!recorder,
+    /**
+     * **Live, not merely present.** This used to be `!!recorder`, and a `MediaStreamTrack` outlives
+     * the device behind it: unplug the headset, revoke permission in another tab, let the OS take
+     * the route for a call, and the track goes to `ended` while every object involved stays exactly
+     * where it was. So the row armed, the take recorded, and §3.5's whole point — that a row
+     * refuses to arm without an input, because everything downstream is correct *given a take* —
+     * was defeated by a stream that had been valid when it was asked for.
+     *
+     * It is the same failure the denied-microphone guard was written for: a take of silence
+     * committed as a real pass, with the badge advanced, the arrangement built on it, and the pass
+     * count and size projection both up by audio that does not exist.
+     */
+    hasInput: () => !!recorder && inputIsLive(),
 
     inputPeak: () => (recorder?.recording() ? recorder.peak() : 0),
 
