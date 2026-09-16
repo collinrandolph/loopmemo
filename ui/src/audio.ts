@@ -248,6 +248,17 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
    */
   let latencyFrames = 0;
 
+  /**
+   * Terminal. **A destroyed engine is inert, not dormant.**
+   *
+   * `destroy()` used to clear `ctx` and leave `owned` pointing at the context it had just
+   * closed, so the next stray call fell into `ensure()`, found no `ctx`, and built a **second**
+   * `AudioContext` — which nothing would ever close, on a platform that caps how many may
+   * exist. A stale reference is not exotic: screens are torn down on every navigation, and a
+   * render loop or a debounced timer can outlive the screen that started it by a frame.
+   */
+  let destroyed = false;
+
   /** Set by `onSchedule`. Undefined whenever nothing is watching, which is always in production. */
   let watching: ((event: ScheduledEvent) => void) | undefined;
 
@@ -296,6 +307,9 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
 
   // ------------------------------------------------------------------ graph --
   function ensure(): BaseAudioContext {
+    // Loud rather than quiet: every public entry point already refuses when destroyed, so
+    // reaching here means one was added without a guard. Rebuilding silently is the old bug.
+    if (destroyed) throw new Error('audioEngine: used after destroy()');
     if (!ctx) {
       /**
        * **At the project's rate, never the device's.** Omitting it takes the hardware default
@@ -988,6 +1002,7 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
     ready: () => (context ? true : owned?.state === 'running'),
 
     start(atFrame) {
+      if (destroyed) return;
       const c = ensure();
       killAll();
       originFrame = atFrame;
@@ -999,6 +1014,7 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
     },
 
     stop() {
+      if (destroyed) return;
       originFrame = engine.frame();
       anchorTime = undefined;
       if (timer !== undefined) {
@@ -1009,6 +1025,7 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
     },
 
     setBacking(next, t) {
+      if (destroyed) return;
       const tempoChanged =
         timing !== undefined &&
         (timing.bpm !== t.bpm || timing.barCount !== t.barCount || timing.beatsPerBar !== t.beatsPerBar);
@@ -1028,11 +1045,13 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
     },
 
     setTransport(next) {
+      if (destroyed) return;
       transport = next.mode === 'idle' ? playLoopFrom(0, 0) : next;
       rescheduleFuture();
     },
 
     async openInput() {
+      if (destroyed) return false;
       ensure();
       // Capture needs the live context specifically. An offline render has no input to open, and
       // asking for one would be a category error rather than a failure to report.
@@ -1083,10 +1102,12 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
     },
 
     setCountIn(untilFrame) {
+      if (destroyed) return;
       countInUntilFrame = Math.max(0, untilFrame);
     },
 
     setMaster(level, muted) {
+      if (destroyed) return;
       // An engine handed a context is rendering (`render.ts`), and monitoring is not part of the
       // mix. Refusing here makes that structural rather than a convention a future caller could
       // break by reusing the live engine for a render.
@@ -1097,6 +1118,7 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
     },
 
     prerender(bars) {
+      if (destroyed) return;
       ensure();
       killAll();
       // Anchored at exactly 0: there is no clock to race offline, and a lead would put silence
@@ -1110,6 +1132,7 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
     },
 
     async startCapture() {
+      if (destroyed) return false;
       // For a caller that never armed. A no-op once open, so the armed path has already paid.
       if (!(await engine.openInput())) return false;
       /**
@@ -1143,6 +1166,7 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
     },
 
     setLayers(project, takes, recordingIntoLayerIndex) {
+      if (destroyed) return;
       const c = ensure();
       const t = timing ?? projectTiming(project);
       // The whole voice is carried across, keyed by layer index: a level change must not rebuild
@@ -1223,10 +1247,31 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
     },
 
     destroy() {
+      if (destroyed) return;
       engine.stop();
+      // **The microphone goes with it.** Arming opens an input and the engine holds it across
+      // takes; a navigation builds a new engine and opens another. Nothing stopped the old one,
+      // so each arm-after-navigation leaked a live `MediaStream` — the browser's recording
+      // indicator stays lit over an app that is not recording, and on iOS a live capture track
+      // holds the audio session in a record category, which is a routing variable
+      // docs/device-check.md §1 has to control for.
+      releaseInput();
+      // Unplug before letting go: a shared context outlives this engine, and every engine builds
+      // its own compressor and monitoring gain into the destination.
+      try {
+        masterGain?.disconnect();
+      } catch {
+        /* already disconnected */
+      }
       void owned?.close();
+      // `owned` too, not only `ctx`. Leaving it set is what let a stale call build a second
+      // context and then fail on a closed one.
+      owned = undefined;
       ctx = undefined;
       bus = undefined;
+      masterGain = undefined;
+      watching = undefined;
+      destroyed = true;
     },
   };
 

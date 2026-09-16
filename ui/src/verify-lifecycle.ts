@@ -169,6 +169,9 @@ export async function verifyLifecycle() {
   const editHoldsOwn = donorSessions.every((id) => edited.loaded().includes(id));
   edited.screen.destroy();
 
+  // -- claim 3: destroy() is terminal --
+  const terminal = destroyIsTerminal();
+
   // -- claim 3: the engine reports what it schedules, and stops when detached --
   const probe = probeReports();
 
@@ -178,6 +181,8 @@ export async function verifyLifecycle() {
     newModePushedLayers: created.calls.some((c) => c.call === 'setLayers'),
     editModeHoldsOwnAudio: editHoldsOwn,
     donorSessions,
+    ...terminal,
+    ...terminal,
     ...probe,
   };
 
@@ -185,6 +190,8 @@ export async function verifyLifecycle() {
     claims.newModeStillHoldsDonorAudio.length === 0 &&
     claims.newModePushedLayers &&
     claims.editModeHoldsOwnAudio &&
+    claims.destroyBuildsNoSecondContext &&
+    claims.destroyIsIdempotent &&
     claims.scheduleHookReports &&
     claims.scheduleHookSilentWhenDetached;
 
@@ -222,4 +229,60 @@ function probeReports(): { scheduleHookReports: boolean; scheduleHookSilentWhenD
     scheduleHookReports: whileWatching > 0,
     scheduleHookSilentWhenDetached: afterDetach === whileWatching,
   };
+}
+
+/**
+ * Is a destroyed engine inert, or merely dormant?
+ *
+ * It used to be dormant. `destroy()` cleared `ctx` and left `owned` pointing at the context it
+ * had just closed, so one stray call fell into `ensure()`, saw no `ctx`, and built a **second**
+ * `AudioContext` that nothing would ever close — on a platform that caps how many may exist. A
+ * stale call is not exotic: screens are torn down on every navigation, and a render loop or a
+ * debounced timer can outlive its screen by a frame.
+ *
+ * Counted by constructor rather than inspected, because "did a second context appear" is the
+ * whole question and an engine does not expose its own.
+ */
+function destroyIsTerminal(): {
+  destroyBuildsNoSecondContext: boolean;
+  destroyIsIdempotent: boolean;
+} {
+  const Real = globalThis.AudioContext;
+  let built = 0;
+  class Counting extends Real {
+    constructor(...args: ConstructorParameters<typeof Real>) {
+      super(...args);
+      built++;
+    }
+  }
+  globalThis.AudioContext = Counting as unknown as typeof Real;
+  try {
+    const engine = audioEngine(44100);
+    const project = createProject({ id: 'd', name: 'D', bpm: 120, barCount: 4, quality: 'standard' });
+    engine.setBacking(project.backing, projectTiming(project));
+    const afterSetup = built;
+
+    engine.destroy();
+    // Everything a torn-down screen might still be holding a reference to.
+    engine.setBacking(project.backing, projectTiming(project));
+    engine.setLayers(project, takeStore(() => {}));
+    engine.start(0);
+    engine.stop();
+    engine.prerender(1);
+    engine.setMaster(0.5, false);
+
+    let idempotent = true;
+    try {
+      engine.destroy();
+    } catch {
+      idempotent = false;
+    }
+
+    return {
+      destroyBuildsNoSecondContext: built === afterSetup,
+      destroyIsIdempotent: idempotent,
+    };
+  } finally {
+    globalThis.AudioContext = Real;
+  }
 }
