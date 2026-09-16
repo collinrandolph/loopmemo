@@ -142,6 +142,15 @@ export function playbackScreen(opts: {
   let countInFrom = 0;
   let countInUntil = 0;
   /** Loudest input since the last live line was drawn; see `pushLive`. */
+  /**
+   * Loudest input sample seen since the last line was drawn.
+   *
+   * **Accumulated rather than sampled**: `inputPeak()` resets the recorder's running maximum on
+   * read, and the render loop runs far more often than a line is added, so sampling it per frame
+   * would throw away every peak that fell between two lines — which is most of them, and
+   * transients are exactly what a peak is for. Cleared when a line consumes it, and again when a
+   * take begins, so nothing carries from one performance into the first line of the next.
+   */
   let livePeak = 0;
 
   const spent = ramp.tokenRGB('--lr-spent');
@@ -353,6 +362,13 @@ export function playbackScreen(opts: {
 
 
       if (next === 'recording' && was !== 'recording') {
+        // **The peak does not carry between takes.** It is accumulated across frames and
+        // cleared only when a line consumes it — so a take that ended between two lines left
+        // its last peak sitting here, and the first line of the *next* take was drawn at the
+        // height of the end of the one before. A waveform is the app's only picture of the
+        // audio (§1.1), and its first line lying about the take it belongs to is the kind of
+        // wrong that reads as a real transient.
+        livePeak = 0;
         /**
          * A pass always begins on the downbeat, so recording restarts the loop — and the count-in
          * is the loop's own tail played into that restart (§4.6). `countInStartFrame` ends on the

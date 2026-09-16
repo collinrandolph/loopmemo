@@ -1004,12 +1004,46 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
       ref && before && ref.pass === before.pass && ref.relativeBar === before.relativeBar;
     if (sameSource && muted === wasMuted) return;
 
-    const enterFrame = now + crossfade;
-    const offsetInBar = enterFrame - Math.floor(now / fpb) * fpb;
+    enterCurrentBar(voice, now);
+  }
+
+  /**
+   * Enter the bar already under way, at the offset the playhead has reached (§2.5).
+   *
+   * Split out of `spliceCurrentBar` so **seeking can use it too**. A seek lands wherever the
+   * finger did, which is almost never a bar line: `start` sets `nextBar` to the bar containing
+   * the target, and `scheduleBar` then drops that bar's layer segment as being in the past —
+   * correctly, since scheduling a bar from its downbeat when the downbeat has gone would restart
+   * it on top of itself. The consequence was that seeking into a bar played the drums, whose
+   * onsets are filtered individually, and **none of the recorded layers** until the next bar line.
+   * Up to a full bar of a project sounding like it lost its takes.
+   *
+   * `fromFrame` is the caller's idea of now, and the two callers disagree on purpose. A splice
+   * asks the engine, because the playhead has moved since the gesture. A seek passes the frame it
+   * is seeking *to*: `frame()` reads behind `originFrame` for the length of the scheduling lead,
+   * and entering from there would place the segment before the anchor — in the past, which
+   * `start` treats as "now" and which is the restart this exists to avoid.
+   */
+  function enterCurrentBar(voice: LayerVoice, fromFrame: number) {
+    if (anchorTime === undefined || !ctx || !timing) return;
+    const t = timing;
+    const c = ctx;
+    const fpb = framesPerBar(t);
+    const crossfade = Math.round(CROSSFADE_SECONDS * t.sampleRate);
+
+    const head = playheadAt(transport, fromFrame, t);
+    if (!head) return;
+    const slot = slotAt(head);
+    const ref = voice.layer.barSources[slot];
+    const muted = isSlotMuted(voice.layer.mutedSlots, slot);
+
+    const enterFrame = fromFrame + crossfade;
+    const offsetInBar = enterFrame - Math.floor(fromFrame / fpb) * fpb;
     const at = frameToTime(enterFrame);
 
     // Whatever this layer has sounding gives way, muted or not — a slot muted mid-bar goes quiet
     // on that bar rather than finishing it, which is what tap-and-hold looks like it should do.
+    // After a seek there is nothing sounding, because `start` has just called `killAll`.
     for (const sounding of voice.scheduled) {
       if (sounding.at <= at && sounding.endsAt > at) retire(sounding, at, crossfade / t.sampleRate);
     }
@@ -1029,6 +1063,16 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
         crossfade,
       ),
     );
+    // Reported like any other scheduling. A splice and a mid-bar seek both put audio on the
+    // graph, and an instrument that only saw `scheduleBar` would call that silence.
+    watching?.({
+      kind: 'layer',
+      layer: voice.layer.index,
+      sessionId: voice.layer.sessions[region.sessionIndex]?.id,
+      slot,
+      frame: enterFrame,
+      time: at,
+    });
   }
 
   function topUp() {
@@ -1074,6 +1118,16 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
       nextBar = timing ? Math.floor(atFrame / framesPerBar(timing)) : 0;
       applyLevels();
       topUp();
+      // **Starting mid-bar is a seek, and the bar you land in has to sound.** `topUp` schedules
+      // from the bar boundary, and `scheduleBar` then drops that bar's layer segment for being
+      // in the past — right, because scheduling a bar from a downbeat that has gone restarts it
+      // on top of itself. Drums survive it, their onsets being filtered one at a time; the
+      // layers did not, so seeking into a bar played the backing with no takes under it for up
+      // to a whole bar. Entering at the offset is what `spliceCurrentBar` already does for a
+      // swipe, which is why that half is now its own function.
+      if (timing && atFrame % framesPerBar(timing) !== 0) {
+        for (const voice of layerVoices) enterCurrentBar(voice, atFrame);
+      }
       if (timer === undefined) timer = window.setInterval(topUp, TOPUP_MS);
     },
 
@@ -1242,19 +1296,32 @@ export function audioEngine(sampleRate: number, context?: BaseAudioContext): Bac
        * gone at exactly the moment it is needed. Nothing re-anchors during a take — seeking is
        * refused and the tempo is locked — so one reading holds for the whole recording.
        */
+      // **Re-checked after the await, not only before it.** `openInput` can take as long as a
+      // permission prompt, and anything can happen while it is open — navigating away destroys
+      // the engine and `releaseInput` clears the recorder. The guard at the top of this function
+      // ran before that window, and the `recorder!` below asserted through it: the resolved
+      // promise then called `.start()` on undefined.
+      if (destroyed || !recorder) return false;
       captureFrameOffset =
         anchorTime === undefined || !ctx ? 0 : originFrame - anchorTime * ctx.sampleRate;
-      recorder!.start();
+      recorder.start();
       return true;
     },
 
     async stopCapture() {
       if (!recorder?.recording()) return undefined;
-      const capture = await recorder.stop();
+      // **Both of these are read before the await, and that is the fix.** `recorder.stop()`
+      // waits for the worklet to flush its partial chunk, which is what keeps the tail of a take
+      // — and during that wait the engine can be destroyed, clearing `recorder` and resetting
+      // `captureFrameOffset`. Reading them afterwards meant a take that survived the stop could
+      // still be converted with the wrong origin, which is the count-in bug by a slower route.
+      const from = recorder;
+      const offset = captureFrameOffset;
+      const capture = await from.stop();
       // Into engine frames, which is what the type has always claimed to return.
       return {
         ...capture,
-        arrivedAtFrame: Math.round(capture.arrivedAtFrame + captureFrameOffset),
+        arrivedAtFrame: Math.round(capture.arrivedAtFrame + offset),
       };
     },
 

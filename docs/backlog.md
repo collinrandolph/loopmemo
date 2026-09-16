@@ -88,3 +88,25 @@ than going blank.
 
 **Check §5.2 before building any of them** — the arrangement axes have had alternatives rejected
 for reasons this note does not restate.
+
+---
+
+## 3 · F14 — "Export previews the project rather than the export" — could not be confirmed
+
+**Logged as not-a-defect rather than fixed**, because the audit itself flagged it as "verified by
+reading rather than by driving, so confirm before fixing", and confirming it went the other way.
+
+The claim was that the Preview transport on the Export screen plays the whole project while the
+export writes a selection. It is true that `export.ts` never calls `setLayers`, so the preview
+plays whatever the previous screen loaded. But **an `ExportSelection` does not select layers**:
+it is `fullLoop`, `stems`, `stemsWithEffects` and `allPasses` — which *files* come out, not which
+audio sounds. Every one of those is the same mixdown seen four ways.
+
+The one setting on that screen which changes how a loop sounds is **Perfect loop**, and a live
+preview is the case where it needs nothing: §2.8 and the tail section are explicit that the
+delayed tail of the last bar running past the loop end is correct live, and only a fixed-length
+render has to wrap it. So the preview and the file agree already.
+
+**What would make it a real finding**: a selection that excludes audible material — per-layer
+stems chosen individually, say — which the screen does not offer today. If that is ever added,
+the preview has to consult it, and this entry is the note saying so.

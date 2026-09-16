@@ -138,6 +138,15 @@ export async function createRecorder(
 
     destroy() {
       on = false;
+      // **Settle anyone waiting on a stop, or they wait forever.** `stop()` resolves when the
+      // worklet reports done, and nulling `onmessage` below is what stops that message arriving.
+      // Destroying the engine while a stop was in flight therefore hung `stopCapture`, so
+      // `commitCapture` never ran and the take was neither kept nor discarded — it just stopped
+      // existing, with no error anywhere. Resolving with what has been collected is right rather
+      // than merely safe: those chunks are real audio the worklet already delivered.
+      const pending = settle;
+      settle = undefined;
+      pending?.(chunks);
       node.port.onmessage = null;
       try {
         input.disconnect(node);
