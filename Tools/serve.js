@@ -17,6 +17,19 @@ import path from 'node:path';
 const ROOT = path.join(import.meta.dirname, '..');
 const PORT = Number(process.env.PORT ?? 5173);
 const CERTS = path.join(import.meta.dirname, 'certs');
+/**
+ * The other secret the document root publishes.
+ *
+ * `/.git/config` and `/.git/HEAD` returned 200 for the same reason the private key did: the repo
+ * root *is* the document root, so anything committed — or anything git keeps beside what is
+ * committed — is on the wire. And this server prints LAN addresses at startup, because phone
+ * testing needs them, so the audience is everyone on the network rather than localhost.
+ *
+ * A repository is a bigger leak than one key: `.git/config` carries remotes and sometimes
+ * credentials in the URL, and the object store carries every version of every file ever committed,
+ * including ones deleted later for being secret.
+ */
+const GITDIR = path.join(ROOT, '.git');
 
 function credentials() {
   // `LR_HTTP=1` forces plain HTTP even when certificates exist. `localhost` is a secure context
@@ -62,7 +75,7 @@ const handler = (req, res) => {
     // moment this server learned to speak HTTPS: the repo root is the document root, so adding a
     // secret to the repo published it. The certificate is handed out deliberately, by the helper
     // below, and nothing needs the key over the wire.
-    if (!file.startsWith(ROOT) || file.startsWith(CERTS)) {
+    if (!file.startsWith(ROOT) || file.startsWith(CERTS) || file.startsWith(GITDIR)) {
       res.writeHead(403).end('forbidden');
       return;
     }
