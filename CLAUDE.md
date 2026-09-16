@@ -952,9 +952,15 @@ The database is not written per pixel either; that write is debounced.
 
 ## Pan and the Haas delay
 
-**There is no EQ in `effects.ts` on purpose.** §2.8's preset table is a placeholder — frequencies
-and directions with no gain, Q or filter type, and the set itself unsettled. Implementing it
-would turn invented numbers into apparent decisions. It needs a research pass first.
+**EQ is not in `effects.ts`; it is in `eq.ts`** — a file split, not an absence. This said instead
+that §2.8's table was "a placeholder — frequencies and directions with no gain, Q or filter type"
+needing "a research pass first", and it had been false for some time: §2.8 now carries type, gain
+and Q, matching `EQ_PRESETS` exactly (100 Hz Q 0.707 · 7 kHz · 4 kHz +3.5 dB Q 1 · 500 Hz −4 dB ·
+300 + 3400 Hz), and "EQ presets are checked, not quoted" above describes the finished
+implementation. **CLAUDE.md contradicted itself**, and the half a reader met first told them not to
+build something that is built, tested against what each icon promises, and measured end to end at
+0 dB worst error. Stale documentation that says "not yet" is more expensive than none: it is an
+instruction to stop.
 
 **`7500 / BPM` ms is one eighth of a beat** (`60000/BPM ÷ 8`), so it is a note division, not a
 magic constant — `noteDelayFrames` takes beats and shares its arithmetic with `framesPerBar`

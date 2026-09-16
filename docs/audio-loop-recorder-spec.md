@@ -703,8 +703,15 @@ Three voices, one recipe each:
 | Hat | Filtered noise. **Closed and open are one recipe differing only in decay** — the same way strike and chunk are one chord voice with two envelopes, not a fourth sound. |
 
 **The hat chokes itself.** A real hi-hat is one pair of cymbals, so any new hit, open or closed,
-cuts off whatever is still ringing from the last. Kick and snare do not choke, and how voices that
-outlive their own onset gap are handled is **not yet settled** — see §6.1.
+cuts off whatever is still ringing from the last. Kick and snare do not choke.
+
+**Settled** (2026-09-16; this read "not yet settled — see §6.1", which had nothing to say by the
+time anyone followed it). The three voice types overlap differently and that difference *is* the
+decision: chords cap their envelope to the gap before the next onset, the hat chokes its
+predecessor, and kick and snare overlap — their decays outlive the gap only above ~200 BPM on dense
+patterns, and only in the inaudible tail. A uniform choke was built behind a live A/B and
+**rejected by ear**; it measured 1.6–1.8× the energy on dense chord patterns, which is the chords
+ringing through the handover instead of getting out of the way. That rejection is in §5.2.
 
 ### Chord bed
 
@@ -768,8 +775,19 @@ backing than for the Haas delay: the tails are **two orders of magnitude longer*
 milliseconds), and they are *musically* load-bearing rather than a width effect, so truncating one
 is plainly audible.
 
-`tailFrames` is the existing home for this obligation and currently accounts only for the pan
-delay. **Not yet addressed** — flagged here so it is not discovered at render time. See §6.1.
+**Addressed** (2026-09-16; this read "`tailFrames` … currently accounts only for the pan delay.
+Not yet addressed", which was how a solved problem gets solved twice). `src/domain/tail.ts` has
+`chordTailFrames` and `drumTailFrames`, and `loopTailFrames` is the one derivation of what is still
+sounding at the loop point — **shared by bounce and export, so the two cannot disagree about the
+same project**. It reports the project's worst case rather than a per-kind figure: over-wrapping
+adds silence and nothing else, where three figures would be three things to keep in agreement.
+
+The tail is much smaller than the argument above suggests. Chords essentially never overhang —
+`chordRingSeconds` caps to the next onset minus 50 ms and every pattern starts on beat 1, so the
+ring lands *before* the bar line. `syncopated-pop` is the only pattern with an open hat and the
+only real backing tail: 183 ms at 180 BPM with the Tight kit. A Surround layer adds 35 ms. **Do not
+re-derive this from strike decays** — that was tried and gave a figure four times too large,
+because chunk onsets ring `chunkSeconds`, not `strikeSeconds`.
 
 ## 2.7 Storage, quality and compression
 
@@ -1087,7 +1105,7 @@ adjacent lines are distinguishable.
 
 **Two colour meanings, one ramp.** On the Edit Layer screen, position in the ramp means *position in
 the recording*. On the Playback screen, each layer owns `slice(i, 7)` so position means *which
-layer*. Deliberate, and the screens are never seen at once — but see §6.1.
+layer*. Deliberate, and the screens are never seen at once.
 
 ## 3.3 Waveform — `LR.Waveform`
 
@@ -1813,7 +1831,7 @@ Do not reintroduce these. Each was built or specified, then removed for the stat
 | **`enabled` alongside `muted` on a backing track** | Two spellings of one state, and only `muted` was ever reachable — so `enabled` was a field the user could not set that still decided whether a backing stem was written. |
 | **Preset chord progressions** | A library of I–V–vi–IV and similar, to remove the blank slate. The blank slate is four editable slots and a Randomize button, which is already fast; a preset list adds a vocabulary to learn in front of a control whose whole justification is speed. |
 | **Auto-navigating to Edit Layer when a recording stops** | What follows a take is usually another take, not editing. Moving the screen out from under the user at the moment they might reach for the record dot again is the wrong guess, and the guess is unnecessary — the Edit Layer button is right there. |
-| **An input level meter** | The live waveform *is* the meter. It draws from the same `inputPeak()` a meter would, at the same display gain as the committed take, across the whole pass rather than at one instant — so a second readout would be a quieter copy of something already on screen. This does not settle input *gain staging* (§6.1), only the display half of it. |
+| **An input level meter** | The live waveform *is* the meter. It draws from the same `inputPeak()` a meter would, at the same display gain as the committed take, across the whole pass rather than at one instant — so a second readout would be a quieter copy of something already on screen. This does not settle input *gain staging*, only the display half of it — and the app has no lever there anyway: no browser or iOS API sets input gain, `autoGainControl` is off on purpose (§2.3), so the remedy for a quiet take is `Layer.level`, which runs to +6 dB (§6.1 → settled, see §5.2's trim and normalise entries). |
 | **Tapping the lane to open Edit Layer** | The Edit Layer button in the layer's own panel is deliberately large, and it is the affordance. A second, invisible route to the same screen teaches nothing and makes the lane's other gestures ambiguous. |
 | **Lane scrubbing** | The transport's progress bar already seeks, and it is the control that looks like it seeks. Putting a second seek on the lane would also make a horizontal drag mean "seek" on Playback and "change bar" on Edit Layer, on elements that look alike. |
 | **Subdividing the layer's ramp slice on the Edit Layer grid** | Considered so colour would mean one thing on every screen. Measured on a 5-pass, 16-bar layer: the full ramp separates neighbouring passes by 80–139 RGB units; a layer's seventh separates them by 11–12. Layer 1's whole recording would run `rgb(255,138,91)` to `rgb(255,184,91)` — red pinned at 255, blue at ~90, only green moving — which at a 3px line width is not a jump anyone can see, and the jump is the feature (§1.1). The argument for it, constantly signalling which layer you are in, is already served by the layer's name in the header. The two screens are not inconsistent: Playback's colour is layer identity (§4.4), Edit Layer's is source position (§1.1). |
@@ -1845,7 +1863,10 @@ touch-action: none;                         /* on gesture surfaces */
 ## 6.2 Not yet designed
 
 - Export sharing details beyond format and destination
-- The manual's actual copy (§4.7 is structure only)
+- **The manual's remaining copy.** Narrowed 2026-09-16; this said "§4.7 is structure only", which
+  stopped being true. Playback, Edit Layer and project settings all ship approved sheets through
+  `ui/src/help.ts`. **Export has no help control at all** — an oversight rather than a decision,
+  unlike the Library, which has none deliberately.
 - Onboarding
 
 ## 6.3 Later
