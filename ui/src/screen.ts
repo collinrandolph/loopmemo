@@ -91,3 +91,37 @@ export function annotationRow(node: HTMLElement): HTMLElement {
   row.appendChild(node);
   return row;
 }
+
+/**
+ * What to say about storage, or nothing.
+ *
+ * **`full` and `unavailable` are different and the difference is the recovery.** Full still reads
+ * and deletes — deleting is how it is emptied — so the user has something to do. Unavailable is a
+ * private window or blocked site data: nothing will ever be written, and the only honest thing to
+ * say is that the session ends with the tab.
+ *
+ * Here rather than on a screen because **the shell renders it now**. Only Playback subscribed,
+ * and `unavailable` is true from launch — so a first-run user in a private window met the
+ * Library, the entry point, looking like an ordinary app with no sign that none of it survives a
+ * reload. They would find out by losing a take.
+ */
+export function storageMessage(state: {
+  readonly kind: 'ok' | 'full' | 'unavailable';
+  readonly unsaved: number;
+}): string {
+  if (state.kind === 'unavailable') {
+    return (
+      'This browser is not storing anything, so the session is lost on reload. Private windows ' +
+      'and blocked site data both do this.'
+    );
+  }
+  if (state.kind !== 'full') return '';
+  // Full says the same thing two ways, because a refused *project* write leaves no take in the
+  // unsaved list and "0 takes" would read as nothing being wrong.
+  return state.unsaved > 0
+    ? `Storage is full, so ${state.unsaved} take${state.unsaved === 1 ? '' : 's'} ` +
+      `exist${state.unsaved === 1 ? 's' : ''} only in this tab and will be lost on reload. ` +
+      'Delete or compress a project to free room — they are saved as soon as there is space.'
+    : 'Storage is full, so changes are no longer being saved. Delete or compress a project to ' +
+      'free room.';
+}

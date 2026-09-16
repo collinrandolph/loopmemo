@@ -19,6 +19,7 @@ import {
   type CountInMode,
 } from '../../src/domain/count-in.ts';
 import { DEFAULT_THEME, type ThemeId, applyTheme } from './theme.ts';
+import { storageMessage } from './screen.ts';
 import { takeStore } from './takes.ts';
 
 /**
@@ -47,7 +48,25 @@ let route: Route = { screen: 'library' };
 
 const nav = el('div', 'app-nav');
 const host = el('div', 'app-host');
-document.body.append(nav, host);
+/**
+ * Whether anything is reaching storage — **on the shell, so every screen carries it**.
+ *
+ * Only Playback used to subscribe, and `unavailable` is true from launch in a private window.
+ * So the screen where a first-run user actually starts — the Library, the entry point — looked
+ * like an ordinary app with no sign that none of it survives a reload. They would find out by
+ * losing a take.
+ *
+ * Driven by the store's own subscription rather than the render loop: a hidden tab pauses the
+ * loop, and polling for something that announces itself is work for an answer already offered.
+ */
+const banner = el('div', 'app-banner');
+document.body.append(nav, banner, host);
+
+function paintStorage() {
+  const message = storageMessage({ kind: store.status(), unsaved: store.unsaved().length });
+  banner.textContent = message;
+  banner.style.display = message ? '' : 'none';
+}
 
 /**
  * A screen, plus its right to refuse being torn down.
@@ -475,6 +494,10 @@ async function boot() {
   openId = [...projects].sort((a, b) => b.lastModified.localeCompare(a.lastModified))[0]?.id ?? '';
   render();
   void hydrate(saved !== undefined);
+  // Once, for the life of the page. The screen-level subscription had to be torn down on every
+  // navigation or the listener list grew with each one; the shell outlives them all.
+  paintStorage();
+  store.onStatusChange(paintStorage);
 }
 
 /**
