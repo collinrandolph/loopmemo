@@ -257,6 +257,14 @@ function render() {
   current = undefined;
   currentEngine?.destroy();
   host.innerHTML = '';
+  // **Every screen opens at the top.** Nothing reset the scroll, so a screen inherited wherever the
+  // last one was left — and Playback with a row's panel open is scrolled on a phone, because that
+  // is where the Edit Layer button is. Beyond landing mid-page, the inherited offset broke a
+  // measurement: Edit Layer sizes its tiles from the grid's document position, which adds
+  // `scrollY`, and iOS WebKit had not yet clamped that to the new, shorter page when the screen
+  // measured — so the grid read as starting far down, left no room, and came up as compact tiles
+  // on an 8-bar loop. Reported from an iPhone; Chromium clamps synchronously and never showed it.
+  window.scrollTo(0, 0);
 
   // One engine per mount, at the open project's capture rate, so frame arithmetic on the screens
   // is in the units the domain computes in. It plays the backing it synthesises and the layers it

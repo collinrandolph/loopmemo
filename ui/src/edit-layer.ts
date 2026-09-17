@@ -758,8 +758,26 @@ export function editLayerScreen(opts: {
     syncSizing();
   };
   window.addEventListener('resize', onResize);
+  window.visualViewport?.addEventListener('resize', onResize);
 
   let observer: ResizeObserver | undefined;
+  /**
+   * **Re-measure whenever the space around the grid changes, not only when the window does.**
+   * The first measurement is one frame after mount, and on a phone the layout is not final then:
+   * the web fonts arrive after first paint and change how tall the header's text sets, and a
+   * header that shrinks after the measurement leaves tiles sized for less room than exists. A
+   * window `resize` never fires for that, so the wrong size used to persist until something else
+   * happened to re-run this. Header and footer only — the grid is what gets resized, and watching
+   * it would re-trigger on its own result.
+   */
+  let chrome: ResizeObserver | undefined;
+  let pending = 0;
+  const remeasure = () => {
+    cancelAnimationFrame(pending);
+    pending = requestAnimationFrame(() => {
+      if (mounted) onResize();
+    });
+  };
   // Measuring needs the nodes on the page; the guard is for a screen destroyed before that.
   let mounted = true;
   requestAnimationFrame(() => {
@@ -774,6 +792,10 @@ export function editLayerScreen(opts: {
       observer = new ResizeObserver(syncSizing);
       observer.observe(tiles[0].node);
     }
+    chrome = new ResizeObserver(remeasure);
+    chrome.observe(header);
+    chrome.observe(footer);
+    void document.fonts?.ready.then(remeasure);
   });
 
   return {
@@ -782,7 +804,10 @@ export function editLayerScreen(opts: {
       mounted = false;
       frames.stop();
       window.removeEventListener('resize', onResize);
+      window.visualViewport?.removeEventListener('resize', onResize);
       observer?.disconnect();
+      chrome?.disconnect();
+      cancelAnimationFrame(pending);
       document.removeEventListener('keydown', onKey);
       help.destroy();
       opts.engine.stop();

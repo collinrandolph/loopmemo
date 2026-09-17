@@ -78,7 +78,11 @@ async function networkFirst(request) {
   const cache = await caches.open(CACHE);
   try {
     const response = await Promise.race([
-      fetch(request),
+      // `no-cache`: revalidate with the server every time rather than trust the browser's HTTP
+      // cache. GitHub Pages sends `max-age=600`, so a plain fetch served a pushed build's old files
+      // for up to ten minutes — reported as "I don't see the update on the live link". An
+      // unchanged file costs a 304 and no body.
+      fetch(request, { cache: 'no-cache' }),
       new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), NETWORK_TIMEOUT_MS)),
     ]);
     // `opaque` is a cross-origin font response; it cannot be inspected but it can be replayed.
