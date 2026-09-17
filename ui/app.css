@@ -952,10 +952,6 @@ input, textarea, [contenteditable='true'] {
   -webkit-touch-callout: default; -webkit-user-select: text; user-select: text;
 }
 
-/* **Clear of the home indicator.** `viewport-fit=cover` lets a Home Screen app run to the bottom
-   edge, where the footer's buttons would sit under the swipe-up bar — a tap there can start the
-   system gesture instead. The inset is 0 in a browser tab and on a phone without the bar. */
-body { padding-bottom: env(safe-area-inset-bottom); }
 
 /* iOS zooms the viewport when a text field smaller than 16px takes focus, and does not zoom back
    out. **One rule for every field that takes text, not a list of the ones found so far**: it was
@@ -1135,4 +1131,29 @@ input[type=range]::-moz-range-track { background: var(--lr-track); height: 4px; 
 .hs-badge .lr-pass-badge {
   display: block; font-size: 12px; padding: 3px 8px;
   background: rgba(var(--lr-rec-rgb), .28);
+}
+
+/* --- keeping the footer's buttons out of the system's bottom band --------- */
+/* Two different bands, one reserve, and **it is spent inside the footer, not on `body`**.
+
+   - **Home Screen app:** `viewport-fit=cover` runs the page to the bottom edge, under the home
+     indicator's swipe-up bar — the safe-area inset.
+   - **Safari tab:** the inset is 0 there, and a tap in the bottom band of the screen brings Safari's
+     collapsed toolbar back instead of reaching the button. Reported from an iPhone on the footer's
+     Projects / Export / Done row (2026-09-16). 44px is Apple's minimum touch height, and it is a
+     reserve rather than a measured threshold — Safari does not publish one — so if taps still
+     bring the toolbar up, this is the number to raise. Touch only (`pointer: coarse`): a desktop
+     browser has no such band and would only lose the space.
+
+   The first version padded `body`, which put the space *below* the footer — outside the box Edit
+   Layer measures when it fits the grid to the screen, so the page overflowed by exactly the inset
+   and scrolled. Padding the footer keeps it inside that measurement. Last in the file on purpose:
+   the ≤640px block above sets the footer's padding shorthand and would otherwise reset this. */
+:root { --bottom-reserve: env(safe-area-inset-bottom, 0px); }
+@media (display-mode: browser) and (pointer: coarse) {
+  :root { --bottom-reserve: max(env(safe-area-inset-bottom, 0px), 44px); }
+}
+.lr-footer { padding-bottom: calc(12px + var(--bottom-reserve)); }
+@media (max-width: 640px) {
+  .lr-footer { padding-bottom: calc(10px + var(--bottom-reserve)); }
 }

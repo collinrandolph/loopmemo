@@ -39,9 +39,14 @@ projects and takes.
 | Double-tap and pinch zoom | stopped (five mechanisms — CLAUDE.md) | stopped |
 | Left-edge swipe back | leaves the app if there is history | nothing to go back to |
 | **Swipe up from the bottom edge** | **always** | **always** |
+| Tap near the bottom brings the toolbar back | yes — the footer keeps 44px clear | no toolbar |
 
-The bottom-edge swipe is iOS's and no web page can defer it. The page is padded clear of the home
-indicator (`env(safe-area-inset-bottom)`) so the footer's buttons are not under it.
+The bottom-edge swipe is iOS's and no web page can defer it. The footer's buttons are kept out of
+the bottom band either way: in the Home Screen app by the home indicator's inset, and in a Safari
+tab by a 44px reserve, because a tap there restores Safari's collapsed toolbar instead of pressing
+the button (reported 2026-09-16). Both are padding *inside* the footer, so Edit Layer's fit-to-screen
+measurement still includes them. If taps still bring the toolbar up, `--bottom-reserve` in `app.css`
+is the number to raise.
 
 ## Storage
 
