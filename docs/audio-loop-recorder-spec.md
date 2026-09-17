@@ -1169,12 +1169,17 @@ only masked.
 **Waveform shape is keyed to normalised position (0–1), not line index**, so a lane redrawn at a
 different count keeps its silhouette. Otherwise resizing appears to change the recording.
 
-**A Playback lane draws its layer's level; an Edit Layer tile does not** (settled 2026-09-16). Level
-scales the amplitude before the display curve, so a lane shows what the mix does with the take and
-the +6 dB range is visible rather than only audible. Mute does not flatten it — a muted layer keeps
-the only view of what is behind the mute — and master does not touch it, being monitoring (§4.2).
-The Edit Layer grid is read for *shape*, comparing passes of one layer at one level, and a quiet
-layer would lose exactly that.
+**Every waveform of a layer draws its level — Playback lanes and Edit Layer tiles alike** (settled
+2026-09-16). Level scales the amplitude before the display curve, so the picture shows what the mix
+does with the take and the +6 dB range is visible rather than only audible. Mute does not flatten
+it — a muted layer keeps the only view of what is behind the mute — and master does not touch it,
+being monitoring (§4.2). The tiles were first left out, on the argument that the grid is read for
+shape; using the app reversed that the same day, because a fader that moves one screen's picture
+and not the other's reads as two different layers, and every tile shares the level anyway.
+
+**The display curve is `peak ^ 0.35`**, lowered from 0.5 the same day because takes at a good level
+drew relatively flat: a phone microphone with automatic gain off peaks around 0.05–0.2. The
+constant and its trade-off are documented at `PEAK_DISPLAY_EXPONENT`.
 
 ### The `scaleY` trap
 

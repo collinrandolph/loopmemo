@@ -28,11 +28,20 @@ export const PEAK_FRAMES = 512;
  * clipping one look the same. `peak ** 0.5` is monotonic over the whole range, and the clamp
  * below guards an overshoot rather than doing work.
  *
- * The cost is that it lifts the bottom too — room tone at 0.005 draws at 0.07 — which is the
- * honest trade for seeing a quiet take, and better than a gate deciding what counts as silence.
- * None of it substitutes for recording at a sensible level (§6.1, still open).
+ * **0.35, lowered from 0.5 on 2026-09-16** after use on an iPhone: takes that sounded at a good
+ * level drew relatively flat, because a phone microphone with `autoGainControl` off peaks nearer
+ * 0.05–0.2 than the 0.2–0.4 this was first tuned for. In a 34px Playback lane:
+ *
+ *     peak      0.005  0.02  0.05  0.1   0.2   0.4   0.7   1
+ *     ^ 0.5     2px    5px   8px   11px  15px  22px  28px  34px
+ *     ^ 0.35    5px    9px   12px  15px  19px  25px  30px  34px
+ *
+ * The cost is the one this curve always had, a little more of it: room tone at 0.005 now draws
+ * 5px rather than 2. 0.3 would lift a normal take slightly more and start drawing near-silence as
+ * signal. This one number shapes every waveform in the app — lanes, tiles, the live line and the
+ * level scaling below — so it is the knob to turn if they still read flat.
  */
-export const PEAK_DISPLAY_EXPONENT = 0.5;
+export const PEAK_DISPLAY_EXPONENT = 0.35;
 
 /** Amplitude to drawn fraction of the box. */
 export function drawnHeight(peak: number): number {
@@ -41,18 +50,23 @@ export function drawnHeight(peak: number): number {
 }
 
 /**
- * A drawn height with the layer's level applied — **the Playback lanes only** (decided 2026-09-16).
+ * A drawn height with the layer's level applied — Playback lanes **and** Edit Layer tiles.
  *
  * **The level scales the amplitude, and the curve then applies as usual**, so a lane shows what the
  * mix will do with the take: `drawnHeight(peak × level)`, which for a power curve is exactly
  * `drawnHeight(peak) × level ** PEAK_DISPLAY_EXPONENT`. Written in the second form because the demo
  * projects' synthetic `amp()` is already a drawn fraction with no peak behind it, and one formula
- * has to serve both. +6 dB therefore draws √2 taller, not twice, and clips at the box.
+ * has to serve both. +6 dB therefore draws 2^0.35 ≈ 1.27× taller, not twice, and clips at the box.
  *
  * **Not mute.** A muted layer keeps its picture — flattening it would throw away the only view of
  * what is behind the mute, and per-bar mute already has its own drawn treatment. **Not master**,
- * which is monitoring (§4.2). **Not the Edit Layer grid**, where tiles compare passes of one layer
- * at one level and are read for shape, which a quiet layer would lose.
+ * which is monitoring (§4.2).
+ *
+ * **Edit Layer was first left out** (2026-09-16, the same day) on the argument that its tiles
+ * compare passes of one layer at one level and are read for shape, which a quiet layer would lose.
+ * Using the app reversed it: a fader that changes one screen's picture and not the other's reads as
+ * two different layers, and every tile on the grid shares the level, so the comparison between
+ * passes is unaffected.
  */
 export function levelScaledHeight(drawn: number, level: number): number {
   return Math.min(1, drawn * Math.max(0, level) ** PEAK_DISPLAY_EXPONENT);

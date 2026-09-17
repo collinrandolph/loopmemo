@@ -38,7 +38,7 @@ import { type Rgb, type WaveNode, LR, clamp01, el, motion, ramp, sizing } from '
 import { amp } from './demo.ts';
 import { compressedTake } from './compress.ts';
 import { type TakeStore, newTakeId } from './takes.ts';
-import { barAmplitude } from './peaks.ts';
+import { barAmplitude, levelScaledHeight } from './peaks.ts';
 import { confirmPanel, formatBytes, renderLoop } from './screen.ts';
 
 const BARS_PER_ROW = 4;
@@ -134,6 +134,8 @@ export function editLayerScreen(opts: {
   let lastPhase = 0;
   let tileHeight = TILE_TALL;
   let peakHeight = (TILE_TALL - TILE_CHROME_TALL) * PEAK_RATIO;
+  /** A pending level-driven redraw; see the level slider. */
+  let levelRedraw = 0;
 
   const spent = ramp.tokenRGB('--lr-spent');
   const spentSel = ramp.tokenRGB('--lr-spent-sel');
@@ -312,6 +314,10 @@ export function editLayerScreen(opts: {
         volume.update();
         opts.onChange(layer);
         syncLayers();
+        // The tiles draw the level, so they follow the fader — once per frame, since the slider
+        // fires per pixel and a redraw rebuilds every tile on the grid.
+        cancelAnimationFrame(levelRedraw);
+        levelRedraw = requestAnimationFrame(redrawAll);
       },
     ),
   );
@@ -398,9 +404,12 @@ export function editLayerScreen(opts: {
     // its `BarRef` points at — this is the screen the two indices are *for*.
     const passes_ = index(); // the screen's own resolver, so the peaks agree with the axis
     tile.wave.build(LINES_PER_BAR, (i) => ({
+      // At the layer's level, the same as its Playback lane — see `levelScaledHeight`.
       height: motion.snapEven(
-        (barAmplitude(layer, passes_, ref, i, LINES_PER_BAR) ??
-          amp(layer.index, src, i, LINES_PER_BAR)) * peakHeight,
+        levelScaledHeight(
+          barAmplitude(layer, passes_, ref, i, LINES_PER_BAR) ?? amp(layer.index, src, i, LINES_PER_BAR),
+          layer.level,
+        ) * peakHeight,
         lineWidth,
       ),
       rgb: ramp.rgb((src * LINES_PER_BAR + i) / (totalLines - 1)),
@@ -811,6 +820,7 @@ export function editLayerScreen(opts: {
       observer?.disconnect();
       chrome?.disconnect();
       cancelAnimationFrame(pending);
+      cancelAnimationFrame(levelRedraw);
       document.removeEventListener('keydown', onKey);
       help.destroy();
       opts.engine.stop();
