@@ -669,8 +669,11 @@ export function editLayerScreen(opts: {
    * it, and keeps the whole arrangement on screen, which is what the colour signature is for.
    *
    * Clamped to `TILE_TALL` so a desktop window does not produce enormous tiles, and floored at
-   * `TILE_SHORT`, below which the page scrolls. **No phone reaches the floor**: swept at 375×812,
-   * 375×667 and 320×568, every bar count fits.
+   * `TILE_SHORT`, below which the page scrolls. **One case reaches the floor**: re-swept 2026-09-16
+   * with the footer's 44px Safari-tab reserve, every bar count fits at 375×812 and 375×667, and at
+   * 320×568 everything fits except 32 bars, which scrolls by 37px. That is a first-generation
+   * iPhone SE in a Safari tab only — in the Home Screen app the reserve is the home-indicator inset,
+   * which that phone does not have. Left rather than lowering the floor for it.
    */
   function syncTileHeight() {
     const rows = Math.ceil(barCount / BARS_PER_ROW);
