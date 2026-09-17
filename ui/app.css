@@ -720,10 +720,14 @@ body { padding: 0; }
    The tick sits BELOW the track rather than on it: drawn on the track it would be hidden by the
    thumb at exactly the value it exists to mark, which is the one position that has to be legible.
    `manipulation` is what stops a phone reading the reset double-tap as a zoom. */
-.lr-level { flex: 1; min-width: 0; position: relative; padding-bottom: 5px; }
+/* The tick is measured from the thumb, not the element: the element is `--slider-hit` tall and the
+   thumb centred in it, so the thumb's lowest point is half the leftover space above the element's
+   bottom. `bottom` below places the tick 2px under that, whatever the three sizes are set to. */
+.lr-level { flex: 1; min-width: 0; position: relative; }
 .lr-level__range { width: 100%; display: block; touch-action: manipulation; }
 .lr-level::after {
-  content: ''; position: absolute; bottom: 0; left: 50%;
+  content: ''; position: absolute; left: 50%;
+  bottom: calc((var(--slider-hit) - var(--slider-thumb)) / 2 - 6px);
   width: 2px; height: 4px; margin-left: -1px; border-radius: 1px;
   background: var(--lr-hint); pointer-events: none;
 }
@@ -988,23 +992,39 @@ select,
    `accent-color: #fff`, so the groove was whatever grey the platform chose and the fill was pure
    white — neither following the colourway, and the master volume sat beside the progress bar
    looking like a different control. `appearance: none` is what makes the groove paintable at all.
-   The thumb stays the light ink so it reads on the lane at every position. */
+   The thumb stays the light ink so it reads on the lane at every position.
+
+   **Sized for a finger, not a cursor** (2026-09-16, reported from an iPhone as hard to use). The
+   control was a 4px-tall element with a 13px thumb, so the only place a touch landed on it was a
+   strip the width of a pencil line. Now the *element* is `--slider-hit` tall and transparent — that
+   height is what a touch has to land in — and the groove is drawn inside it on the track
+   pseudo-element, so the lane still looks like the progress bar. One rule, so every slider in the
+   app changes together: layer, backing and Edit Layer levels, master, BPM and rec offset. */
+:root { --slider-hit: 36px; --slider-thumb: 26px; --slider-track: 6px; }
 input[type=range] {
   appearance: none; -webkit-appearance: none;
-  background: var(--lr-track); height: 4px; border-radius: 99px;
+  background: transparent; height: var(--slider-hit); margin: 0;
   outline: none; cursor: pointer;
+}
+input[type=range]::-webkit-slider-runnable-track {
+  height: var(--slider-track); border-radius: 99px; background: var(--lr-track);
 }
 input[type=range]::-webkit-slider-thumb {
   appearance: none; -webkit-appearance: none;
-  width: 13px; height: 13px; border-radius: 50%; border: none;
+  width: var(--slider-thumb); height: var(--slider-thumb); border-radius: 50%; border: none;
   background: var(--lr-ink); cursor: pointer;
+  /* WebKit lays the thumb from the track's top edge; this centres it on the groove. */
+  margin-top: calc((var(--slider-track) - var(--slider-thumb)) / 2);
+  box-shadow: 0 1px 3px rgba(0,0,0,.25);
 }
 input[type=range]::-moz-range-thumb {
-  width: 13px; height: 13px; border-radius: 50%; border: none;
-  background: var(--lr-ink); cursor: pointer;
+  width: var(--slider-thumb); height: var(--slider-thumb); border-radius: 50%; border: none;
+  background: var(--lr-ink); cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,.25);
 }
 /* Firefox paints its own groove inside the element rather than using the background. */
-input[type=range]::-moz-range-track { background: var(--lr-track); height: 4px; border-radius: 99px; }
+input[type=range]::-moz-range-track {
+  background: var(--lr-track); height: var(--slider-track); border-radius: 99px;
+}
 
 /* --- the count-in indicator ----------------------------------------------- */
 /* One pip per beat, in the lane the waveform is about to fill. That space is empty for the whole
@@ -1095,15 +1115,15 @@ input[type=range]::-moz-range-track { background: var(--lr-track); height: 4px; 
 /* The transport's lane, small. `--v` is where the thumb sits; the unity tick is the level
    fader's own mark, drawn below the track for the same reason it is there. */
 .hs-slider {
-  flex: 1; height: 4px; border-radius: 999px; position: relative; min-width: 40px;
+  flex: 1; height: 6px; border-radius: 999px; position: relative; min-width: 40px;
   background: linear-gradient(to right, var(--lr-ink) var(--v,50%), var(--lr-track) var(--v,50%));
 }
 .hs-slider::after {
   content: ''; position: absolute; left: var(--v,50%); top: 50%; translate: -50% -50%;
-  width: 10px; height: 10px; border-radius: 50%; background: var(--lr-ink);
+  width: 14px; height: 14px; border-radius: 50%; background: var(--lr-ink);
 }
 .hs-slider--unity::before {
-  content: ''; position: absolute; left: 50%; bottom: -6px;
+  content: ''; position: absolute; left: 50%; bottom: -10px;
   width: 2px; height: 4px; margin-left: -1px; border-radius: 1px; background: var(--lr-hint);
 }
 .hs-figure:has(.hs-slider--unity) { padding-bottom: 12px; }
