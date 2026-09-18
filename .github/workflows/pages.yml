@@ -1,4 +1,14 @@
-# Publishes the web app to GitHub Pages on every push to main (docs/hosting.md).
+# Publishes the web app to GitHub Pages — from the `live` branch only (docs/hosting.md).
+#
+# **`main` does not deploy** (2026-09-18). It did, and that made every push a release: work that
+# wanted a device to judge it — a restyle, a fix that needs trying on the phone — was on the phone
+# whether or not it was ready. `live` is a pointer at the commit the site is serving, moved
+# deliberately:
+#
+#     npm run publish     # force-moves live to HEAD and pushes it, which deploys
+#
+# Rolling back is the same move at an older commit (`git push -f origin <sha>:live`), so what is
+# published is always visible as one ref rather than inferred from the run history.
 #
 # One-time setup in the repo: Settings → Pages → Source: "GitHub Actions".
 # The site is https://<user>.github.io/<repo>/ — every URL in the app is relative, so the subfolder
@@ -8,7 +18,7 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [main]
+    branches: [live]
   workflow_dispatch:
 
 permissions:

@@ -15,7 +15,8 @@
     "build:ui": "tsc -p tsconfig.build.json",
     "ui": "npm run build:ui && node Tools/serve.js",
     "build:app": "npm run build:ui && node Tools/build-app.js",
-    "ios:sync": "npm run build:app && npx cap sync ios"
+    "ios:sync": "npm run build:app && npx cap sync ios",
+    "publish": "git push --force origin HEAD:live"
   },
   "devDependencies": {
     "@capacitor/cli": "8.5.2",

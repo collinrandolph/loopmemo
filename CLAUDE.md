@@ -29,7 +29,11 @@ node Tools/verify-timing.js && node Tools/verify-region.js
 
 ## v1 ships as a Home Screen web app on GitHub Pages (decided 2026-09-16)
 
-**Every push to `main` that passes `npm run check` is published** (`.github/workflows/pages.yml`).
+**`main` does not publish; the `live` branch does** (2026-09-18). `npm run publish` force-moves
+`live` to `HEAD` and pushes it, which runs `.github/workflows/pages.yml` — `npm run check`, then the
+build, then the deploy. A failing check is never published, and `git log --oneline live -1` is the
+answer to "what is on the phone". **Do not publish on the user's behalf**: pushing to `main` is
+ordinary work, moving `live` is a release.
 `npm run build:app` assembles `app/www/` from the same files the dev server serves, and the phone
 runs it from the Home Screen icon, full screen. Install, storage and what is locked down:
 `docs/hosting.md`. Why this and not a native app: `docs/platform-decision.md` §9.
@@ -41,8 +45,8 @@ runs it from the Home Screen icon, full screen. Install, storage and what is loc
   are dev-server-only and `build-app.js` leaves them out.
 - **`ui/sw.js` is network-first, never cache-first.** A cache-first worker would keep serving an old
   build to a phone while its owner reports bugs against the new one. The cache is only for offline.
-- **A change to `ui/` is live on the phone after a push.** There is no staging; `npm run check` is the
-  gate, so a check that does not cover something is not protecting it.
+- **`npm run check` is the only gate.** Nothing else stands between `live` and the phone, so a check
+  that does not cover something is not protecting it.
 - **The gesture lockdown is CSS in `app.css`**, beside the zoom rules: `overscroll-behavior`,
   `-webkit-touch-callout`, the home-indicator inset. The embedded browser here cannot show any of it;
   the phone is the only verification.

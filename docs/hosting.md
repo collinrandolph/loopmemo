@@ -6,9 +6,27 @@ deleted.
 
 ## How a change reaches the phone
 
-Push to `main`. `.github/workflows/pages.yml` runs `npm run check` — **a build that fails is never
-published** — assembles `app/www/` with `npm run build:app`, and deploys it. The site is
+**Two steps, since 2026-09-18: push, then publish.** `main` is where work lands and it deploys
+nothing; the site serves whatever commit the **`live`** branch points at.
+
+```bash
+npm run publish     # force-moves live to HEAD and pushes it
+```
+
+That push runs `.github/workflows/pages.yml`: `npm run check` — **a build that fails is never
+published** — then `npm run build:app` to assemble `app/www/`, then the deploy. The site is
 `https://<user>.github.io/<repo>/`.
+
+**Rolling back is the same move at an older commit**, which is the reason for a branch rather than a
+tag or a manual run:
+
+```bash
+git push --force origin <sha>:live
+```
+
+`git log --oneline live -1` therefore always answers "what is on the phone right now", and
+`git log --oneline live..main` answers "what is waiting". Publishing from anywhere other than `main`
+is the same command; `live` is a pointer, not a place to commit.
 
 **One-time setup in the GitHub repo:** Settings → Pages → Source: **GitHub Actions**.
 
