@@ -28,7 +28,15 @@ git push --force origin <sha>:live
 `git log --oneline live..main` answers "what is waiting". Publishing from anywhere other than `main`
 is the same command; `live` is a pointer, not a place to commit.
 
-**One-time setup in the GitHub repo:** Settings → Pages → Source: **GitHub Actions**.
+**One-time setup in the GitHub repo, and it is two things.** Settings → Pages → Source: **GitHub
+Actions**; then Settings → Environments → **github-pages** → *Deployment branches and tags* → add
+**`live`**. That environment is created allowing the **default branch only**, so until `live` is
+listed there a push to it builds, passes, and is then refused at the deploy with no step and no
+message — which is exactly how it failed the first time (run 35399213714, 2026-09-18).
+
+**Until that is set, publish by hand**: Actions → *Deploy to GitHub Pages* → **Run workflow**. The
+run starts on `main`, which the environment allows, and the workflow checks out `live` rather than
+the branch it was started from — so a manual run publishes the same commit `npm run publish` would.
 
 The app picks the new version up the next time it loads with a connection: `ui/sw.js` is network
 first, so it never serves an old build while online. An open Home Screen app keeps the code it

@@ -10,7 +10,12 @@
 # Rolling back is the same move at an older commit (`git push -f origin <sha>:live`), so what is
 # published is always visible as one ref rather than inferred from the run history.
 #
-# One-time setup in the repo: Settings → Pages → Source: "GitHub Actions".
+# **One-time setup, twice over.** Settings → Pages → Source: "GitHub Actions", and Settings →
+# Environments → github-pages → Deployment branches and tags → add `live`. That environment is
+# created allowing the default branch only, so the first push to `live` built fine and was refused
+# at the deploy with no step and no message. Until `live` is allowed there, publish by hand:
+# Actions → Deploy to GitHub Pages → Run workflow, which runs on `main` (allowed) and deploys
+# whatever `live` points at, because the checkout below takes the ref rather than the run's branch.
 # The site is https://<user>.github.io/<repo>/ — every URL in the app is relative, so the subfolder
 # needs no configuration.
 
@@ -20,6 +25,11 @@ on:
   push:
     branches: [live]
   workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Branch or commit to publish'
+        default: live
+        required: false
 
 permissions:
   contents: read
@@ -35,7 +45,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      # **Not the run's own ref.** A manual run starts on `main`, and publishing main is exactly
+      # what this split exists to prevent, so the content published is always what `live` names.
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || 'live' }}
 
       - uses: actions/setup-node@v4
         with:
