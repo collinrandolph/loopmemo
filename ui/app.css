@@ -1309,3 +1309,22 @@ input[type=range]::-moz-range-track {
    and nothing at all once the card went. The accent is the selection mark everywhere else here. */
 .lr-row .chord.is-editing { background: var(--lr-accent); color: var(--lr-btn-ink); border-color: transparent; }
 .lr-row .lr-panel-divider { border-top-color: var(--lr-label-line); }
+
+/* --- buttons carry the body's own ink as their fill (2026-09-18) ----------- */
+/* The body went light and the buttons stayed a dusty mid-tone with dark text on them, which reads
+   as a disabled control next to it. They now fill with `--lr-label-ink` — the same colour the row
+   labels and the line icons are drawn in, so the screen holds two tones rather than three — and
+   reverse to the cream. Measured below rather than assumed; the pair is ~8:1 in all four
+   colourways, where the old fill sat near 4:1.
+   `--lr-btn-ink` stays what it was: it is the ink for anything still on the dusty mid-tone. */
+.lr-btn { background: var(--lr-label-ink); color: var(--lr-ink); border-color: transparent; }
+.lr-btn:hover { background: var(--lr-label-strong); filter: none; }
+.lr-btn--primary { background: var(--lr-label-ink); color: var(--lr-ink); }
+.lr-btn--primary:hover { background: var(--lr-label-strong); }
+/* Delete keeps its own colour: danger is the one button that must not read like the others. */
+.lr-btn--danger { background: transparent; color: var(--lr-rec-ink); border-color: var(--lr-rec-ink); }
+.edit-row .lr-btn { background: var(--lr-label-ink); color: var(--lr-ink); }
+.edit-row .lr-btn:hover { background: var(--lr-label-strong); }
+/* The selected EQ or Pan preset is the same mark as a filled button: the icon reverses out of the
+   ink rather than sitting on a pale wash of it. */
+.lr-row .preset-chips .lr-chip.is-active { background: var(--lr-label-ink); color: var(--lr-ink); }
