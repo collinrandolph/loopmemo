@@ -48,18 +48,20 @@ user must never mistake.
 ## 2. Two tokens are parsed as numbers by JavaScript
 
 ```css
---lr-spent:     173,152,214;   /* NOT #AD98D6 */
---lr-spent-sel: 140,133,175;
+--lr-spent:      173,152,214;   /* NOT #AD98D6 */
+--lr-spent-sel:  140,133,175;
+--lr-spent-lane: 87,64,76;      /* added 2026-09-18 — see below */
 ```
 
 `LR.ramp.tokenRGB` does `getPropertyValue(name).split(',').map(Number)`. Write these as hex or as
 `rgb(...)` and every waveform line gets `rgb(NaN,NaN,NaN)` the moment the playhead passes it.
 Nothing throws.
 
-**There are two because the spent target depends on the surface underneath.** `--lr-spent` sits on
-the default violet tile; `--lr-spent-sel` sits on the darker selected tile (`--lr-tile-sel`).
-Setting them equal makes played lines on a selected tile read wrong. If you change the tile
-colours, these two have to move with them.
+**There are three because the spent target depends on the surface underneath.** `--lr-spent` sits
+on the default tile; `--lr-spent-sel` sits on the darker selected tile (`--lr-tile-sel`); and
+**`--lr-spent-lane` sits on the light body**, which is where the Playback lanes and the Library
+thumbnails draw since the rows went flat. Setting any two equal makes played lines read wrong on
+one of the three. If you change a surface, its spent target moves with it.
 
 A spent line must stay *visible against its tile* while being clearly less prominent than an
 unplayed one. It is not "faded to background" — it is a second, quieter colour.
@@ -146,9 +148,20 @@ Ink over a selected tile needs its own contrast: `--lr-hint` vs `--lr-hint-sel` 
 this, and `.tile.is-selected .tile-label` brightens to `--lr-ink`.
 
 **Layer row (Playback)** — `is-empty` · `is-armed` · `is-recording` · `is-muted` · `is-open` ·
-`has-audio`, and they combine. Armed and recording differ in **colour and shape**: the dot goes
-circle → square (`border-radius: 4px`, `transform: scale(.78)`) and the pulse stops. Keep both
-signals; colour alone is not enough for the one control that must never be misread.
+`has-audio`, and they combine. Armed and recording differ in **colour and shape**: the mark inside
+the record target goes circle → square and the pulse stops. Keep both signals; colour alone is not
+enough for the one control that must never be misread.
+
+**Since 2026-09-18 the row is the body, not a card** (design study v27). `is-empty` no longer tints
+— there is no card to tint and the lane already says "empty" — and armed and recording are two
+washes *of the body*: `--lr-armed-soft` (a hint; nothing captured yet) and `--lr-rec-wash` (the same
+row gone live). Those two mixes are set where they are because of a measurement, not a preference:
+at 0.42 the recessive ink over the recording wash fell to 3.01:1 in Moss, and at 0.36 the four
+colourways measure 3.29–3.86:1 while the two washes stay a visible step apart.
+
+**The record control is a 34px target with a 12px mark**, the mark drawn as `.lr-rec::before` so the
+kit's `RecordDot` needs no extra element. A rule that sizes `.lr-rec` itself now sizes the *target*,
+which is why the kit's `transform: scale(.78)` is explicitly cancelled for `is-recording`.
 
 **The record dot has three states, not four.** There was a fourth — empty + open got a pulsing
 expanding ring (`lr-rec-hint`) meaning "record here" — and it is **removed**, from the kit and from
@@ -215,8 +228,14 @@ direction you got wrong — the text is still painted, still selectable, still t
 
 | Surface | Ink | Recessive ink | Strong ink |
 |---|---|---|---|
-| dark header / card | `--lr-ink` | `--lr-ink-dim`, `--lr-ink-faint` | — |
-| light body | `--lr-label-ink` | `--lr-label-ink` | `--lr-label-strong` |
+| dark header / Edit Layer tile | `--lr-ink` | `--lr-ink-dim`, `--lr-ink-faint` | — |
+| light body — including every row and its open panel | `--lr-label-ink` | `--lr-label-ink` | `--lr-label-strong` |
+
+**The rows crossed that divide on 2026-09-18**, which is the single largest way this table has ever
+been wrong in a diff: a row was a card, so everything in it took cream, and on the body cream
+measures ~1.3:1 while looking perfectly fine in the source. The audit below caught six survivors
+inside the backing panels — the swipe-wheel values and the four chord buttons, at 1.16–1.42:1 in
+every colourway — after the obvious inks had already been moved by hand.
 
 Four of these were shipped at once and all four were invisible or near it:
 

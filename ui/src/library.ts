@@ -221,7 +221,13 @@ export function libraryScreen(opts: {
     engine.start(0);
   }
 
-  const spent = ramp.tokenRGB('--lr-spent');
+  /**
+   * **`--lr-spent-lane`, not `--lr-spent`** (2026-09-18). A played line recedes toward the surface
+   * it is drawn on, and the rows stopped being dark cards: on the light body the card's spent tone
+   * is a pale violet that all but vanishes, so a lane read as half-erased rather than half-played.
+   * The Edit Layer tiles are still cards and still use `--lr-spent`.
+   */
+  const spent = ramp.tokenRGB('--lr-spent-lane');
   const loop = renderLoop(() => {
     if (playingId === null || !engine) return;
     const row = rows.find((r) => r.project.id === playingId);

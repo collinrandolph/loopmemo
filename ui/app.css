@@ -823,7 +823,9 @@ body, .ax { font-family: 'Hanken Grotesk', -apple-system, BlinkMacSystemFont, 'S
 /* The header is a surface now, so it owns the horizontal padding the screen used to imply. */
 .lr-header { padding: 16px 16px 14px; }
 
-/* Rows and tiles are cards ON the light body, so they keep the cream ink. */
+/* Tiles are cards ON the light body, so they keep the cream ink. **Rows are not, since
+   2026-09-18** — the flat-list block at the end of this file takes `.lr-row` back to the body's
+   ink, and it has to come later than this rule to do it. */
 .lr-row, .tile { color: var(--lr-ink); }
 /* Spacing from the design study (`.m-rows`, `.m-plist`, `.m-sec`). The cards are the content, so
    the gap between them is a seam and not a margin — 8px read as a list of separate things, where
@@ -1177,3 +1179,133 @@ input[type=range]::-moz-range-track {
 @media (max-width: 640px) {
   .lr-footer { padding-bottom: calc(10px + var(--bottom-reserve)); }
 }
+
+/* --- flat lists, the record target, the panel (design study v27, 2026-09-18) -- */
+/* **The rows stop being cards.** Backing tracks, Layers and the Projects list lose their fill,
+   radius and seam gap, and sit edge to edge on the body with a hairline between them. The Edit
+   Layer grid is the one list the study also flattens that is NOT done here — it keeps its tiles,
+   and with them `--lr-spent` and the five tile surfaces, so restyling.md §5's tile table still
+   describes what is on screen.
+
+   **This crosses restyling.md §8's divide, which is the whole risk.** A row was a dark card, so
+   everything inside it took cream ink; on the body that ink measures ~1.3:1 and stays perfectly
+   legible in the diff. Every ink inside a row therefore moves to the light-body pair below, and the
+   audit in §7 was run afterwards on all four colourways rather than reasoned about.
+
+   Last in the file on purpose: it overrides the themed block above, which is equal specificity. */
+.lr-rows, .backing, .library .lr-rows { padding: 0; gap: 0; }
+.lr-row { background: transparent; border-radius: 0; box-shadow: none; color: var(--lr-label-ink); }
+.lr-row:hover { background: transparent; }
+/* The hairline belongs to the row above the seam, so the first row does not carry one under the
+   section heading and a list never ends on a line with nothing below it. */
+.lr-rows > .lr-row + .lr-row,
+.backing > .lr-row + .lr-row { border-top: 1px solid var(--lr-label-line); }
+.lr-row-head { padding: 10px 20px; }
+.library .lr-row-head { padding: 12px 20px; }
+@media (max-width: 640px) {
+  .lr-row-head { padding: 10px 12px; }
+  .library .lr-row-head { padding: 12px; }
+}
+
+/* Ink inside a row, now that the row is the body. */
+.lr-row .layer-label .idx { color: var(--lr-label-ink); }
+.lr-row .layer-name { color: var(--lr-label-strong); }
+/* The veils go dark: `rgba(255,255,255,.09)` over a card lightens it, and the same veil on the
+   body is invisible (restyling.md §10). */
+.lr-row .layer-name:hover { background: rgba(0,0,0,.05); }
+.lr-row .layer-name:focus { background: rgba(0,0,0,.06); box-shadow: 0 0 0 1px var(--lr-label-line); }
+.lr-row .layer-name:empty::before { color: var(--lr-label-ink); }
+.lr-row .backing-detail { color: var(--lr-label-strong); }
+.lr-row .backing-icon { stroke: var(--lr-label-ink); }
+.lr-row .lr-note, .lr-row .lr-panel-label { color: var(--lr-label-ink); }
+.lr-row .lr-volume .lr-vol-body { fill: var(--lr-label-ink); }
+.lr-row .lr-volume .lr-vol-arc { stroke: var(--lr-label-ink); }
+.lr-row .lr-volume .lr-vol-slash { stroke: var(--lr-label-ink); }
+.lr-row .lr-volume.is-muted .lr-vol-body { fill: var(--lr-label-ink); opacity: .55; }
+/* The chord chips were a card's vocabulary — a white veil and cream ink. */
+.lr-row .lr-chip { background: transparent; color: var(--lr-label-ink); border-color: var(--lr-label-line); }
+.lr-row .lr-chip.is-active { background: var(--lr-accent); color: var(--lr-btn-ink); border-color: transparent; }
+/* An empty layer had a card one shade off the others to say so; with no card there is nothing to
+   tint, and "empty" is already written in the lane. */
+.lr-row.is-empty { background: transparent; }
+
+/* Armed and recording are two rows, not one (§3.5, and the study is explicit about it). Armed has
+   captured nothing yet, so it is a hint; recording is the same row gone live and sits deeper. The
+   inset red rule the armed card carried is gone — the wash is the signal now. */
+.lr-row.is-armed { background: var(--lr-armed-soft); box-shadow: none; }
+.lr-row.is-recording { background: var(--lr-rec-wash); box-shadow: none; }
+
+/* The Library's play button was the body colour on a card; on the body it would be invisible, so
+   it becomes an outline that fills only while that row is previewing. */
+.library .lr-row .lr-play--sm { background: transparent; color: var(--lr-label-ink); border-color: var(--lr-label-line); }
+.library .lr-row.is-playing .lr-play--sm { background: var(--lr-accent); color: var(--lr-btn-ink); border-color: transparent; }
+.library .lr-row .p-name { color: var(--lr-label-strong); }
+.library .lr-row .p-meta { color: var(--lr-label-ink); }
+.library .lr-row .p-meta--b { color: var(--lr-label-strong); }
+.library .lr-row .p-time { color: var(--lr-label-strong); }
+
+/* --- the record control --------------------------------------------------- */
+/* **A 34px target with a 12px mark inside it**, where the whole control used to be a 20px dot —
+   the smallest thing on the screen was the one that must never be mis-hit. The inner mark is a
+   pseudo-element rather than a span so `docs/kit/`'s `RecordDot` is untouched.
+   The three states keep both signals restyling.md §5 insists on, colour *and* shape: idle is a
+   quiet dot on a faint disc, armed fills the disc red and pulses a ring, recording stops the pulse
+   and steps the mark from a circle to a stop square. The kit's `is-capturing` rule, which hides
+   every other row's dot for the length of a take, is untouched. */
+.lr-rec {
+  width: 34px; height: 34px; border-radius: 999px;
+  background: var(--lr-rec-idle-bg);
+  display: grid; place-items: center;
+  transition: background .18s, box-shadow .18s;
+}
+.lr-rec::before {
+  content: ''; width: 12px; height: 12px; border-radius: 999px;
+  background: var(--lr-rec-idle);
+  transition: background .18s, border-radius .18s, width .18s, height .18s;
+}
+.lr-rec:hover { background: var(--lr-rec-idle-bg); filter: brightness(.96); }
+.lr-row.is-armed .lr-rec {
+  background: var(--lr-rec); box-shadow: 0 0 0 4px var(--lr-rec-glow);
+  animation: lr-pulse 1.4s ease-in-out infinite;
+}
+.lr-row.is-armed .lr-rec::before { background: #fff; }
+/* Recording is the armed row still, so it inherits that fill and changes only the mark and the
+   pulse — the row's deeper wash carries the rest. Shape has to survive the kit's own
+   `transform: scale(.78)` and `border-radius: 4px`, which sized the whole control. */
+.lr-row.is-recording .lr-rec {
+  background: var(--lr-rec); border-radius: 999px; transform: none;
+  box-shadow: 0 0 0 4px var(--lr-rec-glow); animation: none;
+}
+.lr-row.is-recording .lr-rec::before { width: 11px; height: 11px; border-radius: 3px; background: #fff; }
+.lr-row.is-pending .lr-rec::before { background: #fff; }
+
+/* --- the panel a row opens ------------------------------------------------ */
+/* One shade behind the body, with the seam on the row above it rather than on the panel: the
+   collapse animates a measured `scrollHeight`, which excludes a border, so a border on the panel
+   itself would be clipped by exactly its own width at full open (restyling.md §4). */
+.lr-panel { background: var(--lr-panel-surface); }
+.lr-row.is-open .lr-row-head { border-bottom: 1px solid var(--lr-label-line); }
+.lr-row .preset-name { color: var(--lr-label-strong); }
+/* EQ and Pan presets become bare icons: no fill and no edge until one is chosen, so six icons read
+   as a strip of drawings rather than six buttons, and the accent marks the selection alone. */
+.preset-chips .lr-chip { background: transparent; border-color: transparent; }
+.lr-row .preset-chips .lr-chip { background: transparent; border-color: transparent; }
+.lr-row .preset-chips .lr-chip.is-active { background: var(--lr-accent); color: var(--lr-btn-ink); }
+
+/* The controls a backing row opens were built for a card: white veils and cream ink. On the body
+   the audit measured the wheel values and the chord buttons at 1.16–1.42:1 in all four colourways
+   — restyling.md §8's trap, caught by §7's script rather than by eye. */
+.lr-row .lr-wheel {
+  background: rgba(0,0,0,.04); border-color: var(--lr-label-line);
+}
+.lr-row .lr-wheel:hover { background: rgba(0,0,0,.07); }
+.lr-row .lr-wheel__value { color: var(--lr-label-strong); }
+.lr-row .lr-wheel svg { stroke: var(--lr-label-ink); }
+.lr-row .chord {
+  background: rgba(0,0,0,.04); border-color: var(--lr-label-line); color: var(--lr-label-strong);
+}
+.lr-row .chord:hover { background: rgba(0,0,0,.07); }
+/* The editing slot took `--lr-play-bg`, which IS the body colour — a light chip on a dark card,
+   and nothing at all once the card went. The accent is the selection mark everywhere else here. */
+.lr-row .chord.is-editing { background: var(--lr-accent); color: var(--lr-btn-ink); border-color: transparent; }
+.lr-row .lr-panel-divider { border-top-color: var(--lr-label-line); }

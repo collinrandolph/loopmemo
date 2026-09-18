@@ -221,6 +221,15 @@ decided 2026-09-16, to keep TypeScript the only dependency — so it still needs
 not part of `npm run check`. **A new instrument is not run by anything until it is added to
 `INSTRUMENTS`.**
 
+**The lists are flat: every row is the body, not a card** (design study v27, 2026-09-18). Backing
+tracks, Layers and the Projects list lost their fill, radius and seam gap and are separated by a
+hairline; only the Edit Layer tiles are still cards. Three consequences, all of which fail silently:
+every ink inside a row moved to `--lr-label-*` (restyling.md §8 — the audit found the backing
+panels' wheels and chord buttons at 1.16–1.42:1 after the obvious ones were fixed), played lines
+need `--lr-spent-lane` because they recede on the body now, and `is-armed` / `is-recording` are two
+washes *of the body* whose depth is set by measurement (§5). **Run restyling.md §7's audit in all
+four colourways after any change here**; every screen currently measures clean at 3:1.
+
 **`bindChips` delegates on the `.lr-chips` group, so no chip may call `stopPropagation`.** The EQ
 and Pan pickers did, and the consequence was quiet: the preset changed and the highlight stayed
 put, so the panel named one preset while a different one looked selected. It was guarding nothing

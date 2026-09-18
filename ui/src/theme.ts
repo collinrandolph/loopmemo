@@ -120,6 +120,8 @@ function tokens(v: Variation): Record<string, string> {
   // two clear steps below `--lr-ink-dim`.
   const ink3 = hslHex(v.dh, 12, 62);
   const accent = hslHex(v.ah, 15, 65);
+  // The body's own ink, named here because the flat rows derive three tokens from it (2026-09-18).
+  const labelInk = hslHex(v.dh, 15, 34);
 
   return {
     // Outside the screen, and the screen's own body.
@@ -149,9 +151,26 @@ function tokens(v: Variation): Record<string, string> {
 
     // Ink and lines on the light body.
     '--lr-ink-on-light': hslHex(v.dh, v.ds, 18),
-    '--lr-label-ink': hslHex(v.dh, 15, 34),
+    '--lr-label-ink': labelInk,
     '--lr-label-strong': sel,
     '--lr-label-line': `hsla(${v.dh}, ${v.ds}%, 25%, 0.22)`,
+    /**
+     * The light-body surfaces the flat rows introduced (design study v27, 2026-09-18). Backing
+     * tracks, Layers and the Projects list lost their card fill, so every state that used to be a
+     * step off `--lr-tile` is now a step off the *body*, and mixing the old card-toned values onto
+     * it would read as a darker card rather than a state.
+     *
+     * **Armed and recording are two washes, not one** (§3.5): armed has captured nothing yet, so it
+     * is a hint; recording is the same row gone live and sits deeper. Both are mixes of the body
+     * rather than of the card, so dark-on-light ink stays legible over them — measured, not assumed.
+     */
+    '--lr-armed-soft': mix(body, v.rec, 0.16),
+    '--lr-rec-wash': mix(body, v.rec, 0.36),
+    /** The panel a row opens: one shade behind the body, enough to read as a step and no more. */
+    '--lr-panel-surface': mix(body, '#000000', 0.03),
+    /** The record control's resting target and the dot inside it, both on the body. */
+    '--lr-rec-idle-bg': mix(body, labelInk, 0.12),
+    '--lr-rec-idle': hslHex(v.dh, 13, 48),
 
     // The things you act on.
     '--lr-accent': accent,
@@ -176,6 +195,13 @@ function tokens(v: Variation): Record<string, string> {
     // Parsed as numbers by JS. Bare triples only.
     '--lr-spent': rgb(ink2).join(','),
     '--lr-spent-sel': rgb(mix(ink2, sel, 0.42)).join(','),
+    /**
+     * **A third spent target, because a third surface appeared.** `--lr-spent` is tuned to the dark
+     * tile and `--lr-spent-sel` to the selected one; the Playback lanes and the Library thumbnails
+     * now draw on the light body, where a played line receding toward a pale card ink disappears.
+     * It recedes into the row's own text colour instead. Bare triple — `ramp.tokenRGB` parses it.
+     */
+    '--lr-spent-lane': rgb(labelInk).join(','),
   };
 }
 
